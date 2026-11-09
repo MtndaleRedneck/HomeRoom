@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HomeRoom</string>
+    <string name="setup_title">Set up HomeRoom</string>
+    <string name="setup_hint">Paste the one-time setup link for your HomeRoom server. It looks like https://server.example/integration/designed.html#…</string>
+    <string name="setup_field_hint">https://…</string>
+    <string name="setup_connect">Connect</string>
+    <string name="setup_invalid">That doesn\'t look like a link. Check it and try again.</string>
+    <string name="error_title">Can\'t reach HomeRoom. Check your connection, then retry.</string>
+    <string name="error_session">Your session ended. Connect again with a new setup link.</string>
+    <string name="setup_https">Setup needs a secure https:// link.</string>
+    <string name="error_retry">Retry</string>
+    <string name="error_change">Use a different setup link</string>
+    <string name="download_started">Download started</string>
+    <string name="update_title">Update available</string>
+    <string name="update_button">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_skip">Skip this version</string>
+</resources>
