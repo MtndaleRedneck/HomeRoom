@@ -1,0 +1,73 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
+}
+
+def keystorePath = System.getenv('HOMEROOM_KEYSTORE') ?: (System.getProperty('user.home') + '/build/homeroom.keystore')
+def passFile = System.getenv('HOMEROOM_KEYSTORE_PASS_FILE') ?: (System.getProperty('user.home') + '/build/keystore.pass')
+
+android {
+    namespace 'app.homeroom'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.homeroom'
+        minSdk 26
+        targetSdk 34
+        versionCode 4
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(keystorePath)
+            keyAlias 'homeroom'
+            storePassword new File(passFile).text.trim()
+            keyPassword new File(passFile).text.trim()
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.4'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation('com.google.firebase:firebase-messaging') {
+        exclude group: 'com.google.firebase', module: 'firebase-analytics'
+        exclude group: 'com.google.firebase', module: 'firebase-analytics-ktx'
+        exclude group: 'com.google.android.gms', module: 'play-services-measurement-api'
+    }
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+}

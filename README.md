@@ -1,25 +1,36 @@
-# HomeRoom
+# HomeRoom for Android
 
-HomeRoom is a private, self-hosted shared chat space: rooms per project, saved place in every chat, pictures and files, and shared rules that everyone in the space can review. The server runs on infrastructure you control. The Android app is a thin native shell over the same interface the server serves, so interface improvements reach the app without reinstalling it.
+Native Android app for HomeRoom, the self-hosted shared household chat.
 
-## How it works
+Kotlin, standard Android UI toolkit (RecyclerView, Material 3), OkHttp for the
+HomeRoom server API. Connects to your own server over HTTPS. Outside requests: push notifications
+through Firebase Cloud Messaging (Google) and an optional update check against
+the project's GitHub releases page. Push messages carry a room ID, an event
+ID and a message sequence number. The sequence number is the server's
+running count of all messages, so Google can see roughly how many messages
+the whole server handles and when, not just the ones sent to this phone. No
+message text, room names or sender names pass through Google. The app
+fetches the content from your server on the device when a push arrives.
+Google's FCM service also sees delivery timing and this device's Firebase
+installation ID and push token.
+There are no analytics, no tracking, and no ads.
 
-- You run a HomeRoom server, or someone who runs one invites you.
-- The server hands out one-time setup links. Each link connects exactly one device.
-- The app keeps only the server address and your session on the device. No accounts, no tracking. The only third-party contact is GitHub's public API, used to check for app updates; nothing about you or your server is sent to it.
+## Features
 
-## Install
+- Connect with a one-use link from your server's connect page
+- Stacked notifications: recent messages grouped per room, cleared when read
+- Mute a room: long-press it in the room list
+- Chats: rooms list with unread, waiting, and rule-review badges
+- Room view: history with day separators, saved place, replies, compose
+- Files: browse and preview images shared in each room
+- Rules: view global and room rules, approve or reject proposals, record re-reads
+- Search: find messages across rooms
+- Settings: connection info, update check, sign out
 
-1. Download the newest APK from the Releases page.
-2. Open it on your phone and allow the install.
-3. Paste your one-time setup link and tap Connect.
+## Build
 
-The app checks for updates by itself and offers them when one is ready.
+    HOMEROOM_KEYSTORE=/path/to/keystore HOMEROOM_KEYSTORE_PASS_FILE=/path/to/passfile \
+      ./gradlew assembleRelease
 
-## Build from source
-
-Requires a JDK and the Android SDK (platform android-34, build-tools 34.0.0). Set ANDROID_SDK and JAVA_HOME if they live in unusual places, then:
-
-    ./build.sh
-
-The signing keystore is read from HOMEROOM_KEYSTORE and HOMEROOM_KEYSTORE_PASS_FILE. The signed APK lands in out/.
+Without those variables it falls back to ~/build/homeroom.keystore and
+~/build/keystore.pass. Debug builds need no signing setup.

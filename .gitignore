@@ -1,3 +1,7 @@
 out/
 *.keystore
 *.pass
+google-services.json
+local.properties
+.gradle/
+build/
