@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -92,6 +93,7 @@ class FilesScreen(context: Context) : Screen(context) {
                 files.clear()
                 files.addAll(list.map { room.name to it })
                 adapter.notifyDataSetChanged()
+                host.backdropChanged()
                 empty.visibility = if (files.isEmpty()) View.VISIBLE else View.GONE
                 empty.text = "No files in " + room.name + " yet."
             } catch (e: SessionEndedException) {

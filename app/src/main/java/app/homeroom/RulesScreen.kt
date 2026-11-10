@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.Context
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -95,6 +96,7 @@ class RulesScreen(context: Context) : Screen(context) {
                 rules.clear()
                 rules.addAll(list)
                 adapter.notifyDataSetChanged()
+                host.backdropChanged()
                 empty.visibility = if (rules.isEmpty()) View.VISIBLE else View.GONE
                 empty.text = "No rules here yet."
             } catch (e: SessionEndedException) {

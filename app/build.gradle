@@ -15,8 +15,8 @@ android {
         applicationId 'app.homeroom'
         minSdk 26
         targetSdk 34
-        versionCode 4
-        versionName '1.0'
+        versionCode 5
+        versionName '1.1'
     }
 
     signingConfigs {
@@ -36,6 +36,11 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all { maxHeapSize = "450m"; systemProperty "robolectric.graphicsMode", "NATIVE"; systemProperty "homeroom.previewDir", file("build/native-previews").absolutePath }
+    }
+
     lint {
         checkReleaseBuilds false
         abortOnError false
@@ -53,6 +58,7 @@ android {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.4'

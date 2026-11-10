@@ -24,7 +24,7 @@ There are no analytics, no tracking, and no ads.
 - Room view: history with day separators, saved place, replies, compose
 - Files: browse and preview images shared in each room
 - Rules: view global and room rules, approve or reject proposals, record re-reads
-- Search: find messages across rooms
+- Search: header button to find messages across rooms
 - Settings: connection info, update check, sign out
 
 ## Build
@@ -34,3 +34,17 @@ There are no analytics, no tracking, and no ads.
 
 Without those variables it falls back to ~/build/homeroom.keystore and
 ~/build/keystore.pass. Debug builds need no signing setup.
+
+## Visual regression checks
+
+Run `gradle testDebugUnitTest`. Robolectric runs the native Android view
+measurement/drawing checks and writes Chats and Room PNGs to
+`app/build/native-previews/`. These use sample data, not a live server.
+A real phone must still check enrollment, API requests, sending, push delivery,
+launcher masking and system launch behavior. Android 12+ controls the system
+starting window; the app uses an empty matching background, no branded splash,
+and removes its exit animation immediately.
+
+## License
+
+GPLv3

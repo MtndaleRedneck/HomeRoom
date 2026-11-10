@@ -16,6 +16,9 @@ data class Room(
     val waitingCount: Int,
     val pendingRulesCount: Int,
     val members: List<Pair<String, String>>,
+    val icon: JSONObject? = null,
+    val preview: String = "",
+    val lastTime: String = "",
 ) {
     companion object {
         fun from(o: JSONObject): Room {
@@ -34,6 +37,9 @@ data class Room(
                 waitingCount = o.optInt("waiting_count", 0),
                 pendingRulesCount = o.optInt("pending_rules_count", 0),
                 members = members,
+                icon = o.optJSONObject("icon"),
+                preview = o.optJSONObject("last_post")?.let { str(it, "excerpt").ifBlank { str(it, "text") } } ?: "No retained messages",
+                lastTime = o.optJSONObject("last_post")?.let { str(it, "created_at") } ?: "",
             )
         }
     }
@@ -61,9 +67,9 @@ data class ChatEvent(
                 actorId = actor?.let { str(it, "actor") } ?: str(o, "actor"),
                 actorName = actor?.let { str(it, "display_name") }?.ifBlank { null }
                     ?: actor?.let { str(it, "actor") } ?: str(o, "actor"),
-                text = o.optString("text"),
-                createdAt = o.optString("created_at").ifBlank { o.optString("ts") },
-                clientId = o.optString("client_id").ifBlank { null },
+                text = str(o, "text"),
+                createdAt = str(o, "created_at").ifBlank { str(o, "ts") },
+                clientId = str(o, "client_id").ifBlank { null },
             )
         }
     }
@@ -82,12 +88,12 @@ data class RoomFile(
 
     companion object {
         fun from(o: JSONObject): RoomFile = RoomFile(
-            id = o.optString("file_id"),
-            name = o.optString("name").ifBlank { o.optString("file_id") },
-            mimeType = o.optString("mime_type"),
+            id = str(o, "file_id"),
+            name = str(o, "name").ifBlank { str(o, "file_id") },
+            mimeType = str(o, "mime_type"),
             size = o.optLong("size", 0),
-            uploader = o.optString("uploader"),
-            createdAt = o.optString("created_at").ifBlank { o.optString("ts") },
+            uploader = str(o, "uploader"),
+            createdAt = str(o, "created_at").ifBlank { str(o, "ts") },
         )
     }
 }
@@ -102,12 +108,12 @@ data class Rule(
 ) {
     companion object {
         fun from(o: JSONObject): Rule = Rule(
-            ruleId = o.optString("rule_id"),
-            text = o.optString("text"),
+            ruleId = str(o, "rule_id"),
+            text = str(o, "text"),
             version = o.optInt("version", 1),
-            proposedBy = o.optString("proposed_by"),
-            status = o.optString("status", "active"),
-            roomId = o.optString("room_id").ifBlank { null },
+            proposedBy = str(o, "proposed_by"),
+            status = str(o,"status").ifBlank { "active" },
+            roomId = str(o, "room_id").ifBlank { null },
         )
     }
 }
@@ -121,13 +127,21 @@ data class SearchHit(
 ) {
     companion object {
         fun from(o: JSONObject): SearchHit = SearchHit(
-            eventId = o.optString("event_id"),
-            roomId = o.optString("room_id"),
-            roomName = o.optString("room_name").ifBlank { o.optString("room_id") },
-            excerpt = o.optString("excerpt").ifBlank { o.optString("text") },
-            createdAt = o.optString("created_at").ifBlank { o.optString("ts") },
+            eventId = str(o, "event_id"),
+            roomId = str(o, "room_id"),
+            roomName = str(o, "room_name").ifBlank { str(o, "room_id") },
+            excerpt = str(o, "excerpt").ifBlank { str(o, "text") },
+            createdAt = str(o, "created_at").ifBlank { str(o, "ts") },
         )
     }
 }
 
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
+
+fun JSONObject.requiredArray(key: String): JSONArray {
+    val array=optJSONArray(key) ?: throw ApiException(0,"invalid_response_"+key)
+    for(i in 0 until array.length()) if(array.optJSONObject(i)==null) throw ApiException(0,"invalid_response_"+key)
+    return array
+}
+
+fun JSONObject.nullableString(key:String):String? = if(isNull(key)) null else optString(key).ifBlank { null }

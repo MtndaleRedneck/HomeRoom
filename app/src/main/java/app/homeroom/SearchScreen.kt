@@ -3,6 +3,7 @@ package app.homeroom
 import android.content.Context
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -68,6 +69,7 @@ class SearchScreen(context: Context) : Screen(context) {
                 hits.clear()
                 hits.addAll(results)
                 adapter.notifyDataSetChanged()
+                host.backdropChanged()
                 empty.visibility = if (hits.isEmpty()) View.VISIBLE else View.GONE
                 empty.text = "No matches for \"" + trimmed + "\"."
             } catch (e: SessionEndedException) {

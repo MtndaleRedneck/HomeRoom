@@ -79,12 +79,12 @@ class NotificationFetchWorker(
                 style.isGroupConversation = true
             }
             val publicVersion = NotificationCompat.Builder(applicationContext, HomeRoomMessagingService.CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_chats)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("HomeRoom")
                 .setContentText("New message")
                 .build()
             val notification = NotificationCompat.Builder(applicationContext, HomeRoomMessagingService.CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_chats)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(sender)
                 .setContentText(preview)
                 .apply { if (roomName != null) setSubText(roomName) }
@@ -175,8 +175,8 @@ class NotificationFetchWorker(
         // The single-event route returns only a canonical actor ID. Map it
         // through the roster the app cached on its last foreground rooms
         // fetch; never call /owner/rooms from the background here.
-        if (event.actorName != event.actorId) return event.actorName
-        val cached = session.roomsCache ?: return event.actorName
+        if (event.actorName != event.actorId) return event.actorName.takeIf { it != event.actorId } ?: "Member"
+        val cached = session.roomsCache ?: return event.actorName.takeIf { it != event.actorId } ?: "Member"
         return try {
             val rooms = org.json.JSONArray(cached)
             var name: String? = null
@@ -188,7 +188,7 @@ class NotificationFetchWorker(
                     break
                 }
             }
-            name ?: event.actorName
+            name ?: "Member"
         } catch (e: Exception) {
             event.actorName
         }

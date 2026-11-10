@@ -111,7 +111,7 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
             }
             val showingStack = showing && roomId != null
             val builder = NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(R.drawable.ic_chats)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("HomeRoom")
                 .setContentText("New message in HomeRoom")
                 .setGroup(GROUP_KEY)
@@ -127,7 +127,7 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
             if (showingStack) {
                 builder.setPublicVersion(
                     NotificationCompat.Builder(this, channelId)
-                        .setSmallIcon(R.drawable.ic_chats)
+                        .setSmallIcon(R.drawable.ic_notification)
                         .setContentTitle("HomeRoom")
                         .setContentText("New message")
                         .build()
@@ -226,7 +226,7 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val summary = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_chats)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("HomeRoom")
                 .setContentText("New messages")
                 .setGroup(GROUP_KEY)

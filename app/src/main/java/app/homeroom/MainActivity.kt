@@ -8,14 +8,13 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
  * Single-activity app: a connection screen until the device is enrolled, then
- * a tab bar (Chats, Files, Rules, Search, Settings) with room views pushed on
+ * a tab bar (Chats, Files, Rules, Settings) with room views pushed on
  * top. A light foreground poller keeps the visible screen fresh.
  */
 class MainActivity : AppCompatActivity() {
@@ -30,7 +29,10 @@ class MainActivity : AppCompatActivity() {
     val scope = lifecycleScope
 
     private lateinit var content: FrameLayout
-    private lateinit var nav: BottomNavigationView
+    private lateinit var nav: GlassNav
+    private lateinit var headerSearch: View
+    private var searchScreen: SearchScreen? = null
+    private lateinit var headerIcon: FrameLayout
     private lateinit var header: LinearLayout
     private lateinit var headerBack: View
     private lateinit var headerTitle: android.widget.TextView
@@ -46,7 +48,9 @@ class MainActivity : AppCompatActivity() {
         session = Session(this)
         api = ApiClient(session)
 
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val root = FrameLayout(this)
+        val stack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(stack, FrameLayout.LayoutParams(-1,-1))
         root.setBackgroundColor(C.bg)
 
         header = LinearLayout(this).apply {
@@ -55,44 +59,40 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(C.bg)
         }
         headerBack = android.widget.TextView(this).apply {
-            text = "<"
+            text = "‹"
             textSize = 22f
             setTextColor(C.accent)
             setPadding(dp(8), dp(4), dp(16), dp(4))
             setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         }
         headerTitle = android.widget.TextView(this).apply {
-            textSize = 18f
+            textSize = 25f
             setTextColor(C.text)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         header.addView(headerBack, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         header.addView(headerTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(header)
+        stack.addView(header, LinearLayout.LayoutParams(-1,dp(60)))
 
         content = FrameLayout(this)
-        root.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        stack.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        headerIcon = FrameLayout(this)
+        header.addView(headerIcon, 1, LinearLayout.LayoutParams(dp(38),dp(38)).apply { rightMargin=dp(10) })
+        headerIcon.visibility=View.GONE
+        headerSearch=android.widget.ImageButton(this).apply { setImageResource(R.drawable.ic_search); setColorFilter(C.text); setBackgroundColor(Color.TRANSPARENT); contentDescription="Search messages"; setOnClickListener { openSearch() } }
+        header.addView(headerSearch, LinearLayout.LayoutParams(dp(44),dp(44)))
 
-        nav = BottomNavigationView(this).apply {
-            inflateMenu(R.menu.bottom_nav)
-            setBackgroundColor(C.surface)
-            itemIconTintList = android.content.res.ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(C.accent, C.muted)
-            )
-            itemTextColor = itemIconTintList
+        nav = GlassNav(this, stack) { id ->
+            if (roomScreen == null) { searchScreen=null; showTab(id) }
         }
-        root.addView(nav)
+        root.addView(nav, FrameLayout.LayoutParams(-1,dp(64),android.view.Gravity.BOTTOM).apply { leftMargin=dp(18); rightMargin=dp(18); bottomMargin=dp(24) })
         setContentView(root)
-
-        nav.setOnItemSelectedListener { item ->
-            if (roomScreen == null) showTab(item.itemId)
-            true
-        }
+        if(android.os.Build.VERSION.SDK_INT>=31) splashScreen.setOnExitAnimationListener { it.remove() }
 
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (roomScreen != null) closeRoom()
+                if (searchScreen != null) { searchScreen?.onHide(); searchScreen=null; showTab(currentTab) }
+                else if (roomScreen != null) closeRoom()
                 else if (currentTab != R.id.nav_chats) {
                     nav.selectedItemId = R.id.nav_chats
                 } else {
@@ -174,29 +174,36 @@ class MainActivity : AppCompatActivity() {
         when (id) {
             R.id.nav_files -> FilesScreen(this)
             R.id.nav_rules -> RulesScreen(this)
-            R.id.nav_search -> SearchScreen(this)
             R.id.nav_settings -> SettingsScreen(this)
             else -> RoomsScreen(this)
         }
     }
 
     private fun showTab(id: Int) {
+        headerTitle.textSize=25f
+        tabScreens[currentTab]?.onHide()
         currentTab = id
         val screen = tabFor(id)
         content.removeAllViews()
         content.addView(screen, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.GONE
+        headerIcon.visibility=View.GONE
+        headerSearch.visibility=View.VISIBLE
+        nav.visibility=View.VISIBLE
+        screen.setPadding(0,0,0,dp(112))
         headerTitle.text = when (id) {
             R.id.nav_files -> "Files"
             R.id.nav_rules -> "Rules"
-            R.id.nav_search -> "Search"
             R.id.nav_settings -> "Settings"
-            else -> "Chats"
+            else -> "HomeRoom"
         }
         screen.onShow()
+        nav.backdropChanged()
     }
 
     fun openRoom(room: Room) {
+        searchScreen?.onHide()
+        searchScreen=null
         clearRoomNotification(room.id)
         val screen = RoomScreen(this, room)
         roomScreen = screen
@@ -204,8 +211,26 @@ class MainActivity : AppCompatActivity() {
         content.addView(screen, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.VISIBLE
         headerTitle.text = room.name
+        headerTitle.textSize=17f
+        headerIcon.removeAllViews()
+        headerIcon.addView(roomIcon(this,room,session.serverUrl,38),FrameLayout.LayoutParams(-1,-1))
+        headerIcon.visibility=View.VISIBLE
+        headerSearch.visibility=View.GONE
         nav.visibility = View.GONE
         screen.onShow()
+        nav.backdropChanged()
+    }
+
+    private fun openSearch() {
+        tabScreens[currentTab]?.onHide()
+        searchScreen=SearchScreen(this)
+        content.removeAllViews()
+        content.addView(searchScreen,FrameLayout.LayoutParams(-1,-1))
+        headerTitle.text="Search"
+        headerBack.visibility=View.VISIBLE
+        headerSearch.visibility=View.GONE
+        nav.visibility=View.GONE
+        searchScreen?.onShow()
     }
 
     private fun closeRoom() {
@@ -218,16 +243,19 @@ class MainActivity : AppCompatActivity() {
 
     fun cacheRooms(rooms: List<Room>) {
         roomCache = rooms
+        nav.backdropChanged()
     }
 
     fun cachedRooms(): List<Room> = roomCache
+
+    fun backdropChanged() { if(::nav.isInitialized) nav.backdropChanged() }
 
     private fun startPoller() {
         if (pollerJob?.isActive == true) return
         pollerJob = scope.launch {
             while (isActive) {
                 delay(4000)
-                val screen = roomScreen ?: tabScreens[currentTab]
+                val screen = roomScreen ?: searchScreen ?: tabScreens[currentTab]
                 screen?.poll()
             }
         }
@@ -244,7 +272,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         isForeground = true
         startPoller()
-        val screen = roomScreen ?: tabScreens[currentTab]
+        val screen = roomScreen ?: searchScreen ?: tabScreens[currentTab]
         screen?.poll()
         // FCM collapse keys are capped per device and event ids are only a
         // hint, so reopening always reconciles every room's unread state

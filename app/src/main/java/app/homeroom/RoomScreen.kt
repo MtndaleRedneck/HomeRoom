@@ -113,9 +113,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         host.scope.launch {
             try {
                 val page = host.api.roomEvents(room.id)
-                val pageEvents = page.optJSONArray("events")?.objects()?.map { ChatEvent.from(it) } ?: emptyList()
-                newestCursor = page.optString("newest").ifBlank { null }
-                oldestCursor = page.optString("oldest").ifBlank { null }
+                val pageEvents = page.requiredArray("events").objects().map { ChatEvent.from(it) }
+                newestCursor = page.nullableString("newest")
+                oldestCursor = page.nullableString("oldest")
                 hasMore = page.optBoolean("has_more", false)
                 events.clear()
                 events.addAll(pageEvents)
@@ -141,7 +141,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         host.scope.launch {
             try {
                 val page = host.api.roomEvents(room.id, before = before)
-                val older = page.optJSONArray("events")?.objects()?.map { ChatEvent.from(it) } ?: emptyList()
+                val older = page.requiredArray("events").objects().map { ChatEvent.from(it) }
                 oldestCursor = page.optString("oldest").ifBlank { oldestCursor }
                 hasMore = page.optBoolean("has_more", false)
                 val known = events.map { it.eventId }.toHashSet()
@@ -166,7 +166,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         host.scope.launch {
             try {
                 val page = host.api.roomEvents(room.id, after = after)
-                val fresh = page.optJSONArray("events")?.objects()?.map { ChatEvent.from(it) } ?: emptyList()
+                val fresh = page.requiredArray("events").objects().map { ChatEvent.from(it) }
                 newestCursor = page.optString("newest").ifBlank { newestCursor }
                 val known = events.map { it.eventId }.toHashSet()
                 val added = fresh.filter { it.eventId !in known }
@@ -314,13 +314,15 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
             when (viewType) {
                 0, 1 -> {
-                    val v = text(context, "", 12f, C.muted, true)
+                    val v = text(context, "", 12f, C.muted, true).apply { layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
                     v.gravity = Gravity.CENTER
                     pad(v, 16, 8)
                     object : RecyclerView.ViewHolder(v) {}
                 }
                 else -> {
-                    val outer = column(context)
+                    val outer = column(context).apply {
+                        layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    }
                     pad(outer, 16, 3)
                     object : RecyclerView.ViewHolder(outer) {}
                 }
@@ -344,7 +346,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             container.gravity = if (row.own) Gravity.END else Gravity.START
 
             val bubble = column(context)
-            val bubbleColor = if (row.own) C.surfaceAlt else C.surface
+            val bubbleColor = if (row.own) C.ownBubble else C.surface
             bubble.background = rounded(bubbleColor, context.dp(14).toFloat())
             bubble.setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
             val bubbleLp = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
@@ -353,22 +355,23 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             bubbleLp.bottomMargin = context.dp(2)
 
             if (!row.own) {
-                bubble.addView(text(context, event.actorName, 12f, C.teal, true))
+                bubble.addView(text(context, (room.members.firstOrNull { it.first == event.actorId }?.second ?: event.actorName), 12f, C.teal, true).apply { maxWidth=(resources.displayMetrics.widthPixels*0.72).toInt() },LinearLayout.LayoutParams(-2,-2))
             }
             row.replyPreview?.let {
                 val quote = text(context, it, 12f, C.muted)
                 quote.setBackgroundColor(C.bg)
                 quote.setPadding(context.dp(8), context.dp(4), context.dp(8), context.dp(4))
-                bubble.addView(quote)
+                quote.maxWidth=(resources.displayMetrics.widthPixels*0.72).toInt()
+                bubble.addView(quote,LinearLayout.LayoutParams(-2,-2))
                 bubble.addView(spacer(context, 4))
             }
             val body = text(context, event.text, 15f, C.text)
             body.maxWidth = (resources.displayMetrics.widthPixels * 0.75).toInt()
-            bubble.addView(body)
+            bubble.addView(body,LinearLayout.LayoutParams(-2,-2))
             bubble.addView(spacer(context, 2))
             val meta = text(context, formatTime(event.createdAt), 11f, C.muted)
             meta.gravity = Gravity.END
-            bubble.addView(meta)
+            bubble.addView(meta,LinearLayout.LayoutParams(-2,-2).apply { gravity=Gravity.END })
 
             bubble.setOnLongClickListener {
                 setReply(event)

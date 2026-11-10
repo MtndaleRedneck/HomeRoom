@@ -183,7 +183,7 @@ class ApiClient(private val session: Session) {
         Unit
     }
 
-    suspend fun rooms(): JSONArray = request("/owner/rooms").optJSONArray("rooms") ?: JSONArray()
+    suspend fun rooms(): JSONArray = request("/owner/rooms").requiredArray("rooms")
 
     suspend fun waiting(room: String, cursor: String? = null, limit: Int = 20): JSONObject =
         request("/owner/rooms/" + enc(room) + "/waiting?limit=" + limit +
@@ -216,11 +216,11 @@ class ApiClient(private val session: Session) {
     suspend fun search(query: String, room: String? = null, limit: Int = 20): JSONArray =
         request("/owner/search?q=" + enc(query) + "&limit=" + limit +
             (if (room != null) "&room=" + enc(room) else ""))
-            .optJSONArray("results") ?: JSONArray()
+            .requiredArray("results")
 
     suspend fun files(room: String, limit: Int = 50): JSONArray =
         request("/owner/rooms/" + enc(room) + "/files?limit=" + limit)
-            .optJSONArray("files") ?: JSONArray()
+            .requiredArray("files")
 
     /** Returns (bytes, mimeType) for an image preview, or throws. */
     suspend fun filePreview(id: String, maxBytes: Int = 10 * 1024 * 1024): Pair<ByteArray, String> =

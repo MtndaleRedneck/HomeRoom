@@ -21,6 +21,7 @@ object C {
     val muted = Color.parseColor("#a8a6ad")
     val teal = Color.parseColor("#35c2c9")
     val violet = Color.parseColor("#a08cff")
+    val ownBubble = Color.parseColor("#5a3413")
     val danger = Color.parseColor("#e5484d")
 }
 
@@ -37,7 +38,10 @@ fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null, strokeDp: Flo
 fun ViewGroup.lp(w: Int = ViewGroup.LayoutParams.MATCH_PARENT, h: Int = ViewGroup.LayoutParams.WRAP_CONTENT): LinearLayout.LayoutParams =
     LinearLayout.LayoutParams(w, h)
 
-fun column(context: Context): LinearLayout = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+fun column(context: Context): LinearLayout = LinearLayout(context).apply {
+    orientation = LinearLayout.VERTICAL
+    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+}
 
 fun text(context: Context, value: CharSequence, sp: Float = 15f, color: Int = C.text, bold: Boolean = false): TextView =
     TextView(context).apply {
