@@ -24,7 +24,7 @@ class ProfileScreen(context:Context):Screen(context) {
         render()
         screenScope.launch {
             try {val (name,avatar)=host.api.ownerProfile();shownName=name;OwnerProfileState.avatar=avatar;loaded=true;render()}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {snack(this@ProfileScreen,"Couldn't load your profile.")}
         }
     }
@@ -61,7 +61,7 @@ class ProfileScreen(context:Context):Screen(context) {
                 shownName=saved;typedName=null;host.session.ownerName=saved
                 snack(this@ProfileScreen,"Name saved.");render()
             }
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {snack(this@ProfileScreen,if(e.status==400) "That name can't be used." else "Couldn't save the name.")}
             catch(_:Exception) {snack(this@ProfileScreen,"Couldn't confirm. Check your name before trying again.")}
             finally {busy=false}
@@ -76,7 +76,7 @@ class ProfileScreen(context:Context):Screen(context) {
                 OwnerProfileState.avatar=host.api.setOwnerAvatar(upload)
                 snack(this@ProfileScreen,if(uri==null) "Picture removed." else "Picture saved.");render()
             }
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {snack(this@ProfileScreen,if(e.code=="bad_avatar") "That picture can't be used. Try a different one." else "Couldn't save the picture.")}
             catch(_:Exception) {snack(this@ProfileScreen,"Couldn't confirm the picture.")}
             finally {busy=false}

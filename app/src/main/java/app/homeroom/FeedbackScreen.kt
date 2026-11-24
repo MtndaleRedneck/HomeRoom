@@ -80,7 +80,7 @@ class FeedbackScreen(context:Context):Screen(context) {
                 host.api.sendFeedback(composed(),clientId)
                 edit.setText("")
                 snack(this@FeedbackScreen,"Saved in your private Feedback room.")
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)
             } catch(_:Exception) {snack(this@FeedbackScreen,"Couldn't confirm. Check your Feedback room before trying again.")}
         }
     }

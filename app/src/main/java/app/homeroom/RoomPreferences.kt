@@ -13,7 +13,7 @@ class RoomPreferencesScreen(context:Context,private val room:Room):Screen(contex
     override fun onShow() {load()}
     private fun load() {screenScope.launch {
         try {render(V15Api(host.api).get("rooms/"+ApiClient.enc(room.id)+"/preferences"))}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load room preferences.") {load()})}
     }}
     private fun render(state:JSONObject) {
@@ -39,7 +39,7 @@ class RoomPreferencesScreen(context:Context,private val room:Room):Screen(contex
         if(archived!=state.getBoolean("archived"))body.put("metadata_version",state.getInt("metadata_version"))
         screenScope.launch {
             try {V15Api(host.api).mutate("rooms/"+ApiClient.enc(room.id)+"/preferences",body,"PUT");snack(this@RoomPreferencesScreen,"Preferences recorded.");load()}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {snack(this@RoomPreferencesScreen,"Change not confirmed. Refresh before trying again.");load()}
             finally {busy=false}
         }

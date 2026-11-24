@@ -25,7 +25,7 @@ class SettingsScreen(context:Context):Screen(context) {
                 devices=host.api.sessions().objects().map {OwnerDevice.from(it)}
                 rooms=host.cachedRooms().ifEmpty {host.api.roomRoster().rooms}
                 devicesLoaded=true;devicesError=false;rebuild()
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {devicesError=true;rebuild()}
         }
     }
@@ -84,7 +84,7 @@ class SettingsScreen(context:Context):Screen(context) {
         AlertDialog.Builder(context).setTitle("Sign out ${device.label}?").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
             host.scope.launch {
                 try {host.api.revokeSession(device.id);onShow()}
-                catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+                catch(e:SessionEndedException) {host.onSessionEnded(e)}
                 catch(_:Exception) {snack(this@SettingsScreen,"Couldn't sign out that device. Try again.")}
             }
         }.show()

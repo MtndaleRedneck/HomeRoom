@@ -57,7 +57,7 @@ class SearchScreen(context:Context,private val roomId:String?=null):Screen(conte
                 hits.addAll(result.filter {new->hits.none {it.eventId==new.eventId}})
                 cursor=page.nullableString("cursor");hasMore=page.optBoolean("has_more",false) && cursor!=null
                 adapter.notifyDataSetChanged();empty.text=if(hits.isEmpty())"No messages match." else ""
-            }catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            }catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {if(version==generation){empty.text="Search didn't work. Tap to retry.";empty.setOnClickListener {search(more)}}}
             finally {if(version==generation)loading=false}
         }

@@ -64,7 +64,7 @@ internal object ActionConfirmation {
                     dialog.dismiss()
                     snack(host.window.decorView,"Confirmation recorded. Server state: "+status.state+". This does not mean the action ran.")
                     completed()
-                }catch(e:SessionEndedException) {dialog.dismiss();host.onSessionEnded(e.reason)}
+                }catch(e:SessionEndedException) {dialog.dismiss();host.onSessionEnded(e)}
                 catch(_:Exception) {snack(content,"Confirmation not verified. Check status before choosing again. Retry uses only the same confirmation ID.");confirm.isEnabled=true}
             }
         }

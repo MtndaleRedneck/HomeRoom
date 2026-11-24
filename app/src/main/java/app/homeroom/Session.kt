@@ -39,6 +39,19 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_CSRF, null)
         set(v) = prefs.edit().putString(KEY_CSRF, v).apply()
 
+    // Attributed invalidating teardown (I2): only the session generation that
+    // OBSERVED the 401 may be torn down - a stale response from before
+    // sign-out/re-enroll must not wipe the NEW session. Teardown bumps the
+    // generation under stateLock (via clear()), so in-flight old-generation
+    // responses can no longer restore credentials through the CookieJar.
+    // opGeneration null = locally raised (no network), always current.
+    fun endSession(opGeneration: Long?): Boolean =
+        synchronized(stateLock) {
+            if (opGeneration != null && generation != opGeneration) return false
+            clear()
+            true
+        }
+
     // Operation identity check (I2 final, operation rebinding): the explicit
     // recovery path must prove the session it started in still exists before
     // resending the original body - generation AND destination together,

@@ -42,7 +42,7 @@ class FilesScreen(context:Context):Screen(context) {
                 rooms=host.cachedRooms().ifEmpty { host.api.roomRoster().rooms }
                 if(selected==null)selected=rooms.firstOrNull { it.id==host.session.lastRoomId } ?: rooms.firstOrNull()
                 buildChips();selected?.let { load(it) } ?: run { note.text="Nothing shared in this room yet." }
-            } catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) { note.text="Couldn't load files. Tap to retry.";note.setOnClickListener { onShow() } }
         }
     }
@@ -67,7 +67,7 @@ class FilesScreen(context:Context):Screen(context) {
                     if(cursor!=null && !seen.add(cursor))throw ApiException(0,"invalid_response_cursor")
                 } while(cursor!=null)
                 files.addAll(all.distinctBy { it.id.ifBlank { it.url.orEmpty() } });render()
-            } catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) { if(token==generation) { note.text="Couldn't load files. Tap to retry.";note.setOnClickListener { load(room) } } }
             finally { if(token==generation)loading=false }
         }
@@ -96,7 +96,7 @@ class FilesScreen(context:Context):Screen(context) {
                             var scale=1;while(options.outWidth/scale>600 || options.outHeight/scale>600)scale*=2
                             val bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply {inSampleSize=scale})
                             if(current==generation)image.setImageBitmap(bitmap)
-                        } catch(e:SessionEndedException) { host.onSessionEnded(e.reason) } catch(_:Exception) {image.contentDescription="Image unavailable. Tap to retry."}
+                        } catch(e:SessionEndedException) { host.onSessionEnded(e) } catch(_:Exception) {image.contentDescription="Image unavailable. Tap to retry."}
                     }
                 }
                 repeat(3-row.size) { grid.addView(View(context),LinearLayout.LayoutParams(0,dp(104),1f).apply { rightMargin=dp(8) }) }
@@ -147,7 +147,7 @@ class FilesScreen(context:Context):Screen(context) {
                 top.addView(text(context,file.name+"\n"+file.uploader+" · "+formatRoomTime(file.createdAt),13.5f,C.text).apply {maxLines=2},LinearLayout.LayoutParams(0,-2,1f))
                 top.addView(text(context,"↓",24f,C.text).apply {setOnClickListener {open(file)}},LinearLayout.LayoutParams(dp(48),dp(48)))
                 container.addView(top);container.addView(image,LinearLayout.LayoutParams(-1,0,1f));dialog.setContentView(container);dialog.show()
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)} catch(_:Exception) {snack(this@FilesScreen,"Couldn't load the preview. Tap to retry.")}
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {snack(this@FilesScreen,"Couldn't load the preview. Tap to retry.")}
         }
     }
     private fun dp(value:Float)=(value*resources.displayMetrics.density).toFloat()

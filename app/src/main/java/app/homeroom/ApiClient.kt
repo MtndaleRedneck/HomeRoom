@@ -15,7 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-class SessionEndedException(val reason: String?) : Exception("session_ended")
+class SessionEndedException(val reason: String?, val opGeneration: Long? = null) : Exception("session_ended")
 
 class ApiException(val status: Int, val code: String, val retryAfter: Int = 0) : Exception(code)
 
@@ -54,7 +54,10 @@ class ApiClient(private val session: Session) {
         .followRedirects(false)
         .cookieJar(object : CookieJar {
             override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                acceptSessionCookie(url, cookies)
+                // load/save pair on the same call thread (OkHttp Bridge
+                // interceptor); clear after use so a reused pool thread never
+                // carries stale operation context into a direct pin call.
+                try { acceptSessionCookie(url, cookies) } finally { opGenLocal.remove() }
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -176,7 +179,7 @@ class ApiClient(private val session: Session) {
         client.newCall(builder.build()).execute().use { response ->
             checkSession()
             if(!response.isSuccessful) {
-                if(response.code==401) throw SessionEndedException("owner_session_required")
+                if(response.code==401) throw SessionEndedException("owner_session_required", opGenLocal.get())
                 throw ApiException(response.code,"download_failed")
             }
             response.body?.byteStream()?.use {it.copyTo(out)} ?: throw ApiException(response.code,"download_failed")
@@ -274,7 +277,7 @@ class ApiClient(private val session: Session) {
                     if (!session.unchangedSince(entryGen, entryUrl)) throw ApiException(0, "stale_operation")
                     sessionData = null
                     try { bootstrap() } catch (b: ApiException) {
-                        if (b.status == 401) throw SessionEndedException(b.code); throw b
+                        if (b.status == 401) throw SessionEndedException(b.code, entryGen); throw b
                     }
                     // The retry carries an IMMUTABLE snapshot read atomically
                     // with the identity check (I2 final). Live session state
@@ -292,12 +295,12 @@ class ApiClient(private val session: Session) {
                         }
                     } catch (again: ApiException) {
                         reachable = false
-                        if (again.status == 401) throw SessionEndedException(again.code)
+                        if (again.status == 401) throw SessionEndedException(again.code, entryGen)
                         throw again
                     }
                 } else {
                     reachable = false
-                    if (e.status == 401) throw SessionEndedException(e.code)
+                    if (e.status == 401) throw SessionEndedException(e.code, entryGen)
                     throw e
                 }
             } catch (e: java.io.IOException) {
@@ -346,7 +349,7 @@ class ApiClient(private val session: Session) {
             client.newCall(builder.build()).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    if (response.code == 401) throw SessionEndedException("owner_session_required")
+                    if (response.code == 401) throw SessionEndedException("owner_session_required", opGenLocal.get())
                     // cp42 crash recovery: a 409 upload_bytes_inconsistent
                     // carries requires_restart/retry_same_upload=false and the
                     // client must abandon this upload, never auto-resume it.
@@ -530,7 +533,7 @@ class ApiClient(private val session: Session) {
     }
 
     private fun checkSession() {
-        if (session.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required")
+        if (session.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", session.generation)
     }
 
     // RECONSTRUCTED: exact release routes - GET /owner/events/<id> and
@@ -568,17 +571,17 @@ class ApiClient(private val session: Session) {
         // response under the NEW generation.
         val opGen = session.generation
         if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
-            if (e.status == 401) throw SessionEndedException(e.code); throw e
+            if (e.status == 401) throw SessionEndedException(e.code, opGen); throw e
         }
         withContext(Dispatchers.IO) {
             val flags = try { raw("/owner/instance").optJSONObject("features") } catch (e: ApiException) {
-                if (e.status == 401) throw SessionEndedException(e.code); null
+                if (e.status == 401) throw SessionEndedException(e.code, opGen); null
             }
             features.clear()
             flags?.keys()?.forEach { features[it] = flags.optBoolean(it, false) }
             if (features["session_renew"] == true) {
                 val data = try { raw("/owner/session/renew", "POST", JSONObject()) } catch (e: ApiException) {
-                    if (e.status == 401) throw SessionEndedException(e.code); throw e
+                    if (e.status == 401) throw SessionEndedException(e.code, opGen); throw e
                 }
                 val freshCsrf = data.optString("csrf").ifBlank { csrf }
                 session.withinGeneration(opGen) {
@@ -600,7 +603,7 @@ class ApiClient(private val session: Session) {
             client.newCall(builder.build()).execute().use { response ->
                 checkSession()
                 if (!response.isSuccessful) {
-                    if (response.code == 401) throw SessionEndedException("owner_session_required")
+                    if (response.code == 401) throw SessionEndedException("owner_session_required", opGenLocal.get())
                     throw ApiException(response.code, "download_failed")
                 }
                 val sha = java.security.MessageDigest.getInstance("SHA-256")
@@ -687,7 +690,7 @@ class ApiClient(private val session: Session) {
                 .apply { applyOriginHeaders(this, previewUrl, "GET") }
                 .build()
             client.newCall(request).execute().use { response ->
-                if (response.code == 401) throw SessionEndedException("unauthorized")
+                if (response.code == 401) throw SessionEndedException("unauthorized", opGenLocal.get())
                 if (!response.isSuccessful) throw ApiException(response.code, "preview_failed")
                 val type = (response.header("Content-Type") ?: "").split(';')[0]
                 if (type !in setOf("image/png", "image/jpeg", "image/webp", "image/gif")) {

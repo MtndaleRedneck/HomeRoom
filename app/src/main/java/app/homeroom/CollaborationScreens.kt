@@ -16,7 +16,7 @@ class DecisionScreen(context:Context,private val decisionId:String):Screen(conte
     override fun onShow() {load()}
     private fun load() {screenScope.launch {
         try {render(service.decision(decisionId))}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load the decision.") {load()})}
     }}
     private fun render(card:DecisionCard) {
@@ -43,7 +43,7 @@ class DecisionScreen(context:Context,private val decisionId:String):Screen(conte
                         val choice=confirmation.getJSONObject("option")
                         require(choice.getString("option_id")==option.id && choice.getString("label")==option.label)
                         host.openPage("Confirm your answer",DecisionConfirmScreen(context,card,option,prepared.getString("confirmation_id"),prepared.getString("expires_at")))
-                    } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+                    } catch(e:SessionEndedException) {host.onSessionEnded(e)}
                     catch(_:Exception) {snack(this@DecisionScreen,"Selection not confirmed. No answer is recorded. Refresh before trying again.")}
                     finally {busy=false}
                 }
@@ -78,7 +78,7 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
                 body.addView(text(context,"Answer recorded",22f,C.green,true))
                 body.addView(text(context,choice.label+"\n"+receipt.getString("confirmed_at"),16f,C.text))
                 body.addView(text(context,"Server receipt: "+receipt.getString("answer_id")+". This is not proof that an outside action happened.",14f,C.muted))
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {snack(this@DecisionConfirmScreen,"Answer not confirmed. Retry uses the same answer identity; do not choose again until checked.")}
             finally {busy=false}
         }
@@ -92,7 +92,7 @@ class TeamScreen(context:Context):Screen(context) {
     private var loading=false
     private fun load() {if(loading)return;loading=true;screenScope.launch {
         try {render(V15Api(host.api).team())}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load team state.") {load()})}
         finally {loading=false}
     }}
@@ -120,7 +120,7 @@ class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
     override fun onShow() {load()}
     private fun load() {screenScope.launch {
         try {render(V15Api(host.api).goal(room.id))}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load the room goal.") {load()})}
     }}
     private fun render(data:JSONObject) {
@@ -150,7 +150,7 @@ class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
     }
     private fun change(action:suspend ()->JSONObject) {if(busy)return;busy=true;screenScope.launch {
         try {action();snack(this@RoomGoalScreen,"Server recorded the change.");load()}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(_:Exception) {snack(this@RoomGoalScreen,"Not confirmed. Refresh before trying again.")}
         finally {busy=false}
     }}

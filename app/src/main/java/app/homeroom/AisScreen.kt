@@ -32,7 +32,7 @@ class AisScreen(context:Context):Screen(context) {
         loading=true
         screenScope.launch {
             try {val (list,rooms)=host.api.aisAndJoinRooms();ais=list;joinRooms=rooms;render()}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {body.removeAllViews();body.addView(text(context,"Couldn't load your AIs. Tap to retry.",15f,C.muted).apply {setOnClickListener {load()}})}
             finally {loading=false}
         }
@@ -141,7 +141,7 @@ class AisScreen(context:Context):Screen(context) {
         screenScope.launch {
             var actor:String?=null
             try {actor=host.api.createAi(name,"other").actor}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason);busy=false;return@launch}
+            catch(e:SessionEndedException) {host.onSessionEnded(e);busy=false;return@launch}
             catch(e:ApiException) {snack(this@AisScreen,if(e.code=="bad_name"||e.status==400) "That name can't be used." else if(e.status==429) "Slow down. Try again in a moment." else "Couldn't add the AI.")}
             // Ambiguous failure: never resend, reload and look.
             catch(_:Exception) {snack(this@AisScreen,"Couldn't confirm. Check the list before adding again.")}
@@ -161,7 +161,7 @@ class AisScreen(context:Context):Screen(context) {
                 shown[actor]=Shown(invite,System.currentTimeMillis())
                 val refreshed=host.api.aisAndJoinRooms();ais=refreshed.first;joinRooms=refreshed.second;render()
             }
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {
                 snack(this@AisScreen,when {
                     e.code=="actor_enrollment_pending" -> "This AI already sent a key. Open Review AI keys, Deny it, then make a new join message."
@@ -180,7 +180,7 @@ class AisScreen(context:Context):Screen(context) {
         busy=true
         screenScope.launch {
             try {host.api.revokeJoinCode(a.actor,joinId);shown.remove(a.actor);snack(this@AisScreen,"Join message cancelled.")}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason);busy=false;return@launch}
+            catch(e:SessionEndedException) {host.onSessionEnded(e);busy=false;return@launch}
             catch(e:ApiException) {snack(this@AisScreen,if(e.code=="key_already_approved") "That key was already approved. Remove the AI to cut off its access." else "Couldn't cancel.")}
             catch(_:Exception) {snack(this@AisScreen,"Couldn't confirm. Check the list.")}
             busy=false;loading=false;load()
@@ -191,7 +191,7 @@ class AisScreen(context:Context):Screen(context) {
         busy=true
         screenScope.launch {
             try {host.api.renameAi(a.actor,name)}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason);busy=false;return@launch}
+            catch(e:SessionEndedException) {host.onSessionEnded(e);busy=false;return@launch}
             catch(e:ApiException) {snack(this@AisScreen,if(e.status==400) "That name can't be used." else "Couldn't rename.")}
             catch(_:Exception) {snack(this@AisScreen,"Couldn't confirm the rename.")}
             busy=false;loading=false;load()
@@ -205,7 +205,7 @@ class AisScreen(context:Context):Screen(context) {
                 val upload=if(uri==null) null else (Avatars.prepare(context,uri) ?: run {snack(this@AisScreen,"That picture can't be used. Try a different one.");busy=false;return@launch})
                 host.api.setAiAvatar(a.actor,upload)
             }
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason);busy=false;return@launch}
+            catch(e:SessionEndedException) {host.onSessionEnded(e);busy=false;return@launch}
             catch(e:ApiException) {snack(this@AisScreen,if(e.code=="bad_avatar") "That picture can't be used. Try a different one." else "Couldn't save the picture.")}
             catch(_:Exception) {snack(this@AisScreen,"Couldn't confirm the picture.")}
             busy=false;loading=false;load()
@@ -216,7 +216,7 @@ class AisScreen(context:Context):Screen(context) {
         busy=true
         screenScope.launch {
             try {host.api.unlinkAi(a.actor);shown.remove(a.actor);snack(this@AisScreen,a.displayName+" removed. Its access is revoked and past messages stay.")}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason);busy=false;return@launch}
+            catch(e:SessionEndedException) {host.onSessionEnded(e);busy=false;return@launch}
             catch(e:ApiException) {if(e.status==404) snack(this@AisScreen,"Already removed.") else snack(this@AisScreen,"Couldn't remove it.")}
             catch(_:Exception) {snack(this@AisScreen,"Couldn't confirm. Check the list.")}
             busy=false;loading=false;load()

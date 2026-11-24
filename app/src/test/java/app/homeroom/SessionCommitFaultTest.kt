@@ -179,6 +179,28 @@ class SessionCommitFaultTest {
         assertNull(session.authIfUnchanged(gen, "https://a.example"))
     }
 
+    @Test fun staleTeardownCannotWipeNewSessionAndTeardownInvalidatesInflight() {
+        // I2 teardown gap: an unattributed cookie clear let an in-flight
+        // still-current response restore credentials; a stale response's 401
+        // could also tear down a NEW session.
+        val session = freshSession().also { it.clear() }
+        session.serverUrl = "https://a.example"
+        session.replaceCredentials("c1", "t1")
+        val oldGen = session.generation
+        session.clear() // sign-out + re-enroll bumps the generation
+        assertFalse("stale teardown wiped the new session", session.endSession(oldGen))
+        // Attributed teardown of the CURRENT session works and invalidates
+        // in-flight old-generation responses.
+        session.serverUrl = "https://a.example"
+        session.replaceCredentials("c2", "t2")
+        val curGen = session.generation
+        assertTrue(session.endSession(curGen))
+        assertNull(session.cookie)
+        assertFalse("in-flight old-generation response restored the cookie",
+            session.acceptCookieForGeneration(curGen, "ghost"))
+        assertNull(session.cookie)
+    }
+
     @Test fun failedCredentialCommitThrowsBeforeInMemoryUse() {
         freshSession().clear(); overlay.clear(); failing = true
         val session = faultSession()

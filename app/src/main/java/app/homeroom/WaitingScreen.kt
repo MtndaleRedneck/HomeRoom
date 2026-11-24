@@ -43,7 +43,7 @@ class WaitingScreen(context:Context,private val onlyRoom:String?=null):Screen(co
                     row.addView(text(context,room.name+" · "+entry.excerpt,13.5f,C.muted).apply { maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END })
                     body.addView(row,LinearLayout.LayoutParams(-1,-2))
                 }
-            } catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) {
                 note.text="Couldn't load waiting messages. Tap to retry."
                 if(note.parent==null) body.addView(note,0)

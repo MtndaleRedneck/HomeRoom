@@ -30,7 +30,7 @@ class AiKeysScreen(context:Context):Screen(context) {
         busy=true
         screenScope.launch {
             try {setKeys(host.api.aiKeys())}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {loadError(if(e.code=="not_member") "This account isn't allowed to see AI keys." else "Couldn't load AI keys. Tap to retry.")}
             catch(_:Exception) {loadError("Couldn't load AI keys. Tap to retry.")}
             finally {busy=false}
@@ -134,7 +134,7 @@ class AiKeysScreen(context:Context):Screen(context) {
                     "not_member"->"This account can't approve that key."
                     else->"Couldn't approve. Try again."
                 })
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason);return@launch
+            } catch(e:SessionEndedException) {host.onSessionEnded(e);return@launch
             } catch(_:Exception) {snack(this@AiKeysScreen,"Couldn't confirm. Check the list before trying again.")}
             busy=false;load()
         }
@@ -146,7 +146,7 @@ class AiKeysScreen(context:Context):Screen(context) {
                 snack(this@AiKeysScreen,"Key denied.")
             } catch(e:ApiException) {
                 snack(this@AiKeysScreen,if(e.code=="key_not_pending") "That key was already decided." else "Couldn't deny. Try again.")
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason);return@launch
+            } catch(e:SessionEndedException) {host.onSessionEnded(e);return@launch
             } catch(_:Exception) {snack(this@AiKeysScreen,"Couldn't confirm. Check the list.")}
             busy=false;load()
         }

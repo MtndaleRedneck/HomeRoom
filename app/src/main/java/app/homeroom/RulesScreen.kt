@@ -36,7 +36,7 @@ class RulesScreen(context:Context):Screen(context) {
     override fun onShow() {
         host.scope.launch {
             try { rooms=host.cachedRooms().ifEmpty { host.api.roomRoster().rooms };buildChips();load() }
-            catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) { note.text="Couldn't load rules. Tap to retry.";note.setOnClickListener { onShow() } }
         }
     }
@@ -62,7 +62,7 @@ class RulesScreen(context:Context):Screen(context) {
             try {
                 val result=RuleScope.from(host.api.rules(requested))
                 if(requested==selected) { scope=result;render();buildChips() }
-            } catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) {
                 note.text="Couldn't load rules. Tap to retry.";note.setOnClickListener { load() }
                 if(note.parent==null)cards.addView(note,0)
@@ -116,7 +116,7 @@ class RulesScreen(context:Context):Screen(context) {
         render()
         host.scope.launch {
             try { host.api.ruleDecision(rule.ruleId,rule.version,decision);load() }
-            catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(e:ApiException) { snack(this@RulesScreen,if(e.code=="rule_version_conflict") "This rule changed. Showing the newest version." else "Couldn't save that decision.");load() }
             catch(_:Exception) { snack(this@RulesScreen,"Couldn't save that decision.") }
             finally { inFlight.remove(rule.ruleId);render() }
@@ -125,7 +125,7 @@ class RulesScreen(context:Context):Screen(context) {
     private fun recordReread() {
         host.scope.launch {
             try { host.api.recordReread(selected ?: return@launch);load() }
-            catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) { snack(this@RulesScreen,"Couldn't record the re-read.") }
         }
     }
@@ -140,7 +140,7 @@ class RulesScreen(context:Context):Screen(context) {
                     content.addView(text(context,"Version history",20f,C.text,true));content.addView(text(context,body.ifBlank { "No earlier versions." },14f,C.text).apply { setTextIsSelectable(true) })
                     setContentView(ScrollView(context).apply { addView(content) });show()
                 }
-            } catch(e:SessionEndedException) { host.onSessionEnded(e.reason) }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) { snack(this@RulesScreen,"Couldn't load the history.") }
         }
     }

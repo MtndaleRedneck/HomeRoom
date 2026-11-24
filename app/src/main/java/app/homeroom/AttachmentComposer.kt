@@ -136,7 +136,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             ready=true;send.isEnabled=true
             restoreUnconfirmedAttempt(record)
         }catch(e:CancellationException) {throw e}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(e:ApiException) {
             // cp42 crash recovery (owning source): upload_bytes_inconsistent
             // means requires_restart - never auto-resume the same upload.
@@ -245,7 +245,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             ready=true;send.isEnabled=true
             status.text=safeName+" · uploaded and checksum verified. Not sent yet."+(if(voice)" Voice transcription may be unavailable." else "")
         }catch(e:CancellationException) {throw e}
-        catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
         catch(e:ApiException) {if(e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
             else status.text="Upload not confirmed. Cancel and check the room before starting again."}
         catch(_:Exception) {status.text="Upload not confirmed. Cancel and check the room before starting again."}
@@ -277,7 +277,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 host.api.postWithUploads(room.id,postClient,created,text,room.mainThreadKey,null,emptyList(),listOf(upload!!))
                 if(upload!=null)runCatching {host.session.removeStagedUpload(upload!!)}
                 status.text="Attachment sent. Server recorded this post.";ready=false;privateFile.delete();send.visibility=android.view.View.GONE
-            }catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            }catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {
                 if(e.code=="outgoing_expired") {
                     // outgoing15.validate, hardcoded per contract (ApiException

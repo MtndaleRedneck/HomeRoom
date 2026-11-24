@@ -24,7 +24,7 @@ internal class AddToChatScreen(context: Context, private val room: Room) : Scree
         screenScope.launch {
             val candidates = try {
                 host.api.ais().filter { ai -> room.members.none { it.first == ai.actor } }
-            } catch (e: SessionEndedException) { host.onSessionEnded(e.reason); return@launch }
+            } catch (e: SessionEndedException) { host.onSessionEnded(e); return@launch }
             catch (_: Exception) {
                 body.addView(errorCard(context, "Couldn't load your AIs.") { render() })
                 return@launch
@@ -52,7 +52,7 @@ internal class AddToChatScreen(context: Context, private val room: Room) : Scree
                 host.cacheRooms(roster)
                 snack(this@AddToChatScreen, ai.displayName + " added to this room.")
                 render()
-            } catch (e: SessionEndedException) { host.onSessionEnded(e.reason) }
+            } catch (e: SessionEndedException) { host.onSessionEnded(e) }
             catch (_: Exception) { snack(this@AddToChatScreen, "Couldn't add. Refresh before trying again.") }
         }
     }

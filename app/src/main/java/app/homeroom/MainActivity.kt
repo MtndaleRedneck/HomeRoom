@@ -310,7 +310,7 @@ class MainActivity : AppCompatActivity() {
         // signature): the release renewed features/session before showing main.
         scope.launch {
             try { api.renewOnOpen() }
-            catch (e: SessionEndedException) { onSessionEnded(e.reason); return@launch }
+            catch (e: SessionEndedException) { onSessionEnded(e); return@launch }
             catch (_: Exception) { snack(window.decorView, "Connected. Feature status couldn't refresh yet.") }
             if (!isForeground) return@launch
             showMain()
@@ -318,8 +318,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun onSessionEnded(reason: String?) {
-        session.cookie = null
+    fun onSessionEnded(e: SessionEndedException) {
+        // Attributed invalidating teardown (I2): a stale response from before
+        // sign-out/re-enroll must not tear down the NEW session, and the
+        // teardown itself bumps the generation under stateLock so in-flight
+        // old-generation responses can no longer restore the cookie.
+        if (!session.endSession(e.opGeneration)) return
         api = ApiClient(session)
         showSetup("Session ended. Ask for a new connection link.")
     }
@@ -435,7 +439,7 @@ class MainActivity : AppCompatActivity() {
         if (session.enrolled) {
             scope.launch {
                 try { api.renewOnOpen() }
-                catch (e: SessionEndedException) { onSessionEnded(e.reason) }
+                catch (e: SessionEndedException) { onSessionEnded(e) }
                 catch (_: Exception) { }
             }
         }
@@ -504,7 +508,7 @@ class MainActivity : AppCompatActivity() {
     fun sendQueued() {
         scope.launch {
             try { Outbox(session).drain(api) }
-            catch (e: SessionEndedException) { onSessionEnded(e.reason) }
+            catch (e: SessionEndedException) { onSessionEnded(e) }
             catch (_: Exception) {}
         }
     }

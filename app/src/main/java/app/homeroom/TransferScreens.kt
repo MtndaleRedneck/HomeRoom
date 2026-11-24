@@ -34,7 +34,7 @@ class VerifiedDownloadScreen(context:Context,private val name:String,private val
                 val verified=host.api.verifiedDownload(path,local,size,digest) {done,total->host.runOnUiThread {status.text="Downloading: $done / $total bytes"}}
                 complete=true;status.text=if(verified)"Download complete. Size and checksum match." else "Download complete. Size matches; checksum unavailable."
             }catch(e:CancellationException) {throw e}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {status.text="Download failed or integrity check failed. No completed file is available."}
         }
     }
@@ -77,7 +77,7 @@ class BundleExportScreen(context:Context,private val room:Room):Screen(context) 
                     delay(1500)
                 }
             }catch(e:CancellationException) {throw e}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {status.text="Export not confirmed. Refresh this request; no partial export was called complete."}
         }
     }

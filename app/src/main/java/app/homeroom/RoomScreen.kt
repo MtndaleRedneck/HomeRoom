@@ -126,7 +126,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 markRead()
             } catch (e: SessionEndedException) {
                 loading = false
-                host.onSessionEnded(e.reason)
+                host.onSessionEnded(e)
             } catch (e: Exception) {
                 loading = false
                 snack(this@RoomScreen, "Couldn't load messages. Pull back and try again.")
@@ -151,7 +151,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 loading = false
             } catch (e: SessionEndedException) {
                 loading = false
-                host.onSessionEnded(e.reason)
+                host.onSessionEnded(e)
             } catch (e: Exception) {
                 loading = false
                 snack(this@RoomScreen, "Couldn't load older messages.")
@@ -183,7 +183,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 loading = false
             } catch (e: SessionEndedException) {
                 loading = false
-                host.onSessionEnded(e.reason)
+                host.onSessionEnded(e)
             } catch (e: Exception) {
                 loading = false
             }
@@ -207,7 +207,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 )
                 loadNewForced()
             } catch (e: SessionEndedException) {
-                host.onSessionEnded(e.reason)
+                host.onSessionEnded(e)
             } catch (e: Exception) {
                 pendingOwn.remove(clientId)
                 snack(this@RoomScreen, "Message didn't send. Try again.")

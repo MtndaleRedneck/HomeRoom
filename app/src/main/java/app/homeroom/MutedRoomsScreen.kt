@@ -26,13 +26,13 @@ class MutedRoomsScreen(context:Context):Screen(context) {
                         isEnabled=false
                         host.scope.launch {
                             try {host.api.muteRoom(room.id,false);loading=false;load()}
-                            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+                            catch(e:SessionEndedException) {host.onSessionEnded(e)}
                             catch(_:Exception) {snack(this@MutedRoomsScreen,"Couldn't unmute this room. Try again.");isEnabled=true}
                         }
                     }})
                     body.addView(row,LinearLayout.LayoutParams(-1,dp(64)))
                 }
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {body.removeAllViews();body.addView(text(context,"Couldn't load muted rooms. Tap to retry.",15f,C.muted).apply {setOnClickListener {load()}})}
             finally {loading=false}
         }

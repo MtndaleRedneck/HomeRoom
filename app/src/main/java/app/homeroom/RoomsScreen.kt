@@ -55,7 +55,7 @@ class RoomsScreen(context: Context) : Screen(context) {
                 adapter.notifyDataSetChanged()
                 empty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
             } catch (e: SessionEndedException) {
-                host.onSessionEnded(e.reason)
+                host.onSessionEnded(e)
             } catch (e: Exception) {
                 if (rows.isEmpty()) {
                     empty.text = "Couldn't load rooms. Pull to retry."

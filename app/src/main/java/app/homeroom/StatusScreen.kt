@@ -25,7 +25,7 @@ class StatusScreen(context:Context):Screen(context) {
         body.addView(button(context,if(checking)"Checking..." else "Refresh status",false) {
             if(!checking) {checking=true;render();screenScope.launch {
                 try {host.api.renewOnOpen();snack(this@StatusScreen,"Server answered.")}
-                catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+                catch(e:SessionEndedException) {host.onSessionEnded(e)}
                 catch(_:Exception) {snack(this@StatusScreen,"Refresh not confirmed. Check your connection.")}
                 finally {checking=false;render()}
             }}

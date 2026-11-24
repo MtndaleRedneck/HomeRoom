@@ -36,7 +36,7 @@ internal object YesNoConfirmation {
                     val receipt=verifiedConfirmationReceipt(card,V15Api(host.api).confirm(card,saved.getString("confirmation"),saved.getString("action_id")))
                     host.session.withinGeneration(generation) {host.session.saveDecisionReview(card.id,null)}
                     dialog.dismiss();snack(host.window.decorView,"Yes recorded. Receipt "+receipt.getString("receipt_id")+". No outside action authorized or run.");completed()
-                }catch(e:SessionEndedException) {dialog.dismiss();host.onSessionEnded(e.reason)}
+                }catch(e:SessionEndedException) {dialog.dismiss();host.onSessionEnded(e)}
                 catch(_:Exception) {snack(content,"Confirmation not verified. Retry keeps the exact confirmation ID; do not choose again until checked.");confirm.isEnabled=true}
             }
         }}

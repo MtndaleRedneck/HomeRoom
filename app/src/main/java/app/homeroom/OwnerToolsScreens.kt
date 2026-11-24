@@ -17,7 +17,7 @@ class GuideScreen(context:Context):Screen(context) {
             body.removeAllViews()
             body.addView(text(context,"Guide ${g.version} · source: ${g.source}",14f,C.muted))
             body.addView(text(context,g.text,15f,C.text).apply {setTextIsSelectable(true)})
-        } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)} catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load the AI guide.") {onShow()})}
+        } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load the AI guide.") {onShow()})}
     }}
 }
 
@@ -46,7 +46,7 @@ class DashboardScreen(context:Context,private val activityLog:Boolean):Screen(co
                 }
                 cursor=result.nullableString(if(activityLog)"next_before" else "next_after")
                 if(result.optBoolean("has_more") && cursor!=null)body.addView(button(context,"Load more",false) {body.removeViewAt(body.childCount-1);load()})
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)} catch(_:Exception) {body.addView(errorCard(context,"Couldn't load. Tap to retry.") {load()})}
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {body.addView(errorCard(context,"Couldn't load. Tap to retry.") {load()})}
             finally {loading=false}
         }
     }
@@ -102,7 +102,7 @@ class RoomSettingsScreen(context:Context,private var room:Room):Screen(context) 
         busy=true
         screenScope.launch {
             try {fn();val roster=host.api.roomRoster().rooms;host.cacheRooms(roster);room=roster.firstOrNull {it.id==room.id} ?: room;render();snack(this@RoomSettingsScreen,"Saved.")}
-            catch(e:SessionEndedException) {host.onSessionEnded(e.reason)} catch(_:Exception) {snack(this@RoomSettingsScreen,"Couldn't confirm. Refresh before trying again.")}
+            catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {snack(this@RoomSettingsScreen,"Couldn't confirm. Refresh before trying again.")}
             finally {busy=false}
         }
     }
@@ -122,7 +122,7 @@ class RoomSettingsScreen(context:Context,private var room:Room):Screen(context) 
                 }
                 val data=JSONObject().put("format","homeroom-room-export-pages").put("pages",pages).toString(2)
                 host.saveDocument("HomeRoom-room.json",data)
-            } catch(e:SessionEndedException) {host.onSessionEnded(e.reason)} catch(_:Exception) {snack(this@RoomSettingsScreen,"Export didn't finish. No partial export was saved.")}
+            } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {snack(this@RoomSettingsScreen,"Export didn't finish. No partial export was saved.")}
             finally {busy=false}
         }
     }
