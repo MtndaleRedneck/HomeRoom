@@ -8,11 +8,24 @@ class StagedUploadsScreen(context:Context):Screen(context) {
     override fun onShow() {
         body.removeAllViews();body.addView(text(context,"Unsent attachments",22f,C.text,true))
         body.addView(text(context,"Private copies let an interrupted upload resume. Server staging expires; a completed upload is not a sent message.",14f,C.muted))
+        // Honest corruption state (I2): a damaged store shows no records but is
+        // PRESERVED - all writes and removals are blocked until it is repaired;
+        // signing out erases it only as an explicit owner choice.
+        if(host.session.stagedUploadsMalformed()) {
+            body.addView(text(context,"The local staged-upload records are damaged. To protect them, changes and removals are blocked. Signing out erases them.",14f,C.muted))
+            return
+        }
         host.session.stagedUploads().forEach {record->
-            val room=host.cachedRooms().firstOrNull {it.id==record.getString("room")}
-            body.addView(button(context,record.getString("name")+" · "+(room?.name ?: "Room unavailable"),false) {
+            // Quarantined records (no usable identity) are kept verbatim and
+            // shown honestly, but cannot be resumed.
+            if(record.optBoolean("quarantined",false)) {
+                body.addView(text(context,"Damaged record · cannot be resumed",15f,C.muted))
+                return@forEach
+            }
+            val room=host.cachedRooms().firstOrNull {it.id==record.optString("room")}
+            body.addView(button(context,record.optString("name").ifEmpty {"Attachment"}+" · "+(room?.name ?: "Room unavailable"),false) {
                 if(room==null) {snack(this,"Refresh the room list first.");return@button}
-                host.openPage("Resume attachment",AttachmentComposer(context,room,Uri.EMPTY,record.getString("name"),record.getBoolean("voice"),record))
+                host.openPage("Resume attachment",AttachmentComposer(context,room,Uri.EMPTY,record.optString("name"),record.optBoolean("voice"),record))
             })
         }
     }

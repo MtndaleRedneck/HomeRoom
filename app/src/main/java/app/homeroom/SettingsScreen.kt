@@ -90,7 +90,7 @@ class SettingsScreen(context:Context):Screen(context) {
         }.show()
     }
     private fun confirmSignOut() {
-        AlertDialog.Builder(context).setTitle("Sign out of HomeRoom on this phone?").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
+        AlertDialog.Builder(context).setTitle("Sign out of HomeRoom on this phone?").setMessage("Signing out erases this phone's saved sign-in and any unsent staged attachments.").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
             host.scope.launch {
                 host.session.fcmRegisteredToken?.let {token->try {host.api.unregisterPushToken(token)}catch(_:Exception) {}}
                 try {host.api.logout()}catch(_:Exception) {}

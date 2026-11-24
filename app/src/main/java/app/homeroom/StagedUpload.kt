@@ -1,5 +1,6 @@
 package app.homeroom
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -28,11 +29,37 @@ internal object StagedUpload {
             pick("created") ?: now())
     }
 
-    fun newRecord(upload:String,room:String,name:String,voice:Boolean,size:Long,sha256:String,file:String,offset:Long,ids:Ids):JSONObject =
-        JSONObject().put("upload",upload).put("room",room).put("name",name).put("voice",voice)
-            .put("size",size).put("sha256",sha256).put("file",file).put("offset",offset)
+    // Pre-create record (historical local_id-keyed scheme): persisted BEFORE
+    // the upload-create call, so a crash before the first response still
+    // leaves a resumable record. The full create metadata (name/mime/kind via
+    // mime+voice/size/sha256) and upload_client are what make a same-identity
+    // recreate safe (historical held-1.5 uploads15.create UNIQUE(principal,
+    // room, client) contract; live server 1.4 exposes no upload routes).
+    // owner/server bind the record to the account+destination that staged it.
+    fun newRecord(localId:String,room:String,name:String,mime:String,voice:Boolean,size:Long,sha256:String,file:String,ids:Ids,owner:String?,server:String?):JSONObject =
+        JSONObject().put("local_id",localId).put("room",room).put("name",name).put("mime",mime).put("voice",voice)
+            .put("size",size).put("sha256",sha256).put("file",file)
             .put("upload_client",ids.uploadClient).put("complete_client",ids.completeClient)
             .put("post_client",ids.postClient).put("created",ids.created)
+            .put("owner",owner ?: JSONObject.NULL).put("server",server ?: JSONObject.NULL)
+
+    // A pre-create record: never got an upload id, but carries everything a
+    // same-identity recreate needs.
+    fun preCreate(record:JSONObject):Boolean =
+        record.has("local_id") && !record.has("upload") && record.has("sha256") &&
+            record.has("mime") && record.has("upload_client") && record.has("size")
+
+    // Account/server binding is checked separately from the in-flight
+    // generation barrier (I2): a resumed composer belongs to a LATER
+    // generation by definition, so generation can never gate resume - the
+    // persisted binding does. Records predating binding fields stay on the
+    // legacy path (hasBinding false) and are not blocked by this check.
+    fun hasBinding(record:JSONObject):Boolean = record.has("owner") || record.has("server")
+    fun bindingMatches(record:JSONObject,owner:String?,server:String?):Boolean {
+        val boundOwner=if(record.isNull("owner")) null else record.optString("owner").takeIf {it.isNotEmpty()}
+        val boundServer=if(record.isNull("server")) null else record.optString("server").takeIf {it.isNotEmpty()}
+        return boundOwner==owner && boundServer==server
+    }
 
     /** True only when a stored record carries everything a VERIFIED resume
      *  needs: the full-file hash for the completion gate and the original
@@ -141,5 +168,70 @@ internal object StagedUpload {
         require(state=="ready") {"server did not mark the upload ready (state="+state+")"}
         require(verified==recordHash) {"server verified hash differs from the staged file"}
         require(size==total) {"server size differs from the staged file"}
+    }
+}
+
+/**
+ * Pure staged-upload store operations (JVM-testable; Session wraps them with
+ * SharedPreferences). I2 design constraints implemented here:
+ * - records are keyed by the client-minted local_id (historical scheme);
+ * - legacy upload-keyed records get a STABLE content-derived identity that
+ *   survives delete/reorder (never index-derived); distinct records never merge;
+ * - a malformed store blocks EVERY write, including single-record removal, so
+ *   existing records are never silently overwritten;
+ * - normalization is in-memory only until an explicit save/remove rewrites the
+ *   whole array after a successful full parse, carrying ALL records.
+ */
+internal object StagedStore {
+    class Malformed: Exception("staged_uploads malformed")
+
+    fun parse(raw:String?):List<JSONObject>? {
+        if(raw==null) return emptyList()
+        return try { JSONArray(raw).objects() } catch (e:Exception) { null }
+    }
+
+    // File names are bare safe names: no dot/dotdot traversal, no separators,
+    // no leading dot. An invalid stored name FAILS the restore - never mint.
+    fun isValidFileName(name:String):Boolean =
+        name.isNotEmpty() && !name.startsWith(".") && name!=".." &&
+            name.all {it.isLetterOrDigit() || it=='.' || it=='_' || it=='-'}
+
+    private fun contentHash(o:JSONObject):String {
+        val d=java.security.MessageDigest.getInstance("SHA-256").digest(o.toString().toByteArray(Charsets.UTF_8))
+        return d.joinToString("") {"%02x".format(it)}.take(12)
+    }
+
+    // Stable identity for records predating local_id: the upload id when
+    // present, else a content-derived quarantine id; collisions with an
+    // existing local_id disambiguate by content hash (deterministic across
+    // delete/reorder). Content-identical duplicates collapse to one identity -
+    // no information loss. Quarantined records are kept verbatim and marked.
+    fun normalize(records:List<JSONObject>):List<JSONObject> {
+        val taken=records.mapNotNull {it.optString("local_id").takeIf {id->id.isNotEmpty()}}.toMutableSet()
+        return records.map {r->
+            if(r.optString("local_id").isNotEmpty()) r
+            else {
+                val upload=r.optString("upload")
+                val quarantined=upload.isEmpty()
+                val base=if(quarantined) "quarantined-"+contentHash(r) else upload
+                var id=base
+                if(id in taken) id=base+"#"+contentHash(r)
+                taken.add(id)
+                val out=JSONObject(r.toString()).put("local_id",id)
+                if(quarantined) out.put("quarantined",true)
+                out
+            }
+        }
+    }
+
+    // Save (value != null) or remove (value == null) by local_id. Throws
+    // Malformed when the existing raw content cannot be fully parsed: blocked
+    // writes preserve the raw store, including for single-record removal.
+    fun applySave(raw:String?,id:String,value:JSONObject?):String {
+        val records=parse(raw) ?: throw Malformed()
+        require(value==null || value.optString("local_id")==id) {"staged record local_id mismatch"}
+        val entries=normalize(records)
+        val out=entries.filterNot {it.optString("local_id")==id}+listOfNotNull(value)
+        return JSONArray(out).toString()
     }
 }

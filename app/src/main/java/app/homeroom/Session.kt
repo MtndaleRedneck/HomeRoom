@@ -178,31 +178,38 @@ class Session(context: Context) {
         get() = prefs.getString("last_setup_link_hash", null)
         set(value) { check(prefs.edit().putString("last_setup_link_hash", value).commit()) }
 
-    fun stagedUploads(): List<JSONObject> =
-        runCatching { JSONArray(prefs.getString(KEY_STAGED, "[]")).objects() }.getOrDefault(emptyList())
+    // Historical local_id-keyed scheme (actual source read Nov 15 05:04:13 EST:
+    // filter by local_id, append non-null, null removes, synchronized on
+    // stateLock) reconciled with this session's reviewed fail-closed durability
+    // and the I2 migration constraints: legacy records are normalized to stable
+    // content-derived identities (never index-derived, never merged), and a
+    // malformed store blocks EVERY write including single-record removal so
+    // existing records are never silently overwritten.
+    fun stagedUploads(): List<JSONObject> = synchronized(stateLock) {
+        StagedStore.parse(prefs.getString(KEY_STAGED, null))?.let { StagedStore.normalize(it) } ?: emptyList()
+    }
+
+    // Honest corruption signal for the UI: when true, stagedUploads() shows an
+    // empty view but the raw store is preserved and all writes are blocked.
+    fun stagedUploadsMalformed(): Boolean = synchronized(stateLock) {
+        StagedStore.parse(prefs.getString(KEY_STAGED, null)) == null
+    }
 
     // DURABILITY (external review 2026-11-24): staged-record transitions gate
     // irreversible remote side effects, so they use checked synchronous commit(),
     // the same fail-loudly pattern as saveDecisionReview. A failed commit throws
-    // BEFORE the caller's network op, preserving the prior durable state
-    // (fail closed). apply()'s async disk write left a crash window where the
-    // server could hold a POST the restored record did not know was attempted.
-    fun saveStagedUpload(record: JSONObject) {
-        val id = record.optString("upload")
-        val list = stagedUploads().filter { it.optString("upload") != id }.toMutableList()
-        list.add(record)
-        if (!prefs.edit().putString(KEY_STAGED, JSONArray(list).toString()).commit()) {
-            throw IllegalStateException("Staged upload persistence failed.")
+    // BEFORE the caller's network op (fail closed). NOTE (I2): commit()==false
+    // may still have advanced the in-memory map, so a throw here means the save
+    // is UNKNOWN, not absent - callers must abort the network operation and let
+    // server status govern any later resume.
+    fun saveStagedUpload(id: String, value: JSONObject?) = synchronized(stateLock) {
+        val next = try {
+            StagedStore.applySave(prefs.getString(KEY_STAGED, null), id, value)
+        } catch (e: StagedStore.Malformed) {
+            throw IllegalStateException("Staged upload store is damaged; writes (including removals) are blocked to preserve the existing records.")
         }
-    }
-
-    // Removal is the post-confirmation cleanup: a failed commit KEEPS the record,
-    // which the fail-closed predicates and resume reconciliation already handle,
-    // so callers wrap this in runCatching and continue.
-    fun removeStagedUpload(uploadId: String) {
-        val list = stagedUploads().filter { it.optString("upload") != uploadId }
-        if (!prefs.edit().putString(KEY_STAGED, JSONArray(list).toString()).commit()) {
-            throw IllegalStateException("Staged upload persistence failed.")
+        if (!prefs.edit().putString(KEY_STAGED, next).commit()) {
+            throw IllegalStateException("Staged upload persistence unconfirmed (in-memory state may differ) - abort the operation and treat remote state as unknown.")
         }
     }
 

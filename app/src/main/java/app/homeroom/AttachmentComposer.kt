@@ -20,7 +20,31 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // of an inert post() (I2 UX residual: retry while ready=false no-ops).
     private var retryResume=false
     private val send=button(context,"Send attachment",true) {if(retryResume)resumeUpload() else post()}
-    private val privateFile=File(context.cacheDir,resume?.optString("file")?.takeIf {it.matches(Regex("[A-Za-z0-9._-]+"))} ?: ("attachment-"+clientId()))
+    // Historical local_id-keyed scheme (Nov 15 05:04:13 EST source): the record
+    // identity is minted BEFORE any server call and names the staged file.
+    // A resume record with an invalid local_id/file name FAILS - never mint.
+    private val localId=resume?.optString("local_id")?.takeIf {StagedStore.isValidFileName(it)} ?: clientId()
+    private val invalidRestore=resume!=null &&
+        (!StagedStore.isValidFileName(resume.optString("local_id")) ||
+            (resume.optString("file").isNotEmpty() && !StagedStore.isValidFileName(resume.optString("file"))))
+    private val fileName=resume?.optString("file")?.takeIf {it.isNotEmpty() && StagedStore.isValidFileName(it)} ?: localId
+    // Historical location: filesDir/staged-uploads (system cache purges must not
+    // strand a persisted record). Legacy cacheDir files stay resumable.
+    private val stagedDir=File(context.filesDir,"staged-uploads").apply {mkdirs()}
+    private val privateFile:File=run {
+        val primary=File(stagedDir,fileName)
+        if(resume!=null && !primary.exists()) {
+            val legacy=File(context.cacheDir,fileName)
+            if(legacy.isFile) legacy else primary
+        } else primary
+    }
+    private fun deleteStagedFiles() {privateFile.delete();File(context.cacheDir,fileName).delete();File(stagedDir,fileName).delete()}
+    // In-flight generation barrier (historical persist(): withinGeneration):
+    // captured at construction; a stale generation makes persist a no-op and
+    // ABORTS the operation - no network after a dropped save (I2). Resume
+    // binding to the account/server is a SEPARATE persisted check (I2), since
+    // a resumed composer always belongs to a later generation.
+    private val generation=host.session.generation
     private var job:Job?=null
     private var upload:String?=null
     private var ready=false
@@ -52,12 +76,39 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     private var created=stagedIds.created
     private val uploadClient=stagedIds.uploadClient
     private val completeClient=stagedIds.completeClient
+
+    // Copy-before-mutate + swap-after-save (I2): the composer state only
+    // advances AFTER the new record value is durably saved. Returns false when
+    // the generation is stale (save skipped): the caller must abort with no
+    // further network. A commit failure throws (save UNKNOWN, not absent).
+    private fun persistSwap(next:JSONObject):Boolean {
+        var saved=false
+        host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next);saved=true}
+        if(saved) stagedRecord=next
+        return saved
+    }
+    // Removal by local_id (historical null-value semantics). False = blocked
+    // (damaged store or unconfirmed commit); user-facing paths say so honestly.
+    private fun removeRecord():Boolean = runCatching {host.session.saveStagedUpload(localId,null)}.isSuccess
     init {
         // Process-death restore: the payload a previous process attempted is
-        // authoritative - prefill and lock to it (I2 retry residual).
+        // authoritative - prefill and lock to it (I2 retry residual). The
+        // persisted draft message (historical) sits underneath it.
+        message.setText(StagedUpload.attemptedText(resume) ?: resume?.optString("message").orEmpty())
         StagedUpload.attemptedText(resume)?.let {
-            attemptedText=it;message.setText(it);message.isEnabled=false
+            attemptedText=it;message.isEnabled=false
         }
+        // Historical: the draft message persists as it is typed. A commit
+        // failure here cannot crash the input path; the next durable save
+        // rewrites the whole record.
+        message.addTextChangedListener(object:android.text.TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {
+                val r=stagedRecord ?: return
+                runCatching {persistSwap(JSONObject(r.toString()).put("message",s.toString()))}
+            }
+            override fun afterTextChanged(e:android.text.Editable?) {}
+        })
         // Uncertainty initializes from the DURABLE record BEFORE any fallible
         // work (I2 early-resume hole): a persisted attempted payload means a
         // post may already exist even if the status-first resume below never
@@ -70,21 +121,65 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         send.isEnabled=false
         body.addView(button(context,"Cancel upload",false) {cancelUpload()})
     }
-    override fun onShow() {if(job==null && !ready) {if(resume!=null)resumeUpload() else prepare()}}
+    override fun onShow() {
+        if(invalidRestore) {
+            ready=false;send.isEnabled=false
+            status.text="This staged upload's saved data is damaged and cannot be resumed safely. Cancel it and attach the file again."
+            return
+        }
+        if(job==null && !ready) {if(resume!=null)resumeUpload() else prepare()}
+    }
     override fun onHide() {job?.cancel();job=null;super.onHide()}
     // RECONSTRUCTED: resume an interrupted staged upload from its local record.
     private suspend fun resumeUploadInner() {
         try {
             val record=resume ?: return
-            require(StagedUpload.resumable(record)) {"staged record lacks hash or original identities"}
-            upload=record.getString("upload")
+            require(StagedUpload.resumable(record) || StagedUpload.preCreate(record)) {"staged record lacks hash or original identities"}
+            // Persisted account/server binding (I2: separate from the in-flight
+            // generation barrier - a resumed composer is always a later
+            // generation, so generation can never gate resume; the binding does).
+            if(StagedUpload.hasBinding(record) && !StagedUpload.bindingMatches(record,host.session.ownerId,host.session.serverUrl)) {
+                ready=false;send.isEnabled=false
+                status.text="This staged upload belongs to a different account or server. It was left untouched."
+                return
+            }
             val total=record.getLong("size")
             if(!privateFile.exists() || privateFile.length()!=total) throw ApiException(0,"staged_file_missing")
-            // Authoritative server status FIRST (owning source files15 GET
-            // /owner/uploads/<id>): a CONSUMED upload means the post already
-            // landed - reconcile as sent from the server's own record, never
-            // repost, never invent success without the consumed event.
-            val srv=V15Api(host.api).get("uploads/"+ApiClient.enc(upload!!))
+            val srv:JSONObject
+            if(record.has("upload")) {
+                upload=record.getString("upload")
+                // Authoritative server status FIRST (owning source files15 GET
+                // /owner/uploads/<id>): a CONSUMED upload means the post already
+                // landed - reconcile as sent from the server's own record, never
+                // repost, never invent success without the consumed event.
+                srv=V15Api(host.api).get("uploads/"+ApiClient.enc(upload!!))
+            } else {
+                // Pre-create resume (historical held-1.5 uploads15.create
+                // contract: UNIQUE(principal, room, client) - identical metadata
+                // replays the same upload row, divergent metadata fails 409
+                // client_id_conflict; live server 1.4 exposes no upload routes,
+                // so this is compatibility design, not a live promise). The
+                // recreate response IS the upload status; the replayed row may
+                // already be further along than the local record knows.
+                val mime=record.getString("mime")
+                val meta=JSONObject().put("client_id",uploadClient).put("name",record.getString("name")).put("mime_type",mime)
+                    .put("byte_size",total).put("sha256",record.getString("sha256"))
+                    .put("kind",if(record.optBoolean("voice"))"voice" else if(mime.startsWith("image/"))"image" else "file")
+                srv=try {V15Api(host.api).mutate("rooms/"+ApiClient.enc(room.id)+"/uploads",meta)}
+                    catch(e:ApiException) {
+                        // 409 client_id_conflict is DISTINCT from both a
+                        // restart-required upload and a room-level error (I2):
+                        // the record contradicts the server - never proceed.
+                        if(e.status==409 && e.code=="client_id_conflict") {
+                            ready=false;send.isEnabled=false
+                            status.text="This staged upload's saved details conflict with the server. Cancel it and attach the file again."
+                            return
+                        }
+                        throw e
+                    }
+                upload=srv.getString("upload_id")
+                if(!persistSwap(JSONObject(record.toString()).put("upload",upload))) return
+            }
             when(srv.optString("state")) {
                 "consumed" -> {
                     val eventId=srv.optString("event_id")
@@ -106,24 +201,29 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 }
                 else -> {
                     // failed/expired/unknown state: fail closed, no resume.
-                    runCatching {host.session.removeStagedUpload(upload!!)};privateFile.delete()
+                    // The retry is an EXPLICIT new upload with a new identity
+                    // (the owner re-attaches) - never a silent reuse (I2).
+                    runCatching {removeRecord()};deleteStagedFiles()
                     status.text="This staged upload can no longer be resumed. Cancel it and attach again."
                     return
                 }
             }
             // Server-authoritative resume point (files15 status received/
-            // next_offset), cross-checked against the local record.
-            var offset=srv.optLong("next_offset",record.optLong("offset",0L))
+            // next_offset): a chunk may have landed whose offset save failed,
+            // so the SERVER offset governs, never the local record (I2).
+            var offset=srv.optLong("next_offset",stagedRecord?.optLong("offset",0L) ?: 0L)
             require(offset in 0..total)
+            var aborted=false
             withContext(Dispatchers.IO) {java.io.RandomAccessFile(privateFile,"r").use {input->
                 while(offset<total) {
                     ensureActive();input.seek(offset);val chunk=ByteArray(minOf(262144L,total-offset).toInt());input.readFully(chunk)
                     val next=host.api.uploadChunk(upload!!,offset,chunk,sha256(chunk)).getLong("next_offset")
                     require(next==offset+chunk.size);offset=next
-                    record.put("offset",offset);host.session.saveStagedUpload(record)
+                    if(!persistSwap(JSONObject(stagedRecord!!.toString()).put("offset",offset))) {aborted=true;return@withContext}
                     withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+total+" bytes"}
                 }
             }}
+            if(aborted) return  // stale generation mid-resume: no complete call
             // Same completion gate as the fresh path: the server must confirm
             // the upload complete, ready, full-hash and size verified before
             // Send is enabled. complete carries the original completeClient id.
@@ -140,7 +240,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         catch(e:ApiException) {
             // cp42 crash recovery (owning source): upload_bytes_inconsistent
             // means requires_restart - never auto-resume the same upload.
-            if(e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
+            if(uploadMustRestart(e) || e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
             else resumeFailed()
         }
         catch(_:Exception) {resumeFailed()}
@@ -177,7 +277,10 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // every consumed-with-doubt branch shares the same transition.
     private fun markConsumedUnresolved() {
         ready=false;send.isEnabled=false;consumedUnresolved=true
-        stagedRecord?.let {host.session.saveStagedUpload(StagedUpload.markUnresolvedCancellation(it)!!)}
+        stagedRecord?.let {
+            val marked=StagedUpload.markUnresolvedCancellation(JSONObject(it.toString()))!!
+            host.session.saveStagedUpload(localId,marked);stagedRecord=marked
+        }
         status.text="Upload already used. Check the room before sending again."
     }
     // Tie the consumed linkage to THIS composer's intended post before the UI
@@ -198,15 +301,15 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         } catch(e:SessionEndedException) {throw e}
         catch(_:Exception) {false}
         if(linked) {
-            upload?.let {u->runCatching {host.session.removeStagedUpload(u)}};privateFile.delete()
+            runCatching {removeRecord()};deleteStagedFiles()
             status.text="Attachment sent. Server recorded this post."
         } else markConsumedUnresolved()
     }
     // Server-side byte inconsistency (cp42): the staged upload is abandoned -
     // record and staged file removed, Send stays locked, release e1 wording.
     private fun abandonCorruptUpload() {
-        upload?.let {u->runCatching {host.session.removeStagedUpload(u)}}
-        privateFile.delete();ready=false;send.isEnabled=false
+        runCatching {removeRecord()}
+        deleteStagedFiles();ready=false;send.isEnabled=false
         status.text="This upload was interrupted and cannot resume. Cancel it, then choose the file again to start a new upload. No message was sent."
     }
     private fun prepare() {job=screenScope.launch {
@@ -222,22 +325,33 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 require(size>0)
                 size to digest.digest().joinToString("") {"%02x".format(it)}
             }
+            // Pre-create staging (historical scheme): the record - with the
+            // full create metadata and the account/server binding - is durable
+            // BEFORE the first network call, closing the pre-create crash
+            // window. A stale generation aborts BEFORE any network (I2).
+            val pre=StagedUpload.newRecord(localId,room.id,safeName,mime,voice,metadata.first,metadata.second,privateFile.name,stagedIds,host.session.ownerId,host.session.serverUrl)
+                .put("message",message.text.toString())
+            if(!persistSwap(pre)) {status.text="Session changed before the upload started. Nothing was uploaded.";return@launch}
             val api=V15Api(host.api)
             val result=api.mutate("rooms/"+ApiClient.enc(room.id)+"/uploads",JSONObject().put("client_id",uploadClient).put("name",safeName).put("mime_type",mime).put("byte_size",metadata.first).put("sha256",metadata.second).put("kind",if(voice)"voice" else if(mime.startsWith("image/"))"image" else "file"))
             upload=result.getString("upload_id")
-            val record=StagedUpload.newRecord(upload!!,room.id,safeName,voice,metadata.first,metadata.second,privateFile.name,result.getLong("next_offset"),stagedIds)
-            stagedRecord=record
-            host.session.saveStagedUpload(record)
+            // Copy, save, then swap: composer state advances only after the
+            // durable write (I2). A stale generation aborts before chunks.
+            if(!persistSwap(JSONObject(stagedRecord!!.toString()).put("upload",upload).put("offset",result.getLong("next_offset")))) return@launch
             var offset=result.getLong("next_offset")
+            var aborted=false
             withContext(Dispatchers.IO) {java.io.RandomAccessFile(privateFile,"r").use {input->
                 while(offset<metadata.first) {
                     ensureActive();input.seek(offset);val chunk=ByteArray(minOf(262144L,metadata.first-offset).toInt());input.readFully(chunk)
                     val next=host.api.uploadChunk(upload!!,offset,chunk,sha256(chunk)).getLong("next_offset")
                     require(next==offset+chunk.size);offset=next
-                    record.put("offset",offset);host.session.saveStagedUpload(record)
+                    // The chunk already landed; if this save fails the SERVER
+                    // offset governs the resume, never the local record (I2).
+                    if(!persistSwap(JSONObject(stagedRecord!!.toString()).put("offset",offset))) {aborted=true;return@withContext}
                     withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+metadata.first+" bytes"}
                 }
             }}
+            if(aborted) return@launch  // stale generation mid-upload: no complete call
             val completeJson=api.mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient))
             if(markConsumedIfPosted(completeJson))return@launch
             val complete=UploadStatus.from(completeJson)
@@ -246,7 +360,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             status.text=safeName+" · uploaded and checksum verified. Not sent yet."+(if(voice)" Voice transcription may be unavailable." else "")
         }catch(e:CancellationException) {throw e}
         catch(e:SessionEndedException) {host.onSessionEnded(e)}
-        catch(e:ApiException) {if(e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
+        catch(e:ApiException) {if(uploadMustRestart(e) || e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
             else status.text="Upload not confirmed. Cancel and check the room before starting again."}
         catch(_:Exception) {status.text="Upload not confirmed. Cancel and check the room before starting again."}
     }}
@@ -258,13 +372,14 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         // DURABILITY GATE: the attempted payload must reach persistent storage
         // (checked commit) before any network side effect. On failure: no POST,
         // user-visible error, composer stays editable for an explicit retry.
-        // NOTE: a failed commit() may leave the in-memory preference map ahead
-        // of disk; a later successful save rewrites the whole map, healing the
-        // divergence, and process death restores the last durable state - the
-        // POST only ever runs after a successful durable write of THIS record.
+        // A failed commit may leave memory ahead of disk, so a failure means
+        // the save is UNKNOWN and the POST simply never runs (fail closed);
+        // the composer state swaps to the attempted record only after a
+        // successful durable write (I2 copy/swap boundary).
         if(stagedRecord!=null) {
-            try {host.session.saveStagedUpload(StagedUpload.recordAttempt(stagedRecord!!,text))}
-            catch(e:Exception) {
+            val attempt=StagedUpload.recordAttempt(JSONObject(stagedRecord!!.toString()),text)
+            val saved=try {persistSwap(attempt)} catch(e:Exception) {false}
+            if(!saved || stagedRecord!==attempt) {
                 attemptedText=null
                 status.text="Couldn't durably record this send. Nothing was sent - try again."
                 return
@@ -275,8 +390,8 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         screenScope.launch {
             try {
                 host.api.postWithUploads(room.id,postClient,created,text,room.mainThreadKey,null,emptyList(),listOf(upload!!))
-                if(upload!=null)runCatching {host.session.removeStagedUpload(upload!!)}
-                status.text="Attachment sent. Server recorded this post.";ready=false;privateFile.delete();send.visibility=android.view.View.GONE
+                if(upload!=null)runCatching {removeRecord()}
+                status.text="Attachment sent. Server recorded this post.";ready=false;deleteStagedFiles();send.visibility=android.view.View.GONE
             }catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {
                 if(e.code=="outgoing_expired") {
@@ -293,8 +408,8 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     ambiguous=false;attemptedText=null;priorUnresolved=true
                     val fresh=clientId();val now=java.time.Instant.now().toString()
                     postClient=fresh;created=now
-                    val rotated=stagedRecord?.let {StagedUpload.rotateForResend(it,{fresh},{now})}
-                    if(rotated!=null && runCatching {host.session.saveStagedUpload(rotated)}.isFailure) {
+                    val rotated=stagedRecord?.let {StagedUpload.rotateForResend(JSONObject(it.toString()),{fresh},{now})}
+                    if(rotated!=null && runCatching {host.session.saveStagedUpload(localId,rotated)}.isFailure) {
                         // The expired identity could not be durably rotated: keep the
                         // resend DISABLED (a resend now would risk losing the prior
                         // identity on crash) and fail loudly instead of proceeding.
@@ -369,19 +484,21 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         if(posting)return
         if(cancelUnsafe() && !cancelWarned) {cancelWarned=true;status.text="A post may already exist. Check the room before cancelling or sending again.";return}
         job?.cancel();ready=false;send.isEnabled=false
+        // Blocked removal is shown honestly (I2): a damaged store preserves
+        // the record and says nothing was deleted.
+        if(!removeRecord()) {status.text="Local staged records are damaged - removal is blocked to protect them. Nothing was deleted.";return}
         val id=upload
-        if(id==null) {privateFile.delete();status.text="Local upload cancelled.";return}
+        if(id==null) {deleteStagedFiles();status.text="Local upload cancelled.";return}
         if(cancelUnsafe()) {
             // I2: DELETE on a possibly-CONSUMED upload has no grounded effect
             // semantics - never delete a remote attachment blindly. Local
             // abandon only; an unposted staged upload expires server-side
             // (release X0 copy), a landed post is managed from the room.
-            upload?.let {u->runCatching {host.session.removeStagedUpload(u)}}
-            privateFile.delete()
+            deleteStagedFiles()
             status.text="Cancelled locally, server not contacted. Check the room: a recorded post stays there."
             return
         }
-        privateFile.delete()
+        deleteStagedFiles()
         screenScope.launch {
             try {host.api.request("/owner/uploads/"+ApiClient.enc(id),"DELETE");status.text="Upload cancelled. No post was sent."}
             catch(_:Exception) {status.text="Stopped locally. Server cleanup not confirmed; unused uploads expire."}

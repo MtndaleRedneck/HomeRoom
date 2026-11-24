@@ -3,6 +3,7 @@ package app.homeroom
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -23,6 +24,65 @@ fun main(args: Array<String>) = runBlocking {
     fun check(name: String, block: suspend () -> Any?) {
         try { block.let { kotlinx.coroutines.runBlocking { it() } }; results.add("OK   $name") }
         catch (t: Throwable) { results.add("FAIL $name: ${t.message}") }
+    }
+    check("staged-store-save-remove") {
+        // 2-arg local_id semantics: save, replace, null-removes (historical).
+        val rec = { id: String -> JSONObject().put("local_id", id).put("room", "r1") }
+        var raw = StagedStore.applySave(null, "a", rec("a"))
+        raw = StagedStore.applySave(raw, "b", rec("b"))
+        require(StagedStore.parse(raw)!!.size == 2) { "both records stored" }
+        raw = StagedStore.applySave(raw, "a", rec("a").put("size", 5))
+        require(StagedStore.parse(raw)!!.single { it.optString("local_id") == "a" }.optLong("size") == 5L) { "replace by id" }
+        raw = StagedStore.applySave(raw, "a", null)
+        require(StagedStore.parse(raw)!!.map { it.optString("local_id") } == listOf("b")) { "null removes only the target" }
+        try { StagedStore.applySave(raw, "x", rec("y")); throw IllegalStateException("mismatch accepted") }
+        catch (e: IllegalArgumentException) { }
+    }
+    check("staged-store-malformed-blocks-writes") {
+        // A damaged store blocks every write INCLUDING removal; raw preserved.
+        val bad = "{not json"
+        require(StagedStore.parse(bad) == null) { "malformed parses as null" }
+        try { StagedStore.applySave(bad, "a", JSONObject().put("local_id", "a")); throw IllegalStateException("save on malformed") }
+        catch (e: StagedStore.Malformed) { }
+        try { StagedStore.applySave(bad, "a", null); throw IllegalStateException("remove on malformed") }
+        catch (e: StagedStore.Malformed) { }
+    }
+    check("staged-store-legacy-normalize-stable") {
+        // Legacy upload-keyed record gains local_id := upload id; identity is
+        // stable across delete/reorder; collisions disambiguate by content;
+        // identity-less records are quarantined, never dropped or merged.
+        val legacy = JSONArray()
+            .put(JSONObject().put("upload", "up_1").put("name", "one"))
+            .put(JSONObject().put("local_id", "up_2").put("name", "two"))
+            .put(JSONObject().put("name", "mystery"))
+        val n1 = StagedStore.normalize(StagedStore.parse(legacy.toString())!!)
+        require(n1[0].optString("local_id") == "up_1") { "upload-derived id" }
+        require(n1[1].optString("local_id") == "up_2") { "existing id kept" }
+        require(n1[2].optString("local_id").startsWith("quarantined-") && n1[2].optBoolean("quarantined")) { "quarantined kept+marked" }
+        // Reordered + one deleted: same identities for the survivors.
+        val reordered = JSONArray().put(JSONObject(legacy.getJSONObject(2).toString())).put(JSONObject(legacy.getJSONObject(0).toString()))
+        val n2 = StagedStore.normalize(StagedStore.parse(reordered.toString())!!)
+        require(n2[1].optString("local_id") == "up_1" && n2[0].optString("local_id") == n1[2].optString("local_id")) { "identities stable across delete/reorder" }
+        // Collision: a legacy upload id already taken as a local_id.
+        val clash = JSONArray()
+            .put(JSONObject().put("local_id", "up_1").put("name", "holder"))
+            .put(JSONObject().put("upload", "up_1").put("name", "legacy"))
+        val n3 = StagedStore.normalize(StagedStore.parse(clash.toString())!!)
+        require(n3[1].optString("local_id") != "up_1" && n3[1].optString("local_id").startsWith("up_1#")) { "collision disambiguated" }
+        // Canonical rewrite carries ALL records: nothing lost on save.
+        val raw = StagedStore.applySave(legacy.toString(), "up_1", JSONObject().put("local_id", "up_1").put("name", "one-v2"))
+        val all = StagedStore.parse(raw)!!
+        require(all.size == 3 && all.any { it.optBoolean("quarantined") } && all.any { it.optString("local_id") == "up_2" }) { "rewrite preserved all records" }
+    }
+    check("staged-store-filename-validation") {
+        // Dot/dotdot/separator/leading-dot rejected; an invalid stored name
+        // fails the restore - never mint (I2).
+        listOf("", ".", "..", "a/b", "a\\b", ".hidden").forEach {
+            require(!StagedStore.isValidFileName(it)) { "accepted invalid name: <$it>" }
+        }
+        listOf("attachment-123", "voice_note.m4a", "a..b").forEach {
+            require(StagedStore.isValidFileName(it)) { "rejected valid name: $it" }
+        }
     }
     check("profile-get") {
         val (name, avatar) = api.ownerProfile()
@@ -70,14 +130,14 @@ fun main(args: Array<String>) = runBlocking {
         // never be paired with edited text after process death.
         var n = 0
         val ids = StagedUpload.idsFor(null, { "fresh-" + (++n) }, { "t0" })
-        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", false, 12, "abc", "attachment-x", 0, ids)
+        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", "text/plain", false, 12, "abc", "attachment-x", ids, "owner1", "http://test").put("upload", "u1")
         StagedUpload.recordAttempt(rec, "original body")
         val recreated = JSONObject(rec.toString())
         val restored = StagedUpload.attemptedText(recreated)
         require(restored == "original body") { "attempted payload lost across recreation" }
         require(StagedUpload.immutableText(restored, "edited") == "original body") { "recreated composer would send an edited copy" }
         require(StagedUpload.idsFor(recreated, { "WRONG" }, { "WRONG" }) == ids) { "identities lost across recreation" }
-        val unsent = StagedUpload.newRecord("u2", "room1", "b.txt", false, 5, "def", "attachment-y", 0, ids)
+        val unsent = StagedUpload.newRecord("u2", "room1", "b.txt", "text/plain", false, 5, "def", "attachment-y", ids, "owner1", "http://test").put("upload", "u2")
         require(StagedUpload.attemptedText(unsent) == null) { "unsent record claims an attempt" }
         require(StagedUpload.immutableText(StagedUpload.attemptedText(unsent), "typed") == "typed") { "fresh composer did not take current text" }
         StagedUpload.recordAttempt(rec, "")
@@ -90,7 +150,7 @@ fun main(args: Array<String>) = runBlocking {
         // anew; upload identities are untouched.
         var n = 0
         val ids = StagedUpload.idsFor(null, { "fresh-" + (++n) }, { "t0" })
-        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", false, 12, "abc", "attachment-x", 0, ids)
+        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", "text/plain", false, 12, "abc", "attachment-x", ids, "owner1", "http://test").put("upload", "u1")
         StagedUpload.recordAttempt(rec, "original body")
         StagedUpload.rotateForResend(rec, { "rotated-post" }, { "t1" })
         val recreated = JSONObject(rec.toString())
@@ -108,7 +168,7 @@ fun main(args: Array<String>) = runBlocking {
         require(prior.getString("post_client") == "fresh-3" && prior.getString("created") == "t0") { "prior identity wrong: $prior" }
         require(prior.getString("attempted_text") == "original body") { "prior payload lost: $prior" }
         // Ambiguity itself is durable: attempted payload present == unconfirmed.
-        val rec2 = StagedUpload.newRecord("u3", "room1", "c.txt", false, 5, "ghi", "attachment-z", 0, ids)
+        val rec2 = StagedUpload.newRecord("u3", "room1", "c.txt", "text/plain", false, 5, "ghi", "attachment-z", ids, "owner1", "http://test").put("upload", "u3")
         require(!StagedUpload.unconfirmedAttempt(rec2)) { "unsent record marked unconfirmed" }
         StagedUpload.recordAttempt(rec2, "typed")
         require(StagedUpload.unconfirmedAttempt(JSONObject(rec2.toString()))) { "unconfirmed state lost across recreation" }
@@ -120,7 +180,7 @@ fun main(args: Array<String>) = runBlocking {
         require(!StagedUpload.hasUnresolvedPrior(rec2)) { "fresh attempt claims prior uncertainty" }
         // Centralized cancellation safety (I2): the durable consumed-without-
         // linkage marker, and the single predicate over every marker kind.
-        val plain = StagedUpload.newRecord("u4", "room1", "d.txt", false, 7, "jkl", "attachment-w", 0, ids)
+        val plain = StagedUpload.newRecord("u4", "room1", "d.txt", "text/plain", false, 7, "jkl", "attachment-w", ids, "owner1", "http://test").put("upload", "u4")
         require(!StagedUpload.hasUnresolvedCancellation(plain)) { "clean record claims unresolved cancellation" }
         require(!StagedUpload.unresolvedCancellationMarked(plain)) { "clean record claims consumed marker" }
         StagedUpload.markUnresolvedCancellation(plain)
@@ -134,7 +194,7 @@ fun main(args: Array<String>) = runBlocking {
         // attempted payload must read unsafe-to-remote-DELETE via the durable
         // predicate BEFORE any status fetch completes - the resume-failure
         // path and cancelUnsafe consult the record, not in-memory flags.
-        val earlyResume = StagedUpload.newRecord("u5", "room1", "e.txt", false, 3, "mno", "attachment-v", 0, ids)
+        val earlyResume = StagedUpload.newRecord("u5", "room1", "e.txt", "text/plain", false, 3, "mno", "attachment-v", ids, "owner1", "http://test").put("upload", "u5")
         require(!StagedUpload.hasUnresolvedCancellation(earlyResume)) { "never-attempted record unsafe before status fetch" }
         StagedUpload.recordAttempt(earlyResume, "draft")
         val restoredRec = JSONObject(earlyResume.toString())
@@ -320,7 +380,7 @@ fun main(args: Array<String>) = runBlocking {
         var n = 0
         val ids = StagedUpload.idsFor(null, { "fresh-" + (++n) }, { "t0" })
         require(ids.uploadClient == "fresh-1" && ids.completeClient == "fresh-2" && ids.postClient == "fresh-3" && ids.created == "t0") { "fresh identity minting wrong: $ids" }
-        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", false, 12, "abc", "attachment-x", 0, ids)
+        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", "text/plain", false, 12, "abc", "attachment-x", ids, "owner1", "http://test").put("upload", "u1")
         val restored = StagedUpload.idsFor(rec, { "WRONG" }, { "WRONG" })
         require(restored == ids) { "resume minted new identities" }
         require(StagedUpload.resumable(rec)) { "fresh record not resumable" }
