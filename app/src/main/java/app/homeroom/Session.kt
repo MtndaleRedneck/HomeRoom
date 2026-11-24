@@ -138,9 +138,14 @@ class Session(context: Context) {
     val generation: Long
         get() = prefs.getLong(KEY_SESSION_GENERATION, 0L)
 
+    // Exact release semantics (private12 K0/V4.java s(long, M2.a)): the
+    // comparison and block run inside the session lock, and a stale
+    // generation THROWS CancellationException("Session changed") - the dead
+    // session's write is loud, never silently dropped.
     fun withinGeneration(generation: Long, block: () -> Unit) {
         synchronized(stateLock) {
-            if (this.generation == generation) block()
+            if (this.generation == generation) { block(); return }
+            throw kotlinx.coroutines.CancellationException("Session changed")
         }
     }
 
