@@ -8,6 +8,9 @@ import java.security.MessageDigest
 @org.robolectric.annotation.Config(sdk=[34])
 class LiveReleaseDiscoveryTest {
  @Test fun publishedReleaseIsDiscoverableAndVerifiable() {
+  // Operator-machine check: verifies a downloaded live release against its published
+  // metadata. The live files exist only on the operator machine, so skip elsewhere.
+  org.junit.Assume.assumeTrue("live-release files only exist on the operator machine",File("/downloads/release14/live-latest.json").exists())
   val r=JSONObject(File("/downloads/release14/live-latest.json").readText())
   assertEquals("v1.4",r.getString("tag_name"))
   assertFalse(r.getBoolean("prerelease")); assertFalse(r.getBoolean("draft"))

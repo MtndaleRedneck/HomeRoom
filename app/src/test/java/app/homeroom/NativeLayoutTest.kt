@@ -26,7 +26,8 @@ class NativeLayoutTest {
         view.layout(0,0,396,760)
         val bitmap=Bitmap.createBitmap(396,760,Bitmap.Config.ARGB_8888)
         val canvas=Canvas(bitmap); canvas.drawColor(C.bg); view.draw(canvas)
-        File("/downloads/$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+        val outDir=System.getProperty("hr.previewDir")?.let {File(it)} ?: File("build/previews").apply {mkdirs()}
+        File(outDir,"$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
     }
     @Test fun roomAndMessageTextHaveRealWidth() {
         val controller=Robolectric.buildActivity(MainActivity::class.java).setup()

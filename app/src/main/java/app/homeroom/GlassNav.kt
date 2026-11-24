@@ -27,7 +27,7 @@ import android.widget.*
 class GlassNav(context: Context, private val behind: View, val choose: (Int) -> Unit) : FrameLayout(context) {
     private val backdrop = ImageView(context)
     private val items = LinearLayout(context)
-    private val tabs = listOf(Triple(R.id.nav_chats,"Chats",R.drawable.ic_chats), Triple(R.id.nav_files,"Files",R.drawable.ic_files), Triple(R.id.nav_rules,"Rules",R.drawable.ic_rules), Triple(R.id.nav_settings,"Settings",R.drawable.ic_settings))
+    private val tabs = listOf(Triple(R.id.nav_chats,"Rooms",R.drawable.ic_chats), Triple(R.id.nav_rules,"Rules",R.drawable.ic_rules), Triple(R.id.nav_files,"Files",R.drawable.ic_files), Triple(R.id.nav_settings,"Settings",R.drawable.ic_settings))
     var selectedItemId: Int = R.id.nav_chats
         set(value) { field = value; updateSelection(); choose(value) }
     private var buffers: Array<Bitmap>? = null

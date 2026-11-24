@@ -68,13 +68,15 @@ class SettingsScreen(context:Context):Screen(context) {
             row(sessions,if(current) "▯" else "▱",if(current) C.accent else 0xff7b6cf0.toInt(),(if(current) "This phone" else device.label.ifBlank {"Device"}),if(current) "Active now" else device.lastUsed?.let {"Last used "+formatRoomTime(it)} ?: "Last use not recorded",if(current) null else "Remove",if(current) null else { {confirmRemove(device)} })
         }
         val app=group("App")
+        // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
+        row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
+        // Locked bottom-Updates rule (matches d5.java: Feedback in Help above
+        // the Updates card, version and Sign out below it).
         val update=UpdateCheck.hasUpdate()
         row(app,"↑",C.amber,"HomeRoom "+BuildConfig.VERSION_NAME,if(update) "Update ${UpdateCheck.latestTag} available" else UpdateCheck.checkedAt?.let {"Checked "+formatBubbleTime(it)} ?: "Not checked yet",if(update) "Update" else "Check") {
             if(update && UpdateCheck.openLatest(host,host.scope)) return@row
             UpdateCheck.checkManually(host,host.scope,host.session) {message->snack(this,message);rebuild()}
         }
-        // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
-        row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
         val signout=text(context,"Sign out",16f,C.danger,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(20).toFloat());setOnClickListener {confirmSignOut()}}
         col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(24)})
         // NOTE: an earlier reconstruction called a backdrop refresh here; no

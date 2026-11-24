@@ -195,19 +195,24 @@ jobs:
             adb push session-seed.xml /data/local/tmp/session-seed.xml
             adb shell run-as app.homeroom mkdir -p shared_prefs
             adb shell 'cat /data/local/tmp/session-seed.xml | run-as app.homeroom sh -c "cat > shared_prefs/homeroom_session.xml"'
+            # Night mode: the palette is the dark charcoal one; the
+            # private12 app follows the system theme, so set it before launch.
+            adb shell cmd uimode night yes
             adb shell am force-stop app.homeroom
             adb shell am start -n app.homeroom/.MainActivity
             sleep 40
             adb exec-out screencap -p > main-chats.png
+            # Restored tab order is Rooms, Rules, Files, Settings.
             adb shell input tap 456 2242
             sleep 6
-            adb exec-out screencap -p > main-files.png
+            adb exec-out screencap -p > main-rules.png
             adb shell input tap 624 2242
             sleep 6
-            adb exec-out screencap -p > main-rules.png
+            adb exec-out screencap -p > main-files.png
             adb shell input tap 792 2242
             sleep 6
             adb exec-out screencap -p > main-settings.png
+            adb shell cmd uimode night auto
             echo "ok: seeded session captured main-UI chrome on all four tabs (server unreachable by design; shell + floating nav only, not room data)"
 
       - name: Upload smoke screenshot

@@ -471,12 +471,14 @@ class MainActivity : AppCompatActivity() {
         content.removeAllViews()
         content.addView(screen, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.GONE
-        headerSearch.visibility = View.VISIBLE
+        // private12 MainActivity.d0: header search shows on the rooms and
+        // files tabs only; the title is the app name on the rooms tab.
+        headerSearch.visibility = if (id == R.id.nav_chats || id == R.id.nav_files) View.VISIBLE else View.GONE
         headerTitle.text = when (id) {
             R.id.nav_files -> "Files"
             R.id.nav_rules -> "Rules"
             R.id.nav_settings -> "Settings"
-            else -> "Chats"
+            else -> "HomeRoom"
         }
         screen.onShow()
     }
