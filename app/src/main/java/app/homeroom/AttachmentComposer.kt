@@ -49,9 +49,13 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // BEFORE the write (exact release parity, K0/V4.s:986-1007) - the save
     // provably never lands and the operation ABORTS, no network after a
     // dropped save (I2). persistSwap/persistReplace catch the throw, latch
-    // persistenceUnknown (conservative: sends and remote deletion stay
-    // blocked until restart) and rethrow; UI callers convert it to the
-    // honest failed-save path. Resume binding to the account/server is a
+    // persistenceUnknown ON THIS COMPOSER INSTANCE (conservative: its sends
+    // and remote deletion stay blocked until restart; the latch does not
+    // carry to a fresh composer) and rethrow. Wrapped callers (the draft
+    // save below) convert the rethrow to a checked false; UNWRAPPED launch
+    // paths rethrow to their scope and can retain the PRIOR status - a
+    // bounded stale-session UI limitation (I2 caller trace), never a
+    // persisted false failure. Resume binding to the account/server is a
     // SEPARATE persisted check (I2), since a resumed composer always belongs
     // to a later generation.
     private val initiatingAuth=host.session.authSnapshot()
