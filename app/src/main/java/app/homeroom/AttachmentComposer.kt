@@ -23,15 +23,40 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     private var ready=false
     private var posting=false
     private var ambiguous=false
+    // Cancellation-safety state (I2: declared with the other state vars so no
+    // later property initializer can overwrite the init-block restore).
+    // priorUnresolved: durable uncertainty from a rotated-away prior attempt.
+    // consumedUnresolved: server says consumed but linkage unproven.
+    private var priorUnresolved=false
+    private var consumedUnresolved=false
+    // Snapshot of the payload at the first send attempt. A retry after an
+    // ambiguous failure reuses postClient/created, so it must carry the exact
+    // same body (release K0/T0: a retry sends "the exact same message ID and
+    // body, never an edited copy"). The input locks once posting starts.
+    private var attemptedText:String?=null
+    // The live staged record (resume record or the one prepare() saved), so
+    // the first send attempt can persist its exact payload with the staged
+    // identities - process death then restores it instead of pairing the
+    // original post ID with edited text.
+    private var stagedRecord:JSONObject?=resume
     // Resume keeps the ORIGINAL client identities and timestamp: if the
     // interruption happened during or after complete/post, the retry carries
     // the same idempotency keys, so the server can dedup instead of doubling.
     private val stagedIds=StagedUpload.idsFor(resume,{clientId()},{java.time.Instant.now().toString()})
+    // var: a 410 outgoing_expired (wrapper: requires_user_resend) rotates the
+    // identity so the explicit user resend is a NEW post, not a retry.
+    private var postClient=stagedIds.postClient
+    private var created=stagedIds.created
     private val uploadClient=stagedIds.uploadClient
     private val completeClient=stagedIds.completeClient
-    private val postClient=stagedIds.postClient
-    private val created=stagedIds.created
     init {
+        // Process-death restore: the payload a previous process attempted is
+        // authoritative - prefill and lock to it (I2 retry residual).
+        StagedUpload.attemptedText(resume)?.let {
+            attemptedText=it;message.setText(it);message.isEnabled=false
+        }
+        priorUnresolved=StagedUpload.hasUnresolvedPrior(resume)
+        consumedUnresolved=StagedUpload.unresolvedCancellationMarked(resume)
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
         body.addView(text(context,if(voice)"Voice note" else "Attach a file",22f,C.text,true));body.addView(status);body.addView(message);body.addView(send)
         send.isEnabled=false
@@ -47,7 +72,41 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             upload=record.getString("upload")
             val total=record.getLong("size")
             if(!privateFile.exists() || privateFile.length()!=total) throw ApiException(0,"staged_file_missing")
-            var offset=record.optLong("offset",0L)
+            // Authoritative server status FIRST (owning source files15 GET
+            // /owner/uploads/<id>): a CONSUMED upload means the post already
+            // landed - reconcile as sent from the server's own record, never
+            // repost, never invent success without the consumed event.
+            val srv=V15Api(host.api).get("uploads/"+ApiClient.enc(upload!!))
+            when(srv.optString("state")) {
+                "consumed" -> {
+                    val eventId=srv.optString("event_id")
+                    if(eventId.isEmpty()) markConsumedUnresolved()
+                    else reconcileConsumed(eventId)
+                    return@launch
+                }
+                "ready" -> {
+                    val recordHash=record.getString("sha256")
+                    val actualHash=withContext(Dispatchers.IO) {java.io.File(privateFile.absolutePath).readBytes().let {sha256(it)}}
+                    StagedUpload.requireComplete(recordHash,total,actualHash,"ready",srv.optString("verified_sha256").ifEmpty {null},srv.optLong("byte_size"))
+                    ready=true;send.isEnabled=true
+                    restoreUnconfirmedAttempt(record)
+                    return@launch
+                }
+                "staged" -> {
+                    // status() wire key is error_code (fail() bodies use error).
+                    if(srv.optBoolean("requires_restart",false) || srv.optString("error_code")=="upload_bytes_inconsistent") {abandonCorruptUpload();return@launch}
+                }
+                else -> {
+                    // failed/expired/unknown state: fail closed, no resume.
+                    host.session.removeStagedUpload(upload!!);privateFile.delete()
+                    status.text="This staged upload can no longer be resumed. Cancel it and attach again."
+                    return@launch
+                }
+            }
+            // Server-authoritative resume point (files15 status received/
+            // next_offset), cross-checked against the local record.
+            var offset=srv.optLong("next_offset",record.optLong("offset",0L))
+            require(offset in 0..total)
             withContext(Dispatchers.IO) {java.io.RandomAccessFile(privateFile,"r").use {input->
                 while(offset<total) {
                     ensureActive();input.seek(offset);val chunk=ByteArray(minOf(262144L,total-offset).toInt());input.readFully(chunk)
@@ -62,13 +121,71 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // Send is enabled. complete carries the original completeClient id.
             val recordHash=record.getString("sha256")
             val actualHash=withContext(Dispatchers.IO) {java.io.File(privateFile.absolutePath).readBytes().let {sha256(it)}}
-            val complete=UploadStatus.from(V15Api(host.api).mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient)))
+            val completeJson=V15Api(host.api).mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient))
+            if(markConsumedIfPosted(completeJson))return@launch
+            val complete=UploadStatus.from(completeJson)
             StagedUpload.requireComplete(recordHash,total,actualHash,complete.state,complete.verified,complete.size)
-            ready=true;status.text="Ready to send. Upload completed and checksum verified.";send.isEnabled=true
+            ready=true;send.isEnabled=true
+            restoreUnconfirmedAttempt(record)
         }catch(e:CancellationException) {throw e}
         catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:ApiException) {
+            // cp42 crash recovery (owning source): upload_bytes_inconsistent
+            // means requires_restart - never auto-resume the same upload.
+            if(e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
+            else status.text="This staged upload can no longer be resumed. Cancel it and attach again."
+        }
         catch(_:Exception) {status.text="This staged upload can no longer be resumed. Cancel it and attach again."}
     }}
+    // Same-ID complete replay can return CONSUMED with linkage + replayed
+    // (uploads15.status exact source): the earlier complete AND its post both
+    // landed. Reconcile as sent from the server's own record - never repost,
+    // and never claim sent without the consumed event linkage.
+    private suspend fun markConsumedIfPosted(complete:JSONObject):Boolean {
+        if(complete.optString("state")!="consumed")return false
+        val eventId=complete.optString("event_id")
+        if(eventId.isEmpty()) {markConsumedUnresolved();return true}
+        reconcileConsumed(eventId)
+        return true
+    }
+    // Server-reported CONSUMED without usable linkage (no event_id, or the
+    // event's nested client_id does not match this attempted post): uncertain
+    // remote state, so the no-remote-DELETE marker is DURABLE (I2) and
+    // cancellation stays local-only across process recreation. One helper, so
+    // every consumed-with-doubt branch shares the same transition.
+    private fun markConsumedUnresolved() {
+        ready=false;send.isEnabled=false;consumedUnresolved=true
+        stagedRecord?.let {host.session.saveStagedUpload(StagedUpload.markUnresolvedCancellation(it)!!)}
+        status.text="Upload already used. Check the room before sending again."
+    }
+    // Tie the consumed linkage to THIS composer's intended post before the UI
+    // asserts sent (I2): the event's client_id must equal the deterministic
+    // double-namespaced ID (outgoing15 o15_ then files15 fu_). Any doubt ->
+    // neutral copy, no claimed success, no repost.
+    private suspend fun reconcileConsumed(eventId:String) {
+        ready=false;send.isEnabled=false
+        val linked=try {
+            // Owning contract (owner_room single-event handler + owner_event):
+            // {"event": {..., "client_id": <stored inner client or null>}}.
+            // Nested key ONLY - no top-level fallback exists in the contract;
+            // null/missing fails closed.
+            val ev=host.api.event(eventId)
+            val cid=ev.optJSONObject("event")?.optString("client_id") ?: ""
+            cid.isNotEmpty() && cid==StagedUpload.namespacedPostId(room.id,postClient)
+        } catch(e:SessionEndedException) {throw e}
+        catch(_:Exception) {false}
+        if(linked) {
+            upload?.let {host.session.removeStagedUpload(it)};privateFile.delete()
+            status.text="Attachment sent. Server recorded this post."
+        } else markConsumedUnresolved()
+    }
+    // Server-side byte inconsistency (cp42): the staged upload is abandoned -
+    // record and staged file removed, Send stays locked, release e1 wording.
+    private fun abandonCorruptUpload() {
+        upload?.let {host.session.removeStagedUpload(it)}
+        privateFile.delete();ready=false;send.isEnabled=false
+        status.text="This upload was interrupted and cannot resume. Cancel it, then choose the file again to start a new upload. No message was sent."
+    }
     private fun prepare() {job=screenScope.launch {
         try {
             var name=suppliedName
@@ -86,6 +203,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             val result=api.mutate("rooms/"+ApiClient.enc(room.id)+"/uploads",JSONObject().put("client_id",uploadClient).put("name",safeName).put("mime_type",mime).put("byte_size",metadata.first).put("sha256",metadata.second).put("kind",if(voice)"voice" else if(mime.startsWith("image/"))"image" else "file"))
             upload=result.getString("upload_id")
             val record=StagedUpload.newRecord(upload!!,room.id,safeName,voice,metadata.first,metadata.second,privateFile.name,result.getLong("next_offset"),stagedIds)
+            stagedRecord=record
             host.session.saveStagedUpload(record)
             var offset=result.getLong("next_offset")
             withContext(Dispatchers.IO) {java.io.RandomAccessFile(privateFile,"r").use {input->
@@ -97,34 +215,122 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+metadata.first+" bytes"}
                 }
             }}
-            val complete=UploadStatus.from(api.mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient)))
+            val completeJson=api.mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient))
+            if(markConsumedIfPosted(completeJson))return@launch
+            val complete=UploadStatus.from(completeJson)
             StagedUpload.requireComplete(metadata.second,metadata.first,metadata.second,complete.state,complete.verified,complete.size)
             ready=true;send.isEnabled=true
             status.text=safeName+" · uploaded and checksum verified. Not sent yet."+(if(voice)" Voice transcription may be unavailable." else "")
         }catch(e:CancellationException) {throw e}
         catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
+        catch(e:ApiException) {if(e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
+            else status.text="Upload not confirmed. Cancel and check the room before starting again."}
         catch(_:Exception) {status.text="Upload not confirmed. Cancel and check the room before starting again."}
     }}
     private fun post() {
         if(!ready || posting)return
-        if(message.text.length>8000) {message.error="Up to 8000 characters";return}
+        val text=StagedUpload.immutableText(attemptedText,message.text.toString())
+        if(text.length>8000) {message.error="Up to 8000 characters";return}
+        attemptedText=text
+        stagedRecord?.let {host.session.saveStagedUpload(StagedUpload.recordAttempt(it,text))}
         posting=true;send.isEnabled=false
-        if(!ambiguous)message.isEnabled=false
+        message.isEnabled=false
         screenScope.launch {
             try {
-                host.api.postWithUploads(room.id,postClient,created,message.text.toString(),room.mainThreadKey,null,emptyList(),listOf(upload!!))
+                host.api.postWithUploads(room.id,postClient,created,text,room.mainThreadKey,null,emptyList(),listOf(upload!!))
                 if(upload!=null)host.session.removeStagedUpload(upload!!)
                 status.text="Attachment sent. Server recorded this post.";ready=false;privateFile.delete();send.visibility=android.view.View.GONE
             }catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
-            catch(_:Exception) {ambiguous=true;status.text="Send not confirmed. Check the room first. Retry keeps the exact same post.";send.text="Retry same post";send.isEnabled=true}
+            catch(e:ApiException) {
+                if(e.code=="outgoing_expired") {
+                    // outgoing15.validate, hardcoded per contract (ApiException
+                    // carries only status/code/retryAfter - the body fields
+                    // retry_new_id=false/requires_user_resend=true are NOT
+                    // dynamically read). The 410 rejects THIS attempt; an
+                    // earlier same-ID attempt may still have landed (lost
+                    // response), so the copy preserves that uncertainty and
+                    // sends the owner to check the room first. The resend is
+                    // a NEW explicit post, never a silent identity swap, and
+                    // the rotation is PERSISTED so process death cannot
+                    // restore the expired identity.
+                    ambiguous=false;attemptedText=null;priorUnresolved=true
+                    val fresh=clientId();val now=java.time.Instant.now().toString()
+                    postClient=fresh;created=now
+                    stagedRecord?.let {host.session.saveStagedUpload(StagedUpload.rotateForResend(it,{fresh},{now})!!)}
+                    message.isEnabled=true;send.text="Send attachment";send.isEnabled=true
+                    status.text="This send wasn't confirmed and has expired. Check the room, then review and send again."
+                } else if(e.code=="upload_not_ready") {
+                    // files15.post rejects a non-ready upload - including one
+                    // CONSUMED by an earlier successful post. Status-first
+                    // recovery (I2), never an unchanged-retry trap.
+                    val srv=try {V15Api(host.api).get("uploads/"+ApiClient.enc(upload!!))}
+                        catch(x:SessionEndedException) {throw x}
+                        catch(_:Exception) {null}
+                    when {
+                        srv==null -> setAmbiguous()
+                        srv.optString("state")=="consumed" -> {
+                            val eventId=srv.optString("event_id")
+                            if(eventId.isEmpty()) markConsumedUnresolved()
+                            else reconcileConsumed(eventId)
+                        }
+                        srv.optBoolean("requires_restart",false) || srv.optString("error_code")=="upload_bytes_inconsistent" -> abandonCorruptUpload()
+                        else -> setAmbiguous()
+                    }
+                } else setAmbiguous()
+            }
+            catch(_:Exception) {setAmbiguous()}
             finally {posting=false}
         }
     }
+    // Ambiguity restored across restart (I2): a persisted attempted payload
+    // means the post outcome was NEVER confirmed - come back in the ambiguous
+    // state (check-room warning, retry-same-post, two-tap cancel), not a
+    // fresh Send.
+    private fun restoreUnconfirmedAttempt(record:JSONObject) {
+        if(StagedUpload.unconfirmedAttempt(record)) {setAmbiguous();return}
+        // A durable consumed-without-linkage marker contradicts a plain ready
+        // state: fail closed, never claim ready (I2 central predicate).
+        if(consumedUnresolved) {markConsumedUnresolved();return}
+        if(priorUnresolved) {
+            // Honest ready state: an earlier rotated-away send may already be
+            // in the room (410 rejects one attempt; it cannot prove the
+            // earlier one absent). Editable new post, but check-room first.
+            status.text="Ready to send. An earlier send may already be in the room - check it first."
+            return
+        }
+        status.text="Ready to send. Upload completed and checksum verified."
+    }
+    private fun setAmbiguous() {
+        ambiguous=true
+        status.text="Send not confirmed. Check the room first. Retry keeps the exact same post."
+        send.text="Retry same post";send.isEnabled=true
+    }
+    // Two-tap cancel while ambiguous (release K0/W0 semantics: its own copy
+    // contemplates both cancelling and sending again AFTER checking the
+    // room). First tap warns, second proceeds - an unrepairable retry can no
+    // longer trap the owner, without inventing a no-post status (I2).
+    private var cancelWarned=false
+    // Centralized cancellation safety (I2): remote DELETE only when no
+    // uncertainty marker is set - ambiguous in-session, durable prior, or
+    // known-consumed without positive linkage.
+    private fun cancelUnsafe()=ambiguous || priorUnresolved || consumedUnresolved
     private fun cancelUpload() {
-        if(posting || ambiguous) {status.text="A post may already exist. Check the room before cancelling or sending again.";return}
-        job?.cancel();privateFile.delete();ready=false;send.isEnabled=false
+        if(posting)return
+        if(cancelUnsafe() && !cancelWarned) {cancelWarned=true;status.text="A post may already exist. Check the room before cancelling or sending again.";return}
+        job?.cancel();ready=false;send.isEnabled=false
         val id=upload
-        if(id==null) {status.text="Local upload cancelled.";return}
+        if(id==null) {privateFile.delete();status.text="Local upload cancelled.";return}
+        if(cancelUnsafe()) {
+            // I2: DELETE on a possibly-CONSUMED upload has no grounded effect
+            // semantics - never delete a remote attachment blindly. Local
+            // abandon only; an unposted staged upload expires server-side
+            // (release X0 copy), a landed post is managed from the room.
+            upload?.let {host.session.removeStagedUpload(it)}
+            privateFile.delete()
+            status.text="Cancelled locally, server not contacted. Check the room: a recorded post stays there."
+            return
+        }
+        privateFile.delete()
         screenScope.launch {
             try {host.api.request("/owner/uploads/"+ApiClient.enc(id),"DELETE");status.text="Upload cancelled. No post was sent."}
             catch(_:Exception) {status.text="Stopped locally. Server cleanup not confirmed; unused uploads expire."}

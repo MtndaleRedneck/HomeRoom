@@ -39,6 +39,109 @@ fun main(args: Array<String>) = runBlocking {
         require(api.sessionCookieFor("http://example.invalid/x".toHttpUrl()) == null) { "foreign host received session cookie" }
         require(api.sessionCookieFor("http://127.0.0.1.evil.example/x".toHttpUrl()) == null) { "suffix-trick host received session cookie" }
     }
+    check("cookie-incoming-origin") {
+        // Incoming acceptance is scoped to the enrolled origin too: a foreign
+        // response (e.g. an absolute avatar URL) must not overwrite enrolled
+        // session state with a same-named cookie.
+        fun cookie(value: String) = okhttp3.Cookie.Builder()
+            .name(ApiClient.COOKIE_NAME).value(value)
+            .domain("127.0.0.1").path("/").build()
+        session.cookie = "test-cookie"
+        require(!api.acceptSessionCookie("http://example.invalid/x".toHttpUrl(), listOf(cookie("evil")))) { "foreign Set-Cookie accepted" }
+        require(session.cookie == "test-cookie") { "foreign Set-Cookie overwrote enrolled session" }
+        require(!api.acceptSessionCookie("http://127.0.0.1:9999/x".toHttpUrl(), listOf(cookie("evil")))) { "other-port Set-Cookie accepted" }
+        require(session.cookie == "test-cookie") { "other-port Set-Cookie overwrote enrolled session" }
+        require(api.acceptSessionCookie("http://127.0.0.1:8471/x".toHttpUrl(), listOf(cookie("rotated")))) { "enrolled Set-Cookie refused" }
+        require(session.cookie == "rotated") { "enrolled Set-Cookie not stored" }
+        session.cookie = "test-cookie"
+    }
+    check("attachment-retry-immutable") {
+        // After the first send attempt the payload is immutable: a retry of an
+        // ambiguous failure reuses the client identity, so it must carry the
+        // exact same body, never an edited copy (release K0/T0 wording).
+        require(StagedUpload.immutableText(null, "hello") == "hello") { "first attempt did not take current text" }
+        require(StagedUpload.immutableText("hello", "edited") == "hello") { "retry would send an edited copy" }
+    }
+    check("attachment-retry-persisted") {
+        // Process-recreation equivalent: the attempted payload is persisted
+        // WITH the staged identities; a recreated composer (serialize +
+        // reparse) restores and locks to it, so the original post ID can
+        // never be paired with edited text after process death.
+        var n = 0
+        val ids = StagedUpload.idsFor(null, { "fresh-" + (++n) }, { "t0" })
+        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", false, 12, "abc", "attachment-x", 0, ids)
+        StagedUpload.recordAttempt(rec, "original body")
+        val recreated = JSONObject(rec.toString())
+        val restored = StagedUpload.attemptedText(recreated)
+        require(restored == "original body") { "attempted payload lost across recreation" }
+        require(StagedUpload.immutableText(restored, "edited") == "original body") { "recreated composer would send an edited copy" }
+        require(StagedUpload.idsFor(recreated, { "WRONG" }, { "WRONG" }) == ids) { "identities lost across recreation" }
+        val unsent = StagedUpload.newRecord("u2", "room1", "b.txt", false, 5, "def", "attachment-y", 0, ids)
+        require(StagedUpload.attemptedText(unsent) == null) { "unsent record claims an attempt" }
+        require(StagedUpload.immutableText(StagedUpload.attemptedText(unsent), "typed") == "typed") { "fresh composer did not take current text" }
+        StagedUpload.recordAttempt(rec, "")
+        require(StagedUpload.attemptedText(JSONObject(rec.toString())) == "") { "empty payload not distinguished from absent" }
+    }
+    check("attachment-expiry-rotation-durable") {
+        // 410 outgoing_expired rotates the post identity AND persists it:
+        // a process recreation must restore the rotated identity, not the
+        // expired one; the attempted payload clears so the resend snapshots
+        // anew; upload identities are untouched.
+        var n = 0
+        val ids = StagedUpload.idsFor(null, { "fresh-" + (++n) }, { "t0" })
+        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", false, 12, "abc", "attachment-x", 0, ids)
+        StagedUpload.recordAttempt(rec, "original body")
+        StagedUpload.rotateForResend(rec, { "rotated-post" }, { "t1" })
+        val recreated = JSONObject(rec.toString())
+        val restored = StagedUpload.idsFor(recreated, { "WRONG" }, { "WRONG" })
+        require(restored.postClient == "rotated-post" && restored.created == "t1") { "expired identity restored after recreation: $restored" }
+        require(restored.uploadClient == ids.uploadClient && restored.completeClient == ids.completeClient) { "upload identities changed by rotation" }
+        require(StagedUpload.attemptedText(recreated) == null) { "stale attempted payload survived rotation" }
+        require(StagedUpload.immutableText(StagedUpload.attemptedText(recreated), "reviewed text") == "reviewed text") { "resend did not snapshot anew" }
+        // Reconciliation history: the rotated-away identity survives, with
+        // its created timestamp and attempted payload - a 410 rejects only
+        // one attempt and the earlier same-ID acceptance question needs it.
+        val priors = StagedUpload.priorPosts(recreated)
+        require(priors.length() == 1) { "prior identity history lost: $priors" }
+        val prior = priors.getJSONObject(0)
+        require(prior.getString("post_client") == "fresh-3" && prior.getString("created") == "t0") { "prior identity wrong: $prior" }
+        require(prior.getString("attempted_text") == "original body") { "prior payload lost: $prior" }
+        // Ambiguity itself is durable: attempted payload present == unconfirmed.
+        val rec2 = StagedUpload.newRecord("u3", "room1", "c.txt", false, 5, "ghi", "attachment-z", 0, ids)
+        require(!StagedUpload.unconfirmedAttempt(rec2)) { "unsent record marked unconfirmed" }
+        StagedUpload.recordAttempt(rec2, "typed")
+        require(StagedUpload.unconfirmedAttempt(JSONObject(rec2.toString()))) { "unconfirmed state lost across recreation" }
+        // Prior-only record (rotated): no current attempt, but the prior
+        // uncertainty is durable and detected across recreation.
+        val priorOnly = JSONObject(rec.toString())
+        require(!StagedUpload.unconfirmedAttempt(priorOnly)) { "prior-only record claims current attempt" }
+        require(StagedUpload.hasUnresolvedPrior(priorOnly)) { "prior-only uncertainty lost across recreation" }
+        require(!StagedUpload.hasUnresolvedPrior(rec2)) { "fresh attempt claims prior uncertainty" }
+        // Centralized cancellation safety (I2): the durable consumed-without-
+        // linkage marker, and the single predicate over every marker kind.
+        val plain = StagedUpload.newRecord("u4", "room1", "d.txt", false, 7, "jkl", "attachment-w", 0, ids)
+        require(!StagedUpload.hasUnresolvedCancellation(plain)) { "clean record claims unresolved cancellation" }
+        require(!StagedUpload.unresolvedCancellationMarked(plain)) { "clean record claims consumed marker" }
+        StagedUpload.markUnresolvedCancellation(plain)
+        val plainRec = JSONObject(plain.toString())
+        require(StagedUpload.unresolvedCancellationMarked(plainRec)) { "consumed marker lost across recreation" }
+        require(StagedUpload.hasUnresolvedCancellation(plainRec)) { "predicate misses consumed marker after recreation" }
+        require(StagedUpload.hasUnresolvedCancellation(rec2)) { "predicate misses unconfirmed attempt" }
+        require(StagedUpload.hasUnresolvedCancellation(priorOnly)) { "predicate misses prior-only uncertainty" }
+        require(!StagedUpload.unconfirmedAttempt(plainRec)) { "consumed-only record claims current attempt" }
+    }
+    check("namespaced-post-id") {
+        // The consumed-linkage check compares the event's client_id against
+        // the deterministic double namespace (outgoing15 o15_ -> files15 fu_).
+        // Structural pins: prefixes, 48-hex layers, determinism, room and
+        // client sensitivity.
+        val id = StagedUpload.namespacedPostId("room1", "post-1")
+        require(id.startsWith("fu_") && id.length == 51) { "bad fu_ shape: $id" }
+        require(id == StagedUpload.namespacedPostId("room1", "post-1")) { "not deterministic" }
+        require(id != StagedUpload.namespacedPostId("room2", "post-1")) { "room not mixed in" }
+        require(id != StagedUpload.namespacedPostId("room1", "post-2")) { "client not mixed in" }
+        require(id.removePrefix("fu_").all { it in '0'..'9' || it in 'a'..'f' }) { "not hex" }
+    }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.
         val e = try { api.avatarBytes("http://example.invalid/a.png"); null } catch (x: ApiException) { x }

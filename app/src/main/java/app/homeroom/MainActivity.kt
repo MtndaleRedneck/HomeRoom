@@ -191,24 +191,26 @@ class MainActivity : AppCompatActivity() {
     private fun consumeHandoff() {
         val handoff = pendingHandoff ?: return
         pendingHandoff = null
-        val saved = session.serverUrl?.trimEnd('/')
         if (session.enrolled) {
+            val saved = session.serverUrl?.trimEnd('/')
             val msg = if (saved == handoff.origin) "Already signed in to this server."
                 else "Sign out first before connecting to a different server."
             android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
             return
         }
-        if (saved == handoff.origin) {
-            fillHandoff(handoff)
-        } else {
-            val host = try { java.net.URI(handoff.origin).host } catch (e: Exception) { handoff.origin }
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Connect to this server?")
-                .setMessage(host.toString() + "\n\nOnly continue if this is your intended HomeRoom server.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Connect") { _, _ -> fillHandoff(handoff) }
-                .show()
-        }
+        // RECONSTRUCTION-ORIGINAL hardening (deliberate divergence from the
+        // release's same-origin auto-connect, I2 finding): while NOT enrolled,
+        // a remembered destination is not permission. A failed or cancelled
+        // earlier attempt leaves session.serverUrl saved, so auto-connecting on
+        // origin match would bypass consent. Every handoff in this state gets an
+        // explicit enrollment decision showing the verified destination host.
+        val host = try { java.net.URI(handoff.origin).host } catch (e: Exception) { handoff.origin }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Connect to this server?")
+            .setMessage(host.toString() + "\n\nOnly continue if this is your intended HomeRoom server.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Connect") { _, _ -> fillHandoff(handoff) }
+            .show()
     }
 
     private fun fillHandoff(handoff: ConnectionHandoff) {

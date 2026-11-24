@@ -46,10 +46,13 @@ Grounded against the production source and FIXED in the reconstruction:
    ABSENT from the production 1.4 router. NEEDS: held-1.5 contract.
 3. postWithUploads body keys (client_created_at, upload_ids): held-1.5;
    production 1.4 /rooms/<id>/posts accepts exactly {client_id, text,
-   thread_key, parent_id, mentions, asks_owner}. Also unresolved whether
-   null-valued optional keys may be sent (1.4 rejects unknown keys;
-   the reconstruction always includes thread_key/parent_id, JSONObject.NULL
-   when unset). NEEDS: held-1.5 contract + release post-builder evidence.
+   thread_key, parent_id, mentions, asks_owner}. thread_key/parent_id
+   PRESENCE is fine (both are in the 1.4 allowed set), and the exact
+   private12 post builder (K0/J0) sends them as JSONObject.NULL when unset -
+   the reconstruction matches the release here. What remains ungrounded is
+   SERVER-side handling of those null values (not covered by the 1.4
+   excerpts). NEEDS: post() body handling from the owning server source or
+   the held-1.5 contract.
 4. Rule.decidedBy / decidedAt: fields exist in the release Rule model (v4
    toString); JSON key names (decided_by / decided_at) are inferred snake_case.
 5. Avatar fetch path handling: relative vs absolute avatar URLs assumed both

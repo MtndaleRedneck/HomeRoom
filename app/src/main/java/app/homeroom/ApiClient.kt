@@ -54,7 +54,7 @@ class ApiClient(private val session: Session) {
         .followRedirects(false)
         .cookieJar(object : CookieJar {
             override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                cookies.firstOrNull { it.name == COOKIE_NAME }?.let { session.cookie = it.value }
+                acceptSessionCookie(url, cookies)
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -79,8 +79,22 @@ class ApiClient(private val session: Session) {
     // Internal so the mock harness can pin the boundary.
     internal fun sessionCookieFor(url: HttpUrl): String? {
         val value = session.cookie ?: return null
-        val origin = enrolledOrigin() ?: return null
-        return if (url.scheme == origin.first && url.host == origin.second && url.port == origin.third) value else null
+        return if (isEnrolledOrigin(url)) value else null
+    }
+
+    internal fun isEnrolledOrigin(url: HttpUrl): Boolean {
+        val origin = enrolledOrigin() ?: return false
+        return url.scheme == origin.first && url.host == origin.second && url.port == origin.third
+    }
+
+    // RECONSTRUCTION-ORIGINAL hardening (not release-evidenced): a session
+    // cookie is only ACCEPTED from the enrolled server's origin. A foreign
+    // host (e.g. an absolute avatar URL) must not overwrite enrolled session
+    // state with a same-named cookie. Internal so the mock harness can pin it.
+    internal fun acceptSessionCookie(url: HttpUrl, cookies: List<Cookie>): Boolean {
+        if (!isEnrolledOrigin(url)) return false
+        cookies.firstOrNull { it.name == COOKIE_NAME }?.let { session.cookie = it.value } ?: return false
+        return true
     }
 
     private fun enrolledOrigin(): Triple<String, String, Int>? = try {
@@ -232,12 +246,29 @@ class ApiClient(private val session: Session) {
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     if (response.code == 401) throw SessionEndedException("owner_session_required")
-                    throw ApiException(response.code, "upload_failed")
+                    // cp42 crash recovery: a 409 upload_bytes_inconsistent
+                    // carries requires_restart/retry_same_upload=false and the
+                    // client must abandon this upload, never auto-resume it.
+                    val err = try { JSONObject(text).optString("error", "") } catch (e: Exception) { "" }
+                    throw ApiException(response.code, if (err.isNotEmpty()) err else "upload_failed")
                 }
                 if (text.isEmpty()) JSONObject() else JSONObject(text)
             }
         }
 
+    // RECONSTRUCTED: held-1.5 OUTER wire contract (owning source outgoing15.py
+    // + conversation14 dispatch insertion, sections A/B of the recovered
+    // wrapper reconciliation): a post body carrying client_created_at enters
+    // the 1.5 offline-identity wrapper, which VALIDATES the timestamp
+    // (-30d -> 410 outgoing_expired/requires_user_resend; >+300s -> 400
+    // future_created_at), hashes the ORIGINAL body for idempotency, strips
+    // the timestamp, namespaces client_id, then reenters conversation14.post
+    // and (for upload_ids) files15.post, whose inner allowlist is
+    // {client_id, text, thread_key, parent_id, mentions, asks_owner,
+    // upload_ids}. upload_ids: max 4, unique strings; empty text allowed
+    // when uploads attach. The wrapper also records the owner outgoing ID
+    // for the ambiguous-send recovery lookup. The retry must keep the whole
+    // original body byte-identical (composer locks payload + identities).
     suspend fun postWithUploads(room: String, clientId: String, created: String?, text: String,
                                 threadKey: String?, parentId: String?, mentions: List<String>, uploadIds: List<String>): JSONObject =
         request("/rooms/" + enc(room) + "/posts", "POST", JSONObject()
@@ -363,12 +394,23 @@ class ApiClient(private val session: Session) {
             exact.put("metadata_version", body.getInt("metadata_version"))
             return request("/owner/rooms/" + enc(room) + "/" + action, "POST", exact)
         }
+        // Owning contract (preferences15.put): the PUT body must be EXACTLY
+        // {client_id, version, pinned, mute_mode, muted_until, archived} with
+        // metadata_version only when the shared archive state changes - a GET
+        // echo would send response-only keys (room_id, archive_scope) and a
+        // stale muted_until on off/forever, both 400 bad_body server-side.
+        // Build the mutation body from the allowlist, never by merging.
         val prefs = roomPreferences(room)
-        val merged = JSONObject(prefs.toString())
-        val keys = body.keys()
-        while (keys.hasNext()) { val k = keys.next(); merged.put(k, body.get(k)) }
-        merged.put("client_id", java.util.UUID.randomUUID().toString())
-        return request("/owner/rooms/" + enc(room) + "/preferences", "PUT", merged)
+        val exact = JSONObject()
+            .put("client_id", java.util.UUID.randomUUID().toString())
+            .put("version", prefs.getInt("version"))
+            .put("pinned", prefs.getBoolean("pinned"))
+            .put("mute_mode", if (body.has("mute_mode")) body.getString("mute_mode") else prefs.getString("mute_mode"))
+            .put("muted_until", if (body.has("muted_until")) body.get("muted_until") else JSONObject.NULL)
+            .put("archived", prefs.getBoolean("archived"))
+        if (body.has("archived") && body.getBoolean("archived") != prefs.getBoolean("archived"))
+            exact.put("archived", body.getBoolean("archived")).put("metadata_version", prefs.getInt("metadata_version"))
+        return request("/owner/rooms/" + enc(room) + "/preferences", "PUT", exact)
     }
 
     // RECONSTRUCTED from the exact private12 release build (Z1/b.c, verified
@@ -490,10 +532,12 @@ class ApiClient(private val session: Session) {
     /** Returns (bytes, mimeType) for an image preview, or throws. */
     suspend fun filePreview(id: String, maxBytes: Int = 10 * 1024 * 1024): Pair<ByteArray, String> =
         withContext(Dispatchers.IO) {
+            val previewUrl = baseUrl() + "/owner/files/" + enc(id)
             val request = Request.Builder()
-                .url(baseUrl() + "/owner/files/" + enc(id))
+                .url(previewUrl)
                 .header("Accept", "*/*")
                 .get()
+                .apply { applyOriginHeaders(this, previewUrl, "GET") }
                 .build()
             client.newCall(request).execute().use { response ->
                 if (response.code == 401) throw SessionEndedException("unauthorized")

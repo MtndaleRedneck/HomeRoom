@@ -44,6 +44,25 @@ Sec-Fetch headers on every request, rename/archive dedicated CAS routes,
 root-relative avatar URL resolution.
 NOT claimed: functional readiness from compile/parser/mock evidence.
 
+## Deliberate divergences from release behavior (security repairs)
+
+- **Connect handoff always confirms while not enrolled.** The release
+  auto-connected a handoff whose origin matched the saved server URL. A
+  failed or cancelled earlier attempt leaves that URL saved, so the match
+  bypassed consent (I2 finding). Now every handoff in the not-enrolled state
+  shows the "Connect to this server?" dialog with the verified destination
+  host. Enrolled behavior is unchanged (toast).
+- **Incoming session cookies are origin-scoped** (I2 finding): a foreign
+  response can no longer overwrite the enrolled session with a same-named
+  cookie. Outgoing scoping landed earlier; both directions are pinned in the
+  mock harness.
+- **filePreview carries the same Origin/Sec-Fetch headers** as every other
+  direct call (I2 consistency finding).
+- **Composer retry is immutable-payload** (grounded in the release's own
+  copy, K0/T0: a retry sends "the exact same message ID and body, never an
+  edited copy"): the message input locks at the first send attempt and the
+  snapshot text is what a retry carries.
+
 ## Pending
 
 - **Signed-release verification:** confirm the exact current tree produces a
