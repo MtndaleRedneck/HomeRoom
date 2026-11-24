@@ -112,6 +112,64 @@ class MainActivity : AppCompatActivity() {
         }
         startPoller()
         registerConnectivity()
+        onConnectIntent(intent)
+    }
+
+    // RECONSTRUCTED from the exact private12 release build (MainActivity.K /
+    // P / Q and the K0.y1 handoff value): a homeroom://connect VIEW intent is
+    // validated by ConnectionHandoff (same checks as the release), confirmed
+    // with the user when it names a different server, then fills the setup
+    // screen's link and starts connecting.
+    private var pendingHandoff: ConnectionHandoff? = null
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        onConnectIntent(intent)
+    }
+
+    private fun onConnectIntent(intent: android.content.Intent?) {
+        if (!ConnectionHandoff.matches(intent)) return
+        intent!!
+        val handoff = ConnectionHandoff.from(intent)
+        // Consume the intent so rotation/re-create does not retrigger it
+        // (release clears data and extras the same way).
+        intent.data = null
+        intent.removeExtra("server_origin")
+        intent.removeExtra("enrollment_code")
+        if (handoff == null) {
+            android.widget.Toast.makeText(this, "That connection link isn't valid.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        pendingHandoff = handoff
+        consumeHandoff()
+    }
+
+    private fun consumeHandoff() {
+        val handoff = pendingHandoff ?: return
+        pendingHandoff = null
+        val saved = session.serverUrl?.trimEnd('/')
+        if (session.enrolled) {
+            val msg = if (saved == handoff.origin) "Already signed in to this server."
+                else "Sign out first before connecting to a different server."
+            android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (saved == handoff.origin) {
+            fillHandoff(handoff)
+        } else {
+            val host = try { java.net.URI(handoff.origin).host } catch (e: Exception) { handoff.origin }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Connect to this server?")
+                .setMessage(host.toString() + "\n\nOnly continue if this is your intended HomeRoom server.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Connect") { _, _ -> fillHandoff(handoff) }
+                .show()
+        }
+    }
+
+    private fun fillHandoff(handoff: ConnectionHandoff) {
+        showSetup(null)
+        (content.getChildAt(0) as? SetupScreen)?.acceptHandoff(handoff, auto = true)
     }
 
     // RECONSTRUCTED Nov 23, 2026: connectivity surface recovered from the exact

@@ -6,6 +6,15 @@ import java.net.URI
 internal data class ConnectionHandoff(val origin:String,val code:String) {
     val link get()=origin+"/homeroom/connect#token="+android.net.Uri.encode(code)
     companion object {
+        // RECONSTRUCTED from release MainActivity.K(Intent): the entry check is
+        // separate from validation so a malformed connect link can be told
+        // apart from an unrelated VIEW intent (release: "That connection link
+        // isn't valid.").
+        fun matches(intent:Intent?):Boolean {
+            if(intent==null || intent.action!=Intent.ACTION_VIEW)return false
+            val d=intent.data ?: return false
+            return d.scheme=="homeroom" && d.host=="connect"
+        }
         fun from(intent:Intent):ConnectionHandoff? {
             if(intent.action!=Intent.ACTION_VIEW)return null
             val uri=try {URI(intent.dataString ?: return null)}catch(_:Exception) {return null}

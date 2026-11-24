@@ -43,6 +43,11 @@ class ApiClient(private val session: Session) {
 
     private val bootMutex = Mutex()
 
+    // RECONSTRUCTION-ORIGINAL: cap on avatar downloads (absolute-URL path
+    // included). The release's cap, if any, is unknown; 8 MiB is far above
+    // any legitimate avatar.
+    private val AVATAR_MAX_BYTES = 8 * 1024 * 1024
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -53,7 +58,7 @@ class ApiClient(private val session: Session) {
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                val value = session.cookie ?: return emptyList()
+                val value = cookieValueForHost(url.host) ?: return emptyList()
                 return listOf(
                     Cookie.Builder()
                         .name(COOKIE_NAME)
@@ -66,6 +71,19 @@ class ApiClient(private val session: Session) {
             }
         })
         .build()
+
+    // RECONSTRUCTION-ORIGINAL hardening (not release-evidenced): the session
+    // cookie only ever goes to the enrolled server's host. Server-supplied
+    // absolute URLs (e.g. avatar URLs) could otherwise carry the session to a
+    // foreign host. Internal so the mock harness can pin the boundary.
+    internal fun cookieValueForHost(host: String): String? {
+        val value = session.cookie ?: return null
+        return if (host == serverHost()) value else null
+    }
+
+    private fun serverHost(): String? = try {
+        session.serverUrl?.let { java.net.URI(it).host?.lowercase() }
+    } catch (e: Exception) { null }
 
     private fun baseUrl(): String =
         (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + API_PREFIX
@@ -223,10 +241,30 @@ class ApiClient(private val session: Session) {
 
     // RECONSTRUCTED: avatar bytes through the app's own client (cookie stays in-app).
     suspend fun avatarBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
-        val full = if (url.startsWith("http")) url else baseUrl() + url
+        // RECONSTRUCTION-ORIGINAL hardening (release behavior unverified):
+        // absolute avatar URLs must be https, and downloads are size-capped.
+        // The cookie jar above additionally scopes the session cookie to the
+        // enrolled server, so a foreign host receives no credentials.
+        val full = if (url.startsWith("http")) {
+            if (!url.startsWith("https://")) throw ApiException(0, "avatar_url_not_https")
+            url
+        } else baseUrl() + url
         client.newCall(Request.Builder().url(full).get().build()).execute().use { response ->
             if (!response.isSuccessful) throw ApiException(response.code, "download_failed")
-            response.body?.bytes() ?: throw ApiException(response.code, "download_failed")
+            val stream = response.body?.byteStream() ?: throw ApiException(response.code, "download_failed")
+            stream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > AVATAR_MAX_BYTES) throw ApiException(0, "avatar_too_large")
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray()
+            }
         }
     }
 

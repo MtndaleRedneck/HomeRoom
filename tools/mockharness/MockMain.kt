@@ -27,6 +27,17 @@ fun main(args: Array<String>) = runBlocking {
         require(name == "Owner") { "display_name sentinel lost: $name" }
         require(avatar?.url == "https://example.invalid/a.png") { "avatar sentinel lost" }
     }
+    check("cookie-origin-scoping") {
+        // Same-origin gets the cookie; foreign and suffix-trick hosts never do.
+        require(api.cookieValueForHost("127.0.0.1") == "test-cookie") { "same-origin cookie lost" }
+        require(api.cookieValueForHost("example.invalid") == null) { "foreign host received session cookie" }
+        require(api.cookieValueForHost("127.0.0.1.evil.example") == null) { "suffix-trick host received session cookie" }
+    }
+    check("avatar-https-only") {
+        // Cleartext absolute avatar URLs are refused before any network call.
+        val e = try { api.avatarBytes("http://example.invalid/a.png"); null } catch (x: ApiException) { x }
+        require(e?.code == "avatar_url_not_https") { "cleartext absolute avatar URL accepted" }
+    }
     check("profile-set-name") { require(api.setOwnerName("Owner") == "Owner") { "set-name echo lost" } }
     check("ai-guide") {
         val o = api.ownerAiGuide()
