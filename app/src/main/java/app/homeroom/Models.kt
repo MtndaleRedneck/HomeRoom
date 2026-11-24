@@ -24,6 +24,17 @@ data class Room(
     val metadataVersion: Int = 0,
     val archived: Boolean = false,
     val pinned: Boolean = false,
+    // RECONSTRUCTED Nov 24, 2026: remaining release Room fields (k3, 24-param
+    // ctor, parser in m3/l): muted_until (preferences override top-level),
+    // first_unread_seq, last_post actor/own, pinned_guide (raw object; the
+    // release wraps it as W2 only for kind=ai_guide at the owner docs path),
+    // alert_level (default "all").
+    val mutedUntil: String? = null,
+    val firstUnreadSeq: Long? = null,
+    val lastActor: String? = null,
+    val lastOwn: Boolean = false,
+    val pinnedGuide: JSONObject? = null,
+    val alertLevel: String = "all",
 ) {
     companion object {
         fun from(o: JSONObject): Room {
@@ -55,7 +66,15 @@ data class Room(
                 icon = o.optJSONObject("icon"),
                 metadataVersion = o.optInt("metadata_version", 0),
                 archived = o.optBoolean("archived", false),
-                pinned = o.optBoolean("pinned", false),
+                pinned = o.optJSONObject("preferences")?.optBoolean("pinned")
+                    ?: o.optBoolean("pinned", false),
+                mutedUntil = o.optJSONObject("preferences")?.nullableString("muted_until")
+                    ?: o.nullableString("muted_until"),
+                firstUnreadSeq = if (o.has("first_unread_seq") && !o.isNull("first_unread_seq")) o.optLong("first_unread_seq") else null,
+                lastActor = o.optJSONObject("last_post")?.nullableString("actor"),
+                lastOwn = o.optJSONObject("last_post")?.optBoolean("own", false) ?: false,
+                pinnedGuide = o.optJSONObject("pinned_guide"),
+                alertLevel = o.optString("alert_level", "all"),
             )
         }
     }
@@ -100,6 +119,15 @@ data class RoomRoster(
     }
 }
 
+// RECONSTRUCTED Nov 24, 2026: assistant status entry (V0 in the release
+// build), carried on ChatEvent.assistant_statuses: actor, reply_event_id,
+// notified_at.
+data class AssistantStatus(val actor: String, val replyEventId: String?, val notifiedAt: String?)
+
+// RECONSTRUCTED Nov 24, 2026: reaction summary (j3 in the release build):
+// reaction (required), count (required), mine (optBoolean, default false).
+data class Reaction(val reaction: String, val count: Int, val mine: Boolean)
+
 data class ChatEvent(
     val eventId: String,
     val seq: Long,
@@ -114,10 +142,39 @@ data class ChatEvent(
     // optInt("version", 1) in the release parser) and a nullable room_id.
     val version: Int = 1,
     val roomId: String? = null,
+    // RECONSTRUCTED Nov 24, 2026: remaining release ChatEvent fields recovered
+    // from the exact private12 release parser (s1 -> t1, 21-param ctor): own
+    // flag, mentions string list, assistant statuses, kind, attachments
+    // (parsed with the release file parser), edited_at, deleted, decision_id,
+    // request_id, reaction summaries. Appended with defaults so existing
+    // callers and older wire payloads remain valid.
+    val own: Boolean = false,
+    val mentions: List<String> = emptyList(),
+    val assistantStatuses: List<AssistantStatus> = emptyList(),
+    val kind: String? = null,
+    val attachments: List<RoomFile> = emptyList(),
+    val editedAt: String? = null,
+    val deleted: Boolean = false,
+    val decisionId: String? = null,
+    val requestId: String? = null,
+    val reactions: List<Reaction> = emptyList(),
 ) {
     companion object {
         fun from(o: JSONObject): ChatEvent {
             val actor = o.optJSONObject("actor")
+            // Release semantics: a deleted event renders as "Message deleted"
+            // and carries no attachments.
+            val deleted = o.optBoolean("deleted", false)
+            // Release semantics: when "mentions" is present and non-null it
+            // must be an array of strings, otherwise invalid_response_mentions.
+            val mentions = if (!o.isNull("mentions") && o.has("mentions")) {
+                val arr = o.optJSONArray("mentions")
+                    ?: throw IllegalArgumentException("invalid_response_mentions")
+                (0 until arr.length()).map { i ->
+                    arr.opt(i) as? String
+                        ?: throw IllegalArgumentException("invalid_response_mentions")
+                }
+            } else emptyList()
             return ChatEvent(
                 eventId = o.optString("event_id"),
                 seq = o.optLong("seq", 0),
@@ -126,11 +183,30 @@ data class ChatEvent(
                 actorId = actor?.optString("actor") ?: o.optString("actor"),
                 actorName = actor?.optString("display_name")?.ifBlank { null }
                     ?: actor?.optString("actor") ?: o.optString("actor"),
-                text = o.optString("text"),
+                text = if (deleted) "Message deleted" else o.optString("text"),
                 version = o.optInt("version", 1),
                 roomId = o.nullableString("room_id"),
                 createdAt = o.optString("created_at").ifBlank { o.optString("ts") },
                 clientId = o.optString("client_id").ifBlank { null },
+                own = o.optBoolean("own", false),
+                mentions = mentions,
+                assistantStatuses = (o.optJSONArray("assistant_statuses")?.objects() ?: emptyList()).map {
+                    AssistantStatus(
+                        actor = it.optString("actor"),
+                        replyEventId = it.nullableString("reply_event_id"),
+                        notifiedAt = it.nullableString("notified_at"),
+                    )
+                },
+                kind = o.nullableString("kind"),
+                attachments = if (deleted) emptyList() else
+                    (o.optJSONArray("attachments")?.objects() ?: emptyList()).map { RoomFile.from(it) },
+                editedAt = o.nullableString("edited_at"),
+                deleted = deleted,
+                decisionId = o.nullableString("decision_id"),
+                requestId = o.nullableString("request_id"),
+                reactions = (o.optJSONArray("reactions")?.objects() ?: emptyList()).map {
+                    Reaction(it.getString("reaction"), it.getInt("count"), it.optBoolean("mine", false))
+                },
             )
         }
     }
@@ -153,6 +229,12 @@ data class RoomFile(
     val kind: String,
     val url: String?,
     val eventId: String?,
+    // RECONSTRUCTED Nov 24, 2026: remaining release RoomFile fields (l3, from
+    // the release file parser n1/a.z): sha256 (nullable), digest_state
+    // (default "unverified"), transcript (nullable JSON object).
+    val sha256: String? = null,
+    val digestState: String = "unverified",
+    val transcript: JSONObject? = null,
 ) {
     val isImage: Boolean
         get() = mimeType in setOf("image/png", "image/jpeg", "image/webp", "image/gif")
@@ -169,6 +251,9 @@ data class RoomFile(
             kind = o.optString("kind").ifBlank { "file" },
             url = o.nullableString("url"),
             eventId = o.nullableString("event_id"),
+            sha256 = o.nullableString("sha256"),
+            digestState = o.optString("digest_state", "unverified"),
+            transcript = o.optJSONObject("transcript"),
         )
     }
 }

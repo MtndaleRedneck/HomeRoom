@@ -28,7 +28,13 @@ class ApiException(val status: Int, val code: String, val retryAfter: Int = 0) :
  * or 403 csrf_failed is retried once after a fresh bootstrap; a 401 ends the
  * session and surfaces as SessionEndedException.
  */
-class ApiClient(private val session: Session) {
+class ApiClient(
+    private val session: Session,
+    // TESTABILITY SEAM (Nov 24, 2026): default-noop OkHttpClient.Builder
+    // customizer so JVM unit tests can point TLS/timeouts at a MockWebServer.
+    // The production path passes nothing; no TLS relaxation is added here.
+    private val clientConfig: (OkHttpClient.Builder) -> Unit = {},
+) {
     // RECONSTRUCTED Nov 23, 2026: request-health surface for the status screen.
     var reachable: Boolean = true
         private set
@@ -60,6 +66,7 @@ class ApiClient(private val session: Session) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .followRedirects(false)
+        .apply(clientConfig)
         .build()
 
     // RECONSTRUCTION-ORIGINAL hardening (not release-evidenced): the session
