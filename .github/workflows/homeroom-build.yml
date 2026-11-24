@@ -216,6 +216,7 @@ jobs:
     # artifact (vault keystore, mandatory signer cert 0063cd16...) from
     # ci-inputs/ on an emulator. No key material in CI: the APK arrives
     # already signed. REVIEW-ONLY evidence, not a distributable release.
+    # ci-inputs refreshed at fixed head 4807584 (commit c16602a); comment bump re-triggers the signed lane on the new artifact.
     # With the real signature the app can reach production (1.4) services
     # at launch; this smoke only launches MainActivity.
     runs-on: ubuntu-latest
