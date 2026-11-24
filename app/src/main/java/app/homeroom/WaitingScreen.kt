@@ -60,7 +60,7 @@ internal fun serverAge(since: String, serverTime: String?): String? {
     val end = runCatching { java.time.Instant.parse(serverTime ?: return null) }.getOrNull() ?: return null
     val mins = java.time.Duration.between(start, end).toMinutes().coerceAtLeast(0)
     return when {
-        mins < 1 -> "just now"
+        mins < 1 -> "0m"
         mins < 60 -> mins.toString() + "m"
         mins < 60 * 24 -> (mins / 60).toString() + "h"
         else -> (mins / (60 * 24)).toString() + "d"
