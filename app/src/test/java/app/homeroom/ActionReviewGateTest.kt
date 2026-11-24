@@ -35,7 +35,6 @@ class ActionReviewGateTest {
         // replaced content in the sandbox. Give the child its geometry
         // explicitly; idempotent where the framework already measured it.
         val child=scroll.getChildAt(0)
-        println("GATE-DIAG2 postScrollMeasure childMW=${child.measuredWidth} childMH=${child.measuredHeight} lpW=${child.layoutParams.width} lpH=${child.layoutParams.height} count=${scroll.childCount}")
         child.measure(View.MeasureSpec.makeMeasureSpec(300,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(contentHeight,View.MeasureSpec.EXACTLY))
         child.layout(0,0,300,contentHeight)
         gate.refresh()

@@ -60,8 +60,6 @@ class NativeLayoutTest {
         frame.removeViewAt(1)
         render(frame,"HomeRoom-r8-native-room")
         val body=textViews(screen).first { it.text.toString().startsWith("HomeRoom test: try now") }
-        // TEMP DIAGNOSTIC - removed with the bind-time NL-DIAG
-        run { var v:View?=body; val parts=mutableListOf<String>(); while(v!=null){ parts+=("${v.javaClass.simpleName}:w=${v.width},mw=${v.measuredWidth},lp=${v.layoutParams?.width}"); v=v.parent as? View }; println("NL-DIAG-CHAIN "+parts.joinToString(" | ")) }
         assertTrue("Message body collapsed to ${body.width}",body.width>150)
         assertEquals(C.text,body.currentTextColor)
         controller.pause().stop().destroy()

@@ -384,17 +384,17 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 val quote = text(context, it, 12f, C.muted)
                 quote.background=android.graphics.drawable.LayerDrawable(arrayOf(rounded(C.bg,context.dp(8).toFloat()),rounded(C.accent,context.dp(2).toFloat()))).apply {setLayerInset(1,0,context.dp(3),context.dp(300),context.dp(3));setLayerWidth(1,context.dp(3))}
                 quote.setPadding(context.dp(12), context.dp(4), context.dp(8), context.dp(4))
-                bubble.addView(quote)
+                bubble.addView(quote, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)) // release: explicit (-2,-2), K0/N3:777
                 bubble.addView(spacer(context, 4))
             }
             val body = text(context, event.text, 15f, C.text)
             // Release cap (K0/N3:708 and :750): message text maxWidth is
             // 0.72*display width (0.64 when the row also carries media, :776).
             body.maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
-            // TEMP DIAGNOSTIC (run-87 message sliver persisted with the 396px
-            // fixture) - removed after diagnosis
-            println("NL-DIAG dmW=${resources.displayMetrics.widthPixels} cap=${body.maxWidth} containerMW=${container.measuredWidth}")
-            bubble.addView(body)
+            // Release adds the text with explicit (-2,-2) (K0/N3:709) - the
+            // vertical-LinearLayout MATCH_PARENT-width default collapses the
+            // bubble in the wrap-content measure chain.
+            bubble.addView(body, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
             bubble.addView(spacer(context, 2))
             val meta = text(context, formatTime(event.createdAt), 11f, C.muted)
             meta.gravity = Gravity.END

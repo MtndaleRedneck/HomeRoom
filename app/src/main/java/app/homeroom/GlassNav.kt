@@ -77,8 +77,6 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
     // captures coalesce on the animation frame; scroll/layout/size/visibility
     // of the content behind all dirty the backdrop.
     fun backdropChanged() {
-        // TEMP DIAGNOSTIC (run-85 AppLockRearm baseline double-capture) - removed after diagnosis
-        println("GLASSNAV-DIAG backdropChanged queued=$queued epoch=$epoch attached=$isAttachedToWindow shown=$isShown w=$width from="+Throwable().stackTrace.take(6).joinToString(" <- "){it.className.substringAfterLast('.')+"."+it.methodName})
         dirty=true
         if (captureBlocked?.invoke() == true) { showFlatFallback(); return }
         if(android.os.Build.VERSION.SDK_INT<31 || queued || !isAttachedToWindow || !isShown) return
@@ -185,7 +183,6 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         val bitmap=pair[nextBuffer]
         nextBuffer=1-nextBuffer
         captureCount++
-        println("GLASSNAV-DIAG capture count=$captureCount epoch=$epoch w=$width")
         val canvas=Canvas(bitmap)
         canvas.drawColor(C.bg)
         canvas.translate(-(loc[0]-source[0]).toFloat(),-(loc[1]-source[1]).toFloat())

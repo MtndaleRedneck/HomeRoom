@@ -77,9 +77,10 @@ class AppLockRearmTest {
         // at WINDOW bounds, and a real behind-bounds change re-dirties the
         // backdrop BY DESIGN (run-87 GLASSNAV-DIAG: re-enqueue from
         // layoutListener <- View.layout), double-capturing at the baseline.
+        // Baseline capture comes from the window's natural dirtying
+        // (onSizeChanged enqueue after attach); an explicit backdropChanged
+        // here would be a SECOND enqueue, not the baseline (run-89 trace).
         idle()
-        // Baseline capture, then enqueue a second and pause before it runs.
-        nav.backdropChanged();idle()
         assertEquals(1,nav.captureCount)
         nav.backdropChanged()
         c.pause()
