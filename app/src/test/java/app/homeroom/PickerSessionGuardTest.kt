@@ -34,7 +34,7 @@ class PickerSessionGuardTest {
     fun pickDeliveredWhenSessionUnchanged() {
         val s = newSession()
         val launch = s.authSnapshot()
-        assertTrue(RoomScreen.shouldDeliverPick(pick, s, launch))
+        assertTrue(RoomScreen.shouldDeliverPick(pick, s, launch, featureOn = true))
     }
 
     @Test
@@ -42,7 +42,7 @@ class PickerSessionGuardTest {
         val s = newSession()
         val launch = s.authSnapshot()
         s.clear()
-        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch))
+        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch, featureOn = true))
     }
 
     @Test
@@ -54,7 +54,7 @@ class PickerSessionGuardTest {
         s.cookie = "c2"
         s.csrf = "t2"
         s.sessionId = "s2"
-        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch))
+        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch, featureOn = true))
     }
 
     @Test
@@ -62,14 +62,14 @@ class PickerSessionGuardTest {
         val s = newSession()
         val launch = s.authSnapshot()
         s.serverUrl = "https://other.invalid"
-        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch))
+        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch, featureOn = true))
     }
 
     @Test
     fun cancelledPickNeverDelivered() {
         val s = newSession()
         val launch = s.authSnapshot()
-        assertFalse(RoomScreen.shouldDeliverPick(null, s, launch))
+        assertFalse(RoomScreen.shouldDeliverPick(null, s, launch, featureOn = true))
     }
 
     // Room-tools menu dispatch gate (I2 focused check): a retained dialog's
@@ -78,7 +78,7 @@ class PickerSessionGuardTest {
     fun menuEntryDispatchesForUnchangedSessionWithFeature() {
         val s = newSession()
         val launch = s.authSnapshot()
-        assertTrue(RoomScreen.shouldDispatchEntry(s, launch, featureOn = true))
+        assertTrue(RoomScreen.shouldDispatchEntry(s, launch, featureOn = true, locked = false))
     }
 
     @Test
@@ -88,13 +88,27 @@ class PickerSessionGuardTest {
         s.clear()
         s.serverUrl = "https://stub.invalid"
         s.cookie = "c2"
-        assertFalse(RoomScreen.shouldDispatchEntry(s, launch, featureOn = true))
+        assertFalse(RoomScreen.shouldDispatchEntry(s, launch, featureOn = true, locked = false))
     }
 
     @Test
     fun menuEntryDroppedWhenFeatureWithdrawn() {
         val s = newSession()
         val launch = s.authSnapshot()
-        assertFalse(RoomScreen.shouldDispatchEntry(s, launch, featureOn = false))
+        assertFalse(RoomScreen.shouldDispatchEntry(s, launch, featureOn = false, locked = false))
+    }
+
+    @Test
+    fun pickDroppedWhenFeatureWithdrawn() {
+        val s = newSession()
+        val launch = s.authSnapshot()
+        assertFalse(RoomScreen.shouldDeliverPick(pick, s, launch, featureOn = false))
+    }
+
+    @Test
+    fun menuEntryDroppedWhileLockCoverShowing() {
+        val s = newSession()
+        val launch = s.authSnapshot()
+        assertFalse(RoomScreen.shouldDispatchEntry(s, launch, featureOn = true, locked = true))
     }
 }

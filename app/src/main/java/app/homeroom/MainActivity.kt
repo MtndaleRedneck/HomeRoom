@@ -357,10 +357,18 @@ class MainActivity : AppCompatActivity() {
     // Deferred actions that must not run beneath the app-lock cover (I2
     // focused check, Nov 24): the cover blocks touches but not coroutines,
     // so side-effecting work started from a page's onShow waits for a
-    // genuine unlock.
+    // genuine unlock. Threading (ChatGPT finite review of ff66471): the
+    // unlock callback arrives on the main executor and page onShow runs on
+    // the main thread, but rather than relying on every caller, any
+    // off-main call is marshalled to the main looper, so the cover check and
+    // the queue add are always same-thread with the drain.
     private val afterUnlockActions = mutableListOf<() -> Unit>()
 
     fun runWhenUnlocked(action: () -> Unit) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post { runWhenUnlocked(action) }
+            return
+        }
         if (!appLock.coverShowing) action() else synchronized(afterUnlockActions) { afterUnlockActions.add(action) }
     }
 
@@ -423,11 +431,12 @@ class MainActivity : AppCompatActivity() {
         pendingOpenRoomId = null
         displayedRoom = null
         // Session reset drops retained stale-session actions (I2 focused
-        // check): a pending picker result or an open room-tools dialog must
-        // not survive into the new session.
+        // check): a pending picker result, an open room-tools dialog or a
+        // queued after-unlock action must not survive into the new session.
         pickImageCallback = null
         transientDialog?.dismiss()
         transientDialog = null
+        synchronized(afterUnlockActions) { afterUnlockActions.clear() }
         setNavVisible(View.GONE)
         header.visibility = View.GONE
         roomScreen = null
@@ -573,6 +582,11 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         polling = false
+        // Dialog-window-over-cover (I2, Nov 24): an AlertDialog keeps its own
+        // window above the lock overlay, so pause dismisses the registered
+        // transient dialog before the cover goes up.
+        transientDialog?.dismiss()
+        transientDialog = null
         // Capture-under-lock (I2, Nov 24): backgrounding drops the retained
         // backdrop buffers; AppLock.onPause re-locks so the cover - and the
         // capture block - are up before the next resume. The callback review

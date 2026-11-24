@@ -151,7 +151,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             .setItems(entries.map { it.second }.toTypedArray()) { d, which ->
                 d.dismiss()
                 val (flag, _, action) = entries[which]
-                if (shouldDispatchEntry(host.session, launch, host.api.hasFeature(flag))) action()
+                if (shouldDispatchEntry(host.session, launch, host.api.hasFeature(flag), host.appLock.coverShowing)) action()
             }
             .show()
         roomToolsDialog = dialog
@@ -175,7 +175,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         // means following the tree's own OpAuth doctrine.
         val launch = host.session.authSnapshot()
         host.pickFile { uri ->
-            if (uri != null && shouldDeliverPick(uri, host.session, launch)) {
+            // Bounded consistency (I2): the feature flag is re-proved at return
+            // alongside the session identity; the composer itself defers its
+            // auto-prepare while the lock cover is up.
+            if (uri != null && shouldDeliverPick(uri, host.session, launch, host.api.hasFeature("staged_uploads"))) {
                 host.openPage("Attach photo or file", AttachmentComposer(context, room, uri, null, voice = false))
             }
         }
@@ -183,14 +186,16 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
     internal companion object {
         // Picker-result gate, extracted for focused tests: deliver only a
-        // non-null pick to an unchanged session (generation AND destination).
-        fun shouldDeliverPick(uri: android.net.Uri?, session: Session, launch: Session.OpAuth): Boolean =
-            uri != null && session.unchangedSince(launch.generation, launch.serverUrl)
+        // non-null pick to an unchanged session (generation AND destination)
+        // with the feature still advertised.
+        fun shouldDeliverPick(uri: android.net.Uri?, session: Session, launch: Session.OpAuth, featureOn: Boolean): Boolean =
+            uri != null && featureOn && session.unchangedSince(launch.generation, launch.serverUrl)
 
         // Menu-dispatch gate (I2 focused check): a retained menu entry fires
-        // only for an unchanged session with the feature still advertised.
-        fun shouldDispatchEntry(session: Session, launch: Session.OpAuth, featureOn: Boolean): Boolean =
-            featureOn && session.unchangedSince(launch.generation, launch.serverUrl)
+        // only for an unchanged session with the feature still advertised and
+        // the app genuinely unlocked (a dialog window can sit above the cover).
+        fun shouldDispatchEntry(session: Session, launch: Session.OpAuth, featureOn: Boolean, locked: Boolean): Boolean =
+            featureOn && !locked && session.unchangedSince(launch.generation, launch.serverUrl)
     }
 
     override fun poll() = loadNew()

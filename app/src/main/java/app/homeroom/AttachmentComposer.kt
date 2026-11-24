@@ -19,6 +19,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // After a failed resume the button re-runs status-first recovery instead
     // of an inert post() (I2 UX residual: retry while ready=false no-ops).
     private var retryResume=false
+    private var unlockDeferPending=false
     private val send=button(context,"Send attachment",true) {
         // Durable restart marker blocks the send path too (K0/W0:157).
         if(stagedRecord?.optBoolean("restart_required",false)==true) {restartBlocked();return@button}
@@ -212,9 +213,13 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // Lock-cover defer (I2 focused check, Nov 24): the cover blocks
             // touches but not coroutines - byte-copy, staged-record persistence
             // and upload-create must wait for a genuine unlock instead of
-            // running beneath the cover. Restart only if this composer is
-            // still the shown page.
-            if(host.appLock.coverShowing) {host.runWhenUnlocked {if(isShown)onShow()};return}
+            // running beneath the cover. Once-only: repeated onShow under the
+            // cover queues at most one deferred restart, and it runs only if
+            // this composer is still the shown page.
+            if(host.appLock.coverShowing) {
+                if(!unlockDeferPending) {unlockDeferPending=true;host.runWhenUnlocked {unlockDeferPending=false;if(isShown)onShow()}}
+                return
+            }
             if(resume!=null)resumeUpload() else prepare()
         }
     }
