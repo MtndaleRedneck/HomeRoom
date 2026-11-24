@@ -93,4 +93,15 @@ class SessionStagedUploadTest {
         s.stagedCommitHook=null
         try {s.saveStagedUpload("b",JSONObject().put("local_id","b"));fail("latched save went through")} catch(e:IllegalStateException) {}
     }
+
+    @Test fun stagedWriteUnderStaleGenerationDoesNotLandAfterClear() {
+        val s=session()
+        s.saveStagedUpload("a",JSONObject().put("local_id","a"))
+        val old=s.generation
+        s.clear()
+        // A write carrying the pre-clear generation must be dropped: clear()
+        // erased the store, and a late write must not re-add to it.
+        s.withinGeneration(old) {s.saveStagedUpload("b",JSONObject().put("local_id","b"))}
+        assertTrue(s.stagedUploads().isEmpty())
+    }
 }

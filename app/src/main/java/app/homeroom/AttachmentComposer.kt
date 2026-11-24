@@ -334,7 +334,16 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // record. Null = refused because terminal (correct: a retired
             // composer has no record to mark).
             try {
-                guard.persist {host.session.saveStagedUpload(localId,marked);stagedRecord=marked; true}
+                // Generation check is inside the actual write (I2): without
+                // it the marker could land after a sign-out erasure (clear()
+                // holds stateLock, this save alone does not) and re-add the
+                // record to the wiped store.
+                guard.persist {
+                    var saved=false
+                    host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,marked);saved=true}
+                    if(saved) stagedRecord=marked
+                    saved
+                }
             } catch(e:Exception) {persistenceUnknown=true}
         }
         status.text="Upload already used. Check the room before sending again."
@@ -476,21 +485,30 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     val fresh=clientId();val now=java.time.Instant.now().toString()
                     postClient=fresh;created=now
                     val rotated=stagedRecord?.let {StagedUpload.rotateForResend(JSONObject(it.toString()),{fresh},{now})}
-                    // Same atomic boundary as every record mutation (I2): the
-                    // rotation save must not land after retire+removal.
-                    if(rotated!=null && (try {guard.persist {host.session.saveStagedUpload(localId,rotated); true} != true} catch(e:Exception) {true})) {
-                        // The expired identity could not be durably rotated: keep the
-                        // resend DISABLED (a resend now would risk losing the prior
-                        // identity on crash) and fail loudly instead of proceeding.
-                        message.isEnabled=false;send.isEnabled=false
-                        status.text="Couldn't durably record the expired send. Restart the app, then check the room before sending again."
-                        return@launch
+                    // ONE atomic section (I2): the generation check, the durable
+                    // rotation save AND the in-memory swap are a single boundary.
+                    // Separate sections would let a pending draft save interleave
+                    // and overwrite the rotated record; a save without the
+                    // generation check could land after a sign-out erasure and
+                    // re-add the record to the wiped store. Refusal (terminal),
+                    // stale generation, or exception all keep the resend DISABLED
+                    // (a resend now would risk losing the prior identity on
+                    // crash) and fail loudly instead of proceeding.
+                    if(rotated!=null) {
+                        val rotationSaved=try {
+                            guard.persist {
+                                var ok=false
+                                host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,rotated);ok=true}
+                                if(ok) stagedRecord=rotated
+                                ok
+                            } == true
+                        } catch(e:Exception) {persistenceUnknown=true;false}
+                        if(!rotationSaved) {
+                            message.isEnabled=false;send.isEnabled=false
+                            status.text="Couldn't durably record the expired send. Restart the app, then check the room before sending again."
+                            return@launch
+                        }
                     }
-                    // Keep the in-memory record identical to the durably rotated one:
-                    // otherwise a later resend would persist the PRE-rotation record
-                    // (same upload ID) and silently undo prior_posts before a POST
-                    // under the new identity. Only assign AFTER the durable save.
-                    if(rotated!=null)guard.persist {stagedRecord=rotated; true}
                     message.isEnabled=true;send.text="Send attachment";send.isEnabled=true
                     status.text="This send wasn't confirmed and has expired. Check the room, then review and send again."
                 } else if(e.code=="upload_not_ready") {
