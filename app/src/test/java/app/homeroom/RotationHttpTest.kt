@@ -142,8 +142,11 @@ class RotationHttpTest {
     // response BODY (the commit runs after the body is read) and asserting no
     // second-client request leaves while the commit is still pending.
     // Discriminates: without the mutex the bootstrap dispatches immediately
-    // and the mid-window count is 4, not 3. Margins match the sibling
-    // in-flight test (600ms body delay, 300ms assertion point).
+    // and the mid-window count is 4, not 3 (mutation-observed: the unlocked
+    // bootstrap consumed a queued response mid-window and the test went red).
+    // I2 893ea8b QUALIFICATION: this is timing-based support (600ms body
+    // delay, 300ms assertion point, inFlight asserted mid-window), not a
+    // barrier proof like latePreRotationResponseCookieRejected.
     @Test fun verifiedDownloadBootstrapWaitsForRenewCommit()=fixture {server,session,client,_ ->
         val apiA=client()
         val apiB=client()
@@ -157,6 +160,7 @@ class RotationHttpTest {
         val tmp=java.io.File.createTempFile("dl-",".bin")
         val dl=async(Dispatchers.IO) {apiB.verifiedDownload("/owner/files/f",tmp,10,"sha256:13015a3cf02c05dafbefab3b331350db348e70e86f4e43e73f325473957f0a5c",{_,_->})}
         delay(300)  // renew headers consumed; body (and commit) still delayed
+        assertTrue("renew must be active in the assertion window (I2 893ea8b: 300/600 timing alone could pass vacuously)",session.renewal.inFlight)
         assertEquals("no verifiedDownload request may leave before the renew commit",3,server.requestCount)
         renew.await()
         assertTrue(dl.await())
