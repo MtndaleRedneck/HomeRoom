@@ -25,6 +25,10 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
     private var authenticating=false
     private var enabling=false
     private var overlay:View?=null
+    // Capture-under-lock gate (I2, Nov 24): MainActivity blocks the nav
+    // backdrop capture while the cover is up - the cover is a sibling overlay,
+    // not part of the captured column.
+    val coverShowing:Boolean get()=overlay!=null
     private var signal:android.os.CancellationSignal?=null
     private val pin=host.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {result->
         authenticating=false
@@ -52,6 +56,7 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
         col.addView(button(host,"Unlock",true) {authenticate()})
         cover.addView(col,FrameLayout.LayoutParams(-1,-1))
         (host.window.decorView as ViewGroup).addView(cover,ViewGroup.LayoutParams(-1,-1));overlay=cover
+        host.invalidateNavBackdrop()
         cover.requestFocus()
     }
     fun authenticate() {
@@ -81,7 +86,7 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
         if(enabling) {PrivacyPrefs.set(host,"lock",true);enabling=false}
         authenticated=true;remove();unlocked()
     }
-    private fun remove() {overlay?.let {(it.parent as? ViewGroup)?.removeView(it)};overlay=null}
+    private fun remove() {overlay?.let {(it.parent as? ViewGroup)?.removeView(it)};overlay=null;host.refreshNavBackdrop()}
 }
 
 class PrivacyScreen(context:Context):Screen(context) {

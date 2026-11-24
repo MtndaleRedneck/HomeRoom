@@ -26,6 +26,9 @@ class RoomsScreen(context: Context) : Screen(context) {
         val list = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context)
             adapter = this@RoomsScreen.adapter
+            // Release list inset: the floating nav overlays the bottom 110dp.
+            clipToPadding = false
+            setPadding(0, 0, 0, dp(110))
         }
         refresh.addView(list)
         addView(refresh, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))

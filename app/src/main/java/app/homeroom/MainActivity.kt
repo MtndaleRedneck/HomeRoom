@@ -8,7 +8,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -27,10 +26,15 @@ class MainActivity : AppCompatActivity() {
     val scope = lifecycleScope
 
     private lateinit var content: FrameLayout
-    private lateinit var nav: BottomNavigationView
+    // Restored release layout (K0): floating GlassNav over a navFade gradient,
+    // both overlaying the main column, which is also the backdrop-capture source.
+    private lateinit var nav: GlassNav
+    private lateinit var navFade: View
     private lateinit var header: LinearLayout
     private lateinit var headerBack: View
     private lateinit var headerTitle: android.widget.TextView
+    private lateinit var headerSearch: View
+    private var displayedRoom: Room? = null
 
     private val tabScreens = mutableMapOf<Int, Screen>()
     private var currentTab: Int = R.id.nav_chats
@@ -52,12 +56,19 @@ class MainActivity : AppCompatActivity() {
         // current state is STARTED", debug-smoke acd48bf).
         appLock
 
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.setBackgroundColor(C.bg)
+        // RECONSTRUCTED Nov 24 from the exact private12 decompile (K0 root):
+        // a FrameLayout stacking the main column (header + content), the navFade
+        // gradient (110dp, bottom, transparent -> 0xb3 -> opaque bg, release
+        // colors 0x00/0xb3/0xff of the theme background), and the floating
+        // 256x64dp GlassNav centered 28dp off the bottom. The backdrop capture
+        // source is the whole main column, matching the release's a2 source.
+        val root = FrameLayout(this)
+        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.setBackgroundColor(C.bg)
 
         header = LinearLayout(this).apply {
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(8), dp(16), dp(8))
+            setPadding(dp(8), 0, dp(8), 0)
             setBackgroundColor(C.bg)
         }
         headerBack = android.widget.TextView(this).apply {
@@ -72,29 +83,53 @@ class MainActivity : AppCompatActivity() {
             setTextColor(C.text)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
+        // Release K0.a0: 48dp header search, "Search messages". Click (K0.l2):
+        // on the Files tab with no open room, reveal Files' own inline search;
+        // otherwise push a Search route scoped to the displayed room.
+        headerSearch = android.widget.ImageButton(this).apply {
+            setImageResource(R.drawable.ic_search)
+            setColorFilter(C.muted)
+            setBackgroundColor(Color.TRANSPARENT)
+            contentDescription = "Search messages"
+            setOnClickListener {
+                if (currentTab == R.id.nav_files && roomScreen == null && currentPage == null) {
+                    (tabScreens[R.id.nav_files] as? FilesScreen)?.showSearch()
+                } else {
+                    openPage("Search", SearchScreen(this@MainActivity, displayedRoom?.id))
+                }
+            }
+        }
         header.addView(headerBack, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         header.addView(headerTitle, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(header)
+        header.addView(headerSearch, LinearLayout.LayoutParams(dp(48), dp(48)))
+        column.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(80)))
 
         content = FrameLayout(this)
-        root.addView(content, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        column.addView(content, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(column, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
-        nav = BottomNavigationView(this).apply {
-            inflateMenu(R.menu.bottom_nav)
-            setBackgroundColor(C.surface)
-            itemIconTintList = android.content.res.ColorStateList(
-                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                intArrayOf(C.accent, C.muted)
+        navFade = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(C.bg and 0x00ffffff, (C.bg and 0x00ffffff) or 0xb3000000.toInt(), C.bg)
             )
-            itemTextColor = itemIconTintList
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-        root.addView(nav)
+        root.addView(navFade, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(110), android.view.Gravity.BOTTOM))
+
+        // Release K0.p: nav taps choose a tab. Wired BEFORE attach so the
+        // first capture on attach already respects the capture-under-lock gate.
+        nav = GlassNav(this, column) { id -> showTab(id) }
+        nav.captureBlocked = {
+            appLock.coverShowing ||
+                (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
+        }
+        root.addView(nav, FrameLayout.LayoutParams(dp(256), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
         setContentView(root)
 
-        nav.setOnItemSelectedListener { item ->
-            if (roomScreen == null) showTab(item.itemId)
-            true
-        }
+        // The settings-tab update dot rides the release's update-state hook.
+        setUpdateListener { if (::nav.isInitialized) nav.setUpdateAvailable(UpdateCheck.hasUpdate()) }
+        nav.setUpdateAvailable(UpdateCheck.hasUpdate())
 
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             // Release back contract (exact private12 decompile): the visible
@@ -292,10 +327,23 @@ class MainActivity : AppCompatActivity() {
 
     // RECONSTRUCTED Nov 23, 2026: page back-stack recovered from the exact
     // private12 release build (push current page state, swap content, show back,
-    // hide nav, onShow; back pops and restores). The release also saves/restores
-    // header-search and header-icon visibility, which this reconstruction's header
-    // does not have yet - tracked as a gap.
-    private data class PageState(val screen: Screen, val title: String, val backVisible: Int, val navVisible: Int, val room: RoomScreen?)
+    // hide nav, onShow; back pops and restores). Like the release, the saved
+    // state also carries header-search visibility; the release's header-icon
+    // slot has no counterpart here (tracked gap).
+    private data class PageState(val screen: Screen, val title: String, val backVisible: Int, val navVisible: Int, val searchVisible: Int, val room: RoomScreen?)
+
+    // navFade mirrors nav visibility (release K0.m2), kept in lockstep at
+    // every assignment instead of via the release's layout listener.
+    private fun setNavVisible(visibility: Int) {
+        nav.visibility = visibility
+        if (::navFade.isInitialized) navFade.visibility = visibility
+    }
+
+    // Capture-under-lock transitions (I2, Nov 24): pause, privacy-flag and
+    // lock-cover transitions drop retained backdrop state; unblocking paths
+    // request a fresh capture.
+    fun invalidateNavBackdrop() { if (::nav.isInitialized) nav.invalidateBackdrop() }
+    fun refreshNavBackdrop() { if (::nav.isInitialized) nav.backdropChanged() }
     private val pageStack = java.util.ArrayDeque<PageState>()
     private var currentPage: Screen? = null
 
@@ -303,7 +351,7 @@ class MainActivity : AppCompatActivity() {
         val current = content.getChildAt(0) as? Screen
         if (current != null) {
             current.onHide()
-            pageStack.addLast(PageState(current, headerTitle.text.toString(), headerBack.visibility, nav.visibility, roomScreen))
+            pageStack.addLast(PageState(current, headerTitle.text.toString(), headerBack.visibility, nav.visibility, headerSearch.visibility, roomScreen))
         }
         roomScreen = null
         content.removeAllViews()
@@ -311,22 +359,24 @@ class MainActivity : AppCompatActivity() {
         currentPage = screen
         headerTitle.text = title
         headerBack.visibility = View.VISIBLE
-        nav.visibility = View.GONE
+        headerSearch.visibility = View.GONE
+        setNavVisible(View.GONE)
         screen.onShow()
     }
 
     // RECONSTRUCTED Nov 24: historical Nov 11 entry points (operator readback,
-    // parsed as data), adapted to the current BottomNavigationView layout.
+    // parsed as data), riding the restored release GlassNav overlay layout.
     // openWaiting rides the current page-stack navigation, which already
     // carries the same contract (pushed route, full-content screen, back
     // shown, nav hidden, onShow) as the historical body.
     fun openWaiting(room: String?) { openPage("Waiting", WaitingScreen(this, room)) }
-    // Historical updateBadges forwarded to the current nav's badge API
-    // (chats = unread, rules = pending). The GlassNav lineage's settings
-    // update-dot has no BottomNavigationView wiring here - tracked as a gap.
+    // Historical updateBadges forwarded to the restored GlassNav badge API
+    // (chats = unread, rules = pending); the settings update dot is wired to
+    // UpdateCheck.hasUpdate() via the update listener in onCreate.
     fun updateBadges(unread: Int, pending: Int) {
-        nav.getOrCreateBadge(R.id.nav_chats).apply { isVisible = unread > 0; if (unread > 0) number = unread }
-        nav.getOrCreateBadge(R.id.nav_rules).apply { isVisible = pending > 0; if (pending > 0) number = pending }
+        // Historical badge contract on the restored GlassNav: chats = unread,
+        // rules = pending; the settings update dot rides setUpdateAvailable.
+        nav.setBadges(unread, pending)
     }
 
     private fun closePage(): Boolean {
@@ -341,14 +391,16 @@ class MainActivity : AppCompatActivity() {
         roomScreen = state.room
         headerTitle.text = state.title
         headerBack.visibility = state.backVisible
-        nav.visibility = state.navVisible
+        headerSearch.visibility = state.searchVisible
+        setNavVisible(state.navVisible)
         state.screen.onShow()
         return true
     }
 
     private fun showSetup(message: String?) {
         pendingOpenRoomId = null
-        nav.visibility = View.GONE
+        displayedRoom = null
+        setNavVisible(View.GONE)
         header.visibility = View.GONE
         roomScreen = null
         val setup = SetupScreen(this)
@@ -362,7 +414,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMain() {
-        nav.visibility = View.VISIBLE
+        setNavVisible(View.VISIBLE)
         header.visibility = View.VISIBLE
         content.removeAllViews()
         tabScreens.clear()
@@ -401,7 +453,6 @@ class MainActivity : AppCompatActivity() {
         when (id) {
             R.id.nav_files -> FilesScreen(this)
             R.id.nav_rules -> RulesScreen(this)
-            R.id.nav_search -> SearchScreen(this)
             R.id.nav_settings -> SettingsScreen(this)
             else -> RoomsScreen(this)
         }
@@ -410,15 +461,16 @@ class MainActivity : AppCompatActivity() {
     private fun showTab(id: Int) {
         currentTab = id
         currentPage = null
+        displayedRoom = null
         pageStack.clear()
         val screen = tabFor(id)
         content.removeAllViews()
         content.addView(screen, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.GONE
+        headerSearch.visibility = View.VISIBLE
         headerTitle.text = when (id) {
             R.id.nav_files -> "Files"
             R.id.nav_rules -> "Rules"
-            R.id.nav_search -> "Search"
             R.id.nav_settings -> "Settings"
             else -> "Chats"
         }
@@ -440,10 +492,11 @@ class MainActivity : AppCompatActivity() {
     // the Chats tab instead.
     fun openRoom(room: Room) {
         session.lastRoomId = room.id
+        displayedRoom = room
         val current = content.getChildAt(0) as? Screen
         if (current != null) {
             current.onHide()
-            pageStack.addLast(PageState(current, headerTitle.text.toString(), headerBack.visibility, nav.visibility, roomScreen))
+            pageStack.addLast(PageState(current, headerTitle.text.toString(), headerBack.visibility, nav.visibility, headerSearch.visibility, roomScreen))
         }
         val screen = RoomScreen(this, room)
         roomScreen = screen
@@ -452,15 +505,18 @@ class MainActivity : AppCompatActivity() {
         content.addView(screen, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.VISIBLE
         headerTitle.text = room.name
-        nav.visibility = View.GONE
+        // Release: the header search stays visible in a room, scoped to it.
+        headerSearch.visibility = View.VISIBLE
+        setNavVisible(View.GONE)
         screen.onShow()
     }
 
     private fun closeRoom() {
         val closing = roomScreen
         roomScreen = null
+        displayedRoom = null
         closing?.onHide()
-        nav.visibility = View.VISIBLE
+        setNavVisible(View.VISIBLE)
         showTab(currentTab)
     }
 
@@ -487,6 +543,12 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         polling = false
+        // Capture-under-lock (I2, Nov 24): backgrounding drops the retained
+        // backdrop buffers; AppLock.onPause re-locks so the cover - and the
+        // capture block - are up before the next resume. The callback review
+        // found this call missing: authenticated stayed true across pauses.
+        if (::nav.isInitialized) nav.invalidateBackdrop()
+        appLock.onPause()
     }
 
     override fun onResume() {
@@ -496,6 +558,7 @@ class MainActivity : AppCompatActivity() {
         // content; resumeContent renewed features/session when enrolled.
         applyPrivacy()
         if (appLock.gate()) return
+        refreshNavBackdrop()
         resumeContent()
     }
 
@@ -563,8 +626,11 @@ class MainActivity : AppCompatActivity() {
         if (PrivacyPrefs.hideRecents(this)) {
             window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE,
                 android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            // Drop anything captured before the flag went on.
+            invalidateNavBackdrop()
         } else {
             window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            refreshNavBackdrop()
         }
     }
 

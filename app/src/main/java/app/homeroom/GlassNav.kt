@@ -11,19 +11,18 @@ import android.widget.*
  * Nov 10/11 operator readbacks): four tabs, captured-backdrop blur, badge
  * overlay. Only the captured backdrop is blurred, never its labels.
  *
- * PRODUCTION STATUS: intentionally UNWIRED. The reviewed production layout is
- * the five-tab BottomNavigationView in MainActivity (Chats/Files/Rules/Search/
- * Settings); this class differs from it (four tabs, no Search tab, backdrop
- * blur) and is kept as the owning historical contract for reference and tests.
- * Feature gap: no production caller instantiates it, so its badges, update dot
- * and backdrop blur have no production exposure.
+ * Wired into MainActivity Nov 24 as the approved release layout (four floating
+ * tabs + header search, per the Nov 9 user-approved design).
  *
- * WIRING CONDITION (I2, Nov 24): before any production wiring of the backdrop
- * capture, the capture path must not snapshot content behind the lock cover or
- * a FLAG_SECURE window into its retained buffers - view.draw() bypasses
- * FLAG_SECURE and the cover is a sibling overlay, not part of the captured
- * source view. Gate capture on cover visibility / window flags and clear the
- * retained buffers when the cover shows or the window backgrounds.
+ * Capture-under-lock gate, from I2's Nov 24 review relayed by main: the
+ * capture source is the main content column, NOT the window root - view.draw()
+ * bypasses FLAG_SECURE and the lock cover is a sibling overlay, not part of
+ * the captured source view. While [captureBlocked] reports blocked, capture is
+ * skipped at enqueue AND inside the posted runnable, the backdrop falls back
+ * to the flat color on every SDK, and [invalidateBackdrop] drops all retained
+ * state on every pause/privacy/cover transition. Buffers are dereferenced,
+ * never recycled: the render thread may still hold them. The epoch counter
+ * cancels an already-posted runnable (clearing the queued flag alone cannot).
  */
 class GlassNav(context: Context, private val behind: View, val choose: (Int) -> Unit) : FrameLayout(context) {
     private val backdrop = ImageView(context)
@@ -35,6 +34,13 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
     private var nextBuffer = 0
     private var dirty = true
     private var queued = false
+    // Set by MainActivity: true while the lock cover shows or the window is
+    // FLAG_SECURE. Checked at enqueue AND at runnable execution.
+    var captureBlocked: (() -> Boolean)? = null
+    // Bumped by invalidateBackdrop/detach: an already-posted runnable whose
+    // enqueue-time epoch no longer matches is a no-op.
+    private var epoch = 0
+    private var blockedFlat = false
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { backdropChanged() }
     private val layoutListener = View.OnLayoutChangeListener { _, l,t,r,b,ol,ot,or,ob ->
         if(l!=ol || t!=ot || r!=or || b!=ob) backdropChanged()
@@ -72,9 +78,37 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
     // of the content behind all dirty the backdrop.
     fun backdropChanged() {
         dirty=true
+        if (captureBlocked?.invoke() == true) { showFlatFallback(); return }
         if(android.os.Build.VERSION.SDK_INT<31 || queued || !isAttachedToWindow || !isShown) return
         queued=true
-        postOnAnimation { queued=false; if(dirty && isShown && width>0 && height>0) { dirty=false; capture() } }
+        val enqueued = epoch
+        postOnAnimation {
+            queued=false
+            if (enqueued != epoch) return@postOnAnimation
+            if (captureBlocked?.invoke() == true) { showFlatFallback(); return@postOnAnimation }
+            clearFlatFallback()
+            if(dirty && isShown && width>0 && height>0) { dirty=false; capture() }
+        }
+    }
+
+    // Drops every retained backdrop state on a block transition (lock cover
+    // shown, FLAG_SECURE applied, window paused). Buffers are dereferenced,
+    // never recycled: a render thread may still hold them; GC reclaims.
+    fun invalidateBackdrop() {
+        epoch++
+        queued=false
+        dirty=true
+        backdrop.setImageDrawable(null)
+        buffers=null
+        nextBuffer=0
+        showFlatFallback()
+    }
+
+    private fun showFlatFallback() {
+        if (!blockedFlat) { backdrop.setBackgroundColor(0xeb2b2a2d.toInt()); blockedFlat=true }
+    }
+    private fun clearFlatFallback() {
+        if (blockedFlat && android.os.Build.VERSION.SDK_INT >= 31) { backdrop.background=null; blockedFlat=false }
     }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -83,6 +117,7 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         backdropChanged()
     }
     override fun onDetachedFromWindow() {
+        epoch++
         if(behind.viewTreeObserver.isAlive) behind.viewTreeObserver.removeOnScrollChangedListener(scrollListener)
         behind.removeOnLayoutChangeListener(layoutListener)
         backdrop.setImageDrawable(null)

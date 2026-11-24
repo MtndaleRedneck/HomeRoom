@@ -42,23 +42,24 @@ class V3RenderTest {
         (field(a,"headerTitle").get(a) as TextView).apply {text=title;textSize=if(chat)17f else 26f}
         (field(a,"headerBack").get(a) as View).visibility=if(chat)View.VISIBLE else View.GONE
         (field(a,"headerSearch").get(a) as View).visibility=if(title=="HomeRoom" || title=="Files" || chat)View.VISIBLE else View.GONE
-        // Drive the ACTUAL production nav (BottomNavigationView, the reviewed
-        // layout). GlassNav is the restored historical private12 nav but is
-        // intentionally unwired production-side; casting nav to it would CCE.
-        // selectedItemId is set via the menu item's checked state so the
-        // tab listener does not fire and clobber the screen under render.
-        val nav=field(a,"nav").get(a) as com.google.android.material.bottomnavigation.BottomNavigationView
+        // Drive the ACTUAL production nav (GlassNav, the restored release
+        // layout). selectedItemId is set via the field so the choose callback
+        // does not fire and clobber the screen under render.
+        val nav=field(a,"nav").get(a) as GlassNav
+        val navFade=field(a,"navFade").get(a) as View
         nav.visibility=if(tab==null)View.GONE else View.VISIBLE
+        navFade.visibility=nav.visibility
         if(tab!=null){
-            nav.menu.findItem(tab).isChecked=true
-            a.updateBadges(2,2)
-            assertEquals(2,nav.getBadge(R.id.nav_chats)!!.number)
-            assertEquals(2,nav.getBadge(R.id.nav_rules)!!.number)
-            assertTrue(nav.getBadge(R.id.nav_chats)!!.isVisible)
-            assertTrue(nav.getBadge(R.id.nav_rules)!!.isVisible)
+            field(nav,"selectedItemId").set(nav,tab)
+            nav.setBadges(2,2)
+            nav.javaClass.getDeclaredMethod("updateSelection").apply{isAccessible=true}.invoke(nav)
+            val items=field(nav,"items").get(nav) as LinearLayout
+            assertEquals("Chats, 2",(items.getChildAt(0) as View).contentDescription)
+            assertEquals("Rules, 2",(items.getChildAt(2) as View).contentDescription)
         }
         frame.setPadding(0,24,0,24)
         frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        nav.backdropChanged()
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
         val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
         File(System.getProperty("homeroom.previewDir")).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
@@ -87,6 +88,43 @@ class V3RenderTest {
             events.add(ChatEvent.from(JSONObject("""{"event_id":"e${i+1}","thread_key":"main0","seq":${i+1},"actor":"$actor","own":${actor=="owner"},"text":"$body","created_at":"2026-11-10T14:${listOf("00","04","08","10","14")[i]}:00Z","parent_id":${if(i==3)"\"e3\"" else "null"},"mentions":${if(i==2)"[\"instinct\"]" else if(i==4)"[\"tab\"]" else "[]"},"assistant_statuses":${if(i==2)"[{\"actor\":\"instinct\",\"reply_event_id\":\"e4\",\"notified_at\":null}]" else if(i==4)"[{\"actor\":\"tab\",\"reply_event_id\":null,\"notified_at\":null}]" else "[]"}}""")))
         }
         field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild");render(a,chat,"WrenBoard",null,"chat",true)
+        c.pause()
+    }
+    // Capture-under-lock gate (I2, Nov 24): while FLAG_SECURE or the lock
+    // cover is up, the nav must not capture the content column into retained
+    // buffers; transitions drop prior buffers and cancel posted runnables.
+    @Test fun captureBlockedUnderSecureFlagAndCover() {
+        val(c,a)=activity()
+        val nav=field(a,"nav").get(a) as GlassNav
+        val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        nav.visibility=View.VISIBLE
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        val idle={ org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100)) }
+        // Baseline: unblocked capture allocates retained buffers.
+        nav.backdropChanged();idle()
+        assertEquals(1,nav.captureCount)
+        assertNotNull(field(nav,"buffers").get(nav))
+        // Stale-runnable race: enqueue, then invalidate BEFORE it runs.
+        nav.backdropChanged()
+        nav.invalidateBackdrop()
+        idle()
+        assertEquals(1,nav.captureCount)
+        assertNull(field(nav,"buffers").get(nav))
+        // FLAG_SECURE transition: invalidation drops buffers, capture blocked.
+        a.window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE,android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        nav.backdropChanged();idle()
+        assertEquals(1,nav.captureCount)
+        // Unblock: a fresh capture proceeds.
+        a.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        nav.backdropChanged();idle()
+        assertEquals(2,nav.captureCount)
+        assertNotNull(field(nav,"buffers").get(nav))
+        // Lock cover transition: show() invalidates and blocks capture.
+        a.appLock.show()
+        assertTrue(a.appLock.coverShowing)
+        assertNull(field(nav,"buffers").get(nav))
+        nav.backdropChanged();idle()
+        assertEquals(2,nav.captureCount)
         c.pause()
     }
     @Test fun backFromWaitingChatReturnsToWaiting() {
