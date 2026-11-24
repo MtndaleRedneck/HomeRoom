@@ -106,7 +106,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 }
                 else -> {
                     // failed/expired/unknown state: fail closed, no resume.
-                    host.session.removeStagedUpload(upload!!);privateFile.delete()
+                    runCatching {host.session.removeStagedUpload(upload!!)};privateFile.delete()
                     status.text="This staged upload can no longer be resumed. Cancel it and attach again."
                     return
                 }
@@ -198,14 +198,14 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         } catch(e:SessionEndedException) {throw e}
         catch(_:Exception) {false}
         if(linked) {
-            upload?.let {host.session.removeStagedUpload(it)};privateFile.delete()
+            upload?.let {u->runCatching {host.session.removeStagedUpload(u)}};privateFile.delete()
             status.text="Attachment sent. Server recorded this post."
         } else markConsumedUnresolved()
     }
     // Server-side byte inconsistency (cp42): the staged upload is abandoned -
     // record and staged file removed, Send stays locked, release e1 wording.
     private fun abandonCorruptUpload() {
-        upload?.let {host.session.removeStagedUpload(it)}
+        upload?.let {u->runCatching {host.session.removeStagedUpload(u)}}
         privateFile.delete();ready=false;send.isEnabled=false
         status.text="This upload was interrupted and cannot resume. Cancel it, then choose the file again to start a new upload. No message was sent."
     }
@@ -255,13 +255,27 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         val text=StagedUpload.immutableText(attemptedText,message.text.toString())
         if(text.length>8000) {message.error="Up to 8000 characters";return}
         attemptedText=text
-        stagedRecord?.let {host.session.saveStagedUpload(StagedUpload.recordAttempt(it,text))}
+        // DURABILITY GATE: the attempted payload must reach persistent storage
+        // (checked commit) before any network side effect. On failure: no POST,
+        // user-visible error, composer stays editable for an explicit retry.
+        // NOTE: a failed commit() may leave the in-memory preference map ahead
+        // of disk; a later successful save rewrites the whole map, healing the
+        // divergence, and process death restores the last durable state - the
+        // POST only ever runs after a successful durable write of THIS record.
+        if(stagedRecord!=null) {
+            try {host.session.saveStagedUpload(StagedUpload.recordAttempt(stagedRecord!!,text))}
+            catch(e:Exception) {
+                attemptedText=null
+                status.text="Couldn't durably record this send. Nothing was sent - try again."
+                return
+            }
+        }
         posting=true;send.isEnabled=false
         message.isEnabled=false
         screenScope.launch {
             try {
                 host.api.postWithUploads(room.id,postClient,created,text,room.mainThreadKey,null,emptyList(),listOf(upload!!))
-                if(upload!=null)host.session.removeStagedUpload(upload!!)
+                if(upload!=null)runCatching {host.session.removeStagedUpload(upload!!)}
                 status.text="Attachment sent. Server recorded this post.";ready=false;privateFile.delete();send.visibility=android.view.View.GONE
             }catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
             catch(e:ApiException) {
@@ -279,7 +293,15 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     ambiguous=false;attemptedText=null;priorUnresolved=true
                     val fresh=clientId();val now=java.time.Instant.now().toString()
                     postClient=fresh;created=now
-                    stagedRecord?.let {host.session.saveStagedUpload(StagedUpload.rotateForResend(it,{fresh},{now})!!)}
+                    val rotated=stagedRecord?.let {StagedUpload.rotateForResend(it,{fresh},{now})}
+                    if(rotated!=null && runCatching {host.session.saveStagedUpload(rotated)}.isFailure) {
+                        // The expired identity could not be durably rotated: keep the
+                        // resend DISABLED (a resend now would risk losing the prior
+                        // identity on crash) and fail loudly instead of proceeding.
+                        message.isEnabled=false;send.isEnabled=false
+                        status.text="Couldn't durably record the expired send. Restart the app, then check the room before sending again."
+                        return@launch
+                    }
                     message.isEnabled=true;send.text="Send attachment";send.isEnabled=true
                     status.text="This send wasn't confirmed and has expired. Check the room, then review and send again."
                 } else if(e.code=="upload_not_ready") {
@@ -349,7 +371,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // semantics - never delete a remote attachment blindly. Local
             // abandon only; an unposted staged upload expires server-side
             // (release X0 copy), a landed post is managed from the room.
-            upload?.let {host.session.removeStagedUpload(it)}
+            upload?.let {u->runCatching {host.session.removeStagedUpload(u)}}
             privateFile.delete()
             status.text="Cancelled locally, server not contacted. Check the room: a recorded post stays there."
             return

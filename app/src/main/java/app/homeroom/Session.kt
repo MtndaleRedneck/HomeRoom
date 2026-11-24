@@ -105,16 +105,29 @@ class Session(context: Context) {
     fun stagedUploads(): List<JSONObject> =
         runCatching { JSONArray(prefs.getString(KEY_STAGED, "[]")).objects() }.getOrDefault(emptyList())
 
+    // DURABILITY (external review 2026-11-24): staged-record transitions gate
+    // irreversible remote side effects, so they use checked synchronous commit(),
+    // the same fail-loudly pattern as saveDecisionReview. A failed commit throws
+    // BEFORE the caller's network op, preserving the prior durable state
+    // (fail closed). apply()'s async disk write left a crash window where the
+    // server could hold a POST the restored record did not know was attempted.
     fun saveStagedUpload(record: JSONObject) {
         val id = record.optString("upload")
         val list = stagedUploads().filter { it.optString("upload") != id }.toMutableList()
         list.add(record)
-        prefs.edit().putString(KEY_STAGED, JSONArray(list).toString()).apply()
+        if (!prefs.edit().putString(KEY_STAGED, JSONArray(list).toString()).commit()) {
+            throw IllegalStateException("Staged upload persistence failed.")
+        }
     }
 
+    // Removal is the post-confirmation cleanup: a failed commit KEEPS the record,
+    // which the fail-closed predicates and resume reconciliation already handle,
+    // so callers wrap this in runCatching and continue.
     fun removeStagedUpload(uploadId: String) {
         val list = stagedUploads().filter { it.optString("upload") != uploadId }
-        prefs.edit().putString(KEY_STAGED, JSONArray(list).toString()).apply()
+        if (!prefs.edit().putString(KEY_STAGED, JSONArray(list).toString()).commit()) {
+            throw IllegalStateException("Staged upload persistence failed.")
+        }
     }
 
     fun anchor(roomId: String): String? = prefs.getString(KEY_ANCHOR + roomId, null)
