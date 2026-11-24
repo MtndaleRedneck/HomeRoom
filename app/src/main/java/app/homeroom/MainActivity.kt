@@ -415,9 +415,19 @@ class MainActivity : AppCompatActivity() {
         // RECOVERED Nov 24, 2026 (operator Nov 15 readback): the release's
         // onResume applied privacy, gated on the app lock, then resumed
         // content; resumeContent renewed features/session when enrolled.
-        // (Its live-updates/server-bar parts are not in this tree yet.)
         applyPrivacy()
         if (appLock.gate()) return
+        resumeContent()
+    }
+
+    // Historical resumeContent (Nov 15 readback): poller, visible screen poll,
+    // enrolled renew. Its live-updates/server-bar helpers (startLiveUpdates/
+    // updateServerBar) are NOT in this tree (still unrecovered).
+    // I2 review fix: also invoked from the app-lock unlock callback below -
+    // with the restored gate, a locked resume returns before starting the
+    // poller/renew, and the previously no-op callback would have stalled them
+    // until the next onResume.
+    private fun resumeContent() {
         isForeground = true
         startPoller()
         val screen = roomScreen ?: tabScreens[currentTab]
@@ -468,7 +478,7 @@ class MainActivity : AppCompatActivity() {
 
     // RECONSTRUCTED: app lock gate and privacy flags (blur in recents, secret
     // notification previews) applied activity-wide.
-    val appLock: AppLock by lazy { AppLock(this) { /* unlocked: content already visible */ } }
+    val appLock: AppLock by lazy { AppLock(this) { resumeContent() } }
 
     fun applyPrivacy() {
         if (PrivacyPrefs.hideRecents(this)) {

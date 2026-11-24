@@ -94,6 +94,11 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    // Unit-test deps restored Nov 24, 2026: the app/src/test Robolectric tree
+    // existed without testImplementation entries and could not compile. Pins
+    // are reconstruction choices (junit 4.13.2, robolectric 4.11.1 for sdk 34).
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
 }

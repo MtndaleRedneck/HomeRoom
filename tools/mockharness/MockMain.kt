@@ -152,6 +152,16 @@ fun main(args: Array<String>) = runBlocking {
         require(id != StagedUpload.namespacedPostId("room1", "post-2")) { "client not mixed in" }
         require(id.removePrefix("fu_").all { it in '0'..'9' || it in 'a'..'f' }) { "not hex" }
     }
+    check("csrf-failure-recovers-and-retries") {
+        // The mock answers the FIRST TRIGGER_CSRF_ONCE post with 403
+        // csrf_failed; request() must null sessionData, bootstrap (fresh CSRF
+        // under bootMutex), retry the SAME body, and succeed. Covers the
+        // split-credential degradation path (rotated cookie + stale CSRF)
+        // degrading into this recovery instead of corrupting.
+        api.markReadEvents("TRIGGER_CSRF_ONCE", listOf("ev1"))
+        // A second call succeeds without any further injection.
+        api.markReadEvents("t1", listOf("ev2"))
+    }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.
         val e = try { api.avatarBytes("http://example.invalid/a.png"); null } catch (x: ApiException) { x }

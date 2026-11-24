@@ -63,14 +63,22 @@ class Session(context: Context) {
     val enrolled: Boolean
         get() = !serverUrl.isNullOrBlank() && !cookie.isNullOrBlank()
 
+    // Shared atomic boundary (I2 review, Nov 24 2026): the generation
+    // comparison + credential write (withinGeneration) and clear() both hold
+    // stateLock, so a renew in flight cannot resurrect old credentials after
+    // sign-out - previously the check and the write were not atomic vs clear.
+    private val stateLock = Any()
+
     fun clear() {
         // RECONSTRUCTED: the release bumps the session generation on clear so
         // stale in-flight writes from the old session are dropped.
-        val generation = generation
-        val keepUrl = serverUrl
-        prefs.edit().clear().apply()
-        prefs.edit().putLong(KEY_SESSION_GENERATION, generation + 1L).apply()
-        serverUrl = keepUrl
+        synchronized(stateLock) {
+            val generation = generation
+            val keepUrl = serverUrl
+            prefs.edit().clear().apply()
+            prefs.edit().putLong(KEY_SESSION_GENERATION, generation + 1L).apply()
+            serverUrl = keepUrl
+        }
     }
 
     // RECONSTRUCTED Nov 23, 2026: generation guard + decision review persistence,
@@ -80,7 +88,9 @@ class Session(context: Context) {
         get() = prefs.getLong(KEY_SESSION_GENERATION, 0L)
 
     fun withinGeneration(generation: Long, block: () -> Unit) {
-        if (this.generation == generation) block()
+        synchronized(stateLock) {
+            if (this.generation == generation) block()
+        }
     }
 
     fun saveDecisionReview(id: String, value: org.json.JSONObject?) {

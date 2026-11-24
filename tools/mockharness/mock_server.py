@@ -122,6 +122,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get('Content-Length') or 0)
         body = self.rfile.read(length) if length else b""
+        # Fault injection for the app 403-recovery contract: the FIRST post
+        # carrying the magic trigger text is answered 403 csrf_failed; the
+        # client must bootstrap (fresh CSRF) and retry the same body, which
+        # then succeeds. One-shot and body-keyed so no other scenario trips it.
+        if self.command == 'POST' and getattr(self.server, 'csrf_fail_armed', True):
+            if b'TRIGGER_CSRF_ONCE' in body:
+                self.server.csrf_fail_armed = False
+                self._reply(403, {"error": "csrf_failed"})
+                print(f"{self.command} {path} -> INJECTED csrf_failed (one-shot)", flush=True)
+                return
         for method, pattern, name in ROUTES:
             if self.command == method and re.match(pattern, path):
                 entry = GOLD.get(name, {})
