@@ -121,12 +121,12 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     // flag (ApiClient.hasFeature, fed by /owner/instance). The release's "Ask
     // AIs side by side" entry (ask_all, K0/z3 case 1) sends an ask-all request;
     // that flow is not reconstructed, so the entry is not offered (tracked gap).
-    private fun roomToolEntries(): List<Pair<String, () -> Unit>> {
-        val entries = mutableListOf<Pair<String, () -> Unit>>()
-        if (host.api.hasFeature("held_updates")) entries.add("Outgoing messages" to { host.openPage("Outgoing messages", OutboxScreen(context)) })
-        if (host.api.hasFeature("room_goals")) entries.add("Pinned room goal" to { host.openPage("Pinned room goal", RoomGoalScreen(context, room)) })
-        if (host.api.hasFeature("staged_uploads")) entries.add("Attach photo or file" to { attachFile() })
-        if (host.api.hasFeature("voice_notes")) entries.add("Record voice note" to { host.openPage("Record voice note", VoiceCapture(context, room)) })
+    private fun roomToolEntries(): List<Triple<String, String, () -> Unit>> {
+        val entries = mutableListOf<Triple<String, String, () -> Unit>>()
+        if (host.api.hasFeature("held_updates")) entries.add(Triple("held_updates", "Outgoing messages", { -> host.openPage("Outgoing messages", OutboxScreen(context)) }))
+        if (host.api.hasFeature("room_goals")) entries.add(Triple("room_goals", "Pinned room goal", { -> host.openPage("Pinned room goal", RoomGoalScreen(context, room)) }))
+        if (host.api.hasFeature("staged_uploads")) entries.add(Triple("staged_uploads", "Attach photo or file", { -> attachFile() }))
+        if (host.api.hasFeature("voice_notes")) entries.add(Triple("voice_notes", "Record voice note", { -> host.openPage("Record voice note", VoiceCapture(context, room)) }))
         return entries
     }
 
@@ -134,32 +134,69 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         roomToolsWrap?.visibility = if (roomToolEntries().isEmpty()) View.GONE else View.VISIBLE
     }
 
+    private var roomToolsDialog: android.app.AlertDialog? = null
+
     private fun showRoomTools() {
         val entries = roomToolEntries()
         if (entries.isEmpty()) {
             android.widget.Toast.makeText(context, "This server doesn't offer room tools.", android.widget.Toast.LENGTH_LONG).show()
             return
         }
-        android.app.AlertDialog.Builder(context)
+        // Stale-context guard (I2 focused check, Nov 24): the dialog can be
+        // retained across a session reset, so each dispatch re-proves the
+        // session identity captured at menu build AND the server feature flag.
+        val launch = host.session.authSnapshot()
+        val dialog = android.app.AlertDialog.Builder(context)
             .setTitle("Room tools")
-            .setItems(entries.map { it.first }.toTypedArray()) { dialog, which ->
-                dialog.dismiss()
-                entries[which].second.invoke()
+            .setItems(entries.map { it.second }.toTypedArray()) { d, which ->
+                d.dismiss()
+                val (flag, _, action) = entries[which]
+                if (shouldDispatchEntry(host.session, launch, host.api.hasFeature(flag))) action()
             }
             .show()
+        roomToolsDialog = dialog
+        host.transientDialog = dialog
+        dialog.setOnDismissListener {
+            roomToolsDialog = null
+            if (host.transientDialog === dialog) host.transientDialog = null
+        }
     }
 
     // Release handler (K0/A3 case 2): the picker opens with */* and the chosen
     // file goes to the attachment composer for staging.
     private fun attachFile() {
+        // Cross-session guard (ChatGPT finite review of 24c1422): the system
+        // picker can outlive this screen, and MainActivity retains the callback
+        // until the picker returns. Capture the operation snapshot at launch
+        // and drop the result if the session changed while the picker was
+        // open - otherwise AttachmentComposer would pair the old room with
+        // the NEW session's auth snapshot taken at its construction. The
+        // session-generation mechanism is reconstruction-side, so parity here
+        // means following the tree's own OpAuth doctrine.
+        val launch = host.session.authSnapshot()
         host.pickFile { uri ->
-            if (uri != null) host.openPage("Attach photo or file", AttachmentComposer(context, room, uri, null, voice = false))
+            if (uri != null && shouldDeliverPick(uri, host.session, launch)) {
+                host.openPage("Attach photo or file", AttachmentComposer(context, room, uri, null, voice = false))
+            }
         }
+    }
+
+    internal companion object {
+        // Picker-result gate, extracted for focused tests: deliver only a
+        // non-null pick to an unchanged session (generation AND destination).
+        fun shouldDeliverPick(uri: android.net.Uri?, session: Session, launch: Session.OpAuth): Boolean =
+            uri != null && session.unchangedSince(launch.generation, launch.serverUrl)
+
+        // Menu-dispatch gate (I2 focused check): a retained menu entry fires
+        // only for an unchanged session with the feature still advertised.
+        fun shouldDispatchEntry(session: Session, launch: Session.OpAuth, featureOn: Boolean): Boolean =
+            featureOn && session.unchangedSince(launch.generation, launch.serverUrl)
     }
 
     override fun poll() = loadNew()
 
     override fun onHide() {
+        roomToolsDialog?.dismiss()
         rememberPlace()
     }
 

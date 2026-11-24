@@ -208,7 +208,15 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         // Durable restart marker (K0/e1.d:232): blocked BEFORE any upload job
         // or network request; job stays null.
         if(resume?.optBoolean("restart_required",false)==true) {restartBlocked();return}
-        if(job==null && !ready) {if(resume!=null)resumeUpload() else prepare()}
+        if(job==null && !ready) {
+            // Lock-cover defer (I2 focused check, Nov 24): the cover blocks
+            // touches but not coroutines - byte-copy, staged-record persistence
+            // and upload-create must wait for a genuine unlock instead of
+            // running beneath the cover. Restart only if this composer is
+            // still the shown page.
+            if(host.appLock.coverShowing) {host.runWhenUnlocked {if(isShown)onShow()};return}
+            if(resume!=null)resumeUpload() else prepare()
+        }
     }
     override fun onHide() {job?.cancel();job=null;super.onHide()}
     // RECONSTRUCTED: resume an interrupted staged upload from its local record.

@@ -350,6 +350,24 @@ class MainActivity : AppCompatActivity() {
     fun refreshNavBackdrop() { if (::nav.isInitialized) nav.backdropChanged() }
     private val pageStack = java.util.ArrayDeque<PageState>()
     private var currentPage: Screen? = null
+    // Retained transient dialog slot: screens register activity-level dialogs
+    // here so session reset (showSetup) can dismiss them (I2, Nov 24).
+    internal var transientDialog: android.app.Dialog? = null
+
+    // Deferred actions that must not run beneath the app-lock cover (I2
+    // focused check, Nov 24): the cover blocks touches but not coroutines,
+    // so side-effecting work started from a page's onShow waits for a
+    // genuine unlock.
+    private val afterUnlockActions = mutableListOf<() -> Unit>()
+
+    fun runWhenUnlocked(action: () -> Unit) {
+        if (!appLock.coverShowing) action() else synchronized(afterUnlockActions) { afterUnlockActions.add(action) }
+    }
+
+    private fun drainAfterUnlock() {
+        val pending = synchronized(afterUnlockActions) { afterUnlockActions.toList().also { afterUnlockActions.clear() } }
+        pending.forEach { runCatching { it() } }
+    }
 
     fun openPage(title: String, screen: Screen) {
         val current = content.getChildAt(0) as? Screen
@@ -404,6 +422,12 @@ class MainActivity : AppCompatActivity() {
     private fun showSetup(message: String?) {
         pendingOpenRoomId = null
         displayedRoom = null
+        // Session reset drops retained stale-session actions (I2 focused
+        // check): a pending picker result or an open room-tools dialog must
+        // not survive into the new session.
+        pickImageCallback = null
+        transientDialog?.dismiss()
+        transientDialog = null
         setNavVisible(View.GONE)
         header.visibility = View.GONE
         roomScreen = null
@@ -635,7 +659,7 @@ class MainActivity : AppCompatActivity() {
 
     // RECONSTRUCTED: app lock gate and privacy flags (blur in recents, secret
     // notification previews) applied activity-wide.
-    val appLock: AppLock by lazy { AppLock(this) { resumeContent() } }
+    val appLock: AppLock by lazy { AppLock(this) { resumeContent(); drainAfterUnlock() } }
 
     fun applyPrivacy() {
         if (PrivacyPrefs.hideRecents(this)) {
