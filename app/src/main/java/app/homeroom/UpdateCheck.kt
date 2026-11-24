@@ -46,7 +46,23 @@ object UpdateCheck {
     /** "v1.3" and "1.3" both read as "1.3". */
     fun displayVersion(tag:String)=tag.removePrefix("v").removePrefix("V")
 
-    private fun setState(s:State,p:Int=progress) {state=s;progress=p;MainActivity.onUpdateChanged()}
+    // Agreed shared-rule timing (supersedes the Oct 21 ~20s note): after a check
+    // finds nothing newer, "You're up to date." hides after 5 seconds and the
+    // version display stays. Errors and new-version notices do NOT auto-hide.
+    // The private12 binary itself has no timer; this is the agreed rule.
+    private val handler=android.os.Handler(android.os.Looper.getMainLooper())
+    private var upToDateEpoch=0L
+
+    private fun setState(s:State,p:Int=progress) {
+        state=s;progress=p
+        if(s==State.UP_TO_DATE) {
+            val epoch=++upToDateEpoch
+            handler.postDelayed({ if(upToDateEpoch==epoch&&state==State.UP_TO_DATE) setState(State.IDLE) },5000)
+        } else {
+            upToDateEpoch++
+        }
+        MainActivity.onUpdateChanged()
+    }
 
     /** Silent check on app open. Never shows anything; the Settings row and badge update. */
     fun checkInBackground(scope:CoroutineScope) {

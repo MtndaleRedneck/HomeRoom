@@ -21,20 +21,23 @@ object ApprovalNotifications {
         val open=PendingIntent.getActivity(context,0,Intent(context,MainActivity::class.java).setData(android.net.Uri.parse("homeroom://approval/"+android.net.Uri.encode(kind+":"+ref))).putExtra(EXTRA_PAGE,kind),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val b=NotificationCompat.Builder(context,channel).setSmallIcon(R.drawable.ic_notification).setContentTitle(if(kind=="key_pending")"AI key needs review" else "Rule needs your decision").setContentText("Open HomeRoom to review the current details.").setContentIntent(open).setAutoCancel(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(NotificationCompat.Builder(context,channel).setSmallIcon(R.drawable.ic_notification).setContentTitle("HomeRoom").setContentText("Review needed").build())
+        // TRUE private12 (HomeRoomMessagingService constant pool + full resource
+        // table, Nov 24): the approval notification carries a single "Review"
+        // action on every SDK - no Reject/Approve quick actions exist in the
+        // binary. Decisions happen in-app behind the app lock; the receiver's
+        // unlock gate below is the binary's enforcement point.
         b.addAction(0,"Review",open)
-        // A key can never be approved without foreground fingerprint review.
-        if(kind=="rule_pending" && data["version"]?.toIntOrNull()!=null) {
-            for((label,decision) in listOf("Reject" to "reject","Approve" to "approve")) {
-                val intent=Intent(context,ApprovalActionReceiver::class.java).setAction(decision).setData(android.net.Uri.parse("homeroom://rule-action/"+android.net.Uri.encode(ref)+"/"+decision))
-                    .putExtra("rule",ref).putExtra("version",data["version"]!!.toInt()).putExtra("room",data["room_id"]).putExtra("session",session.sessionId)
-                b.addAction(0,label,PendingIntent.getBroadcast(context,0,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            }
-        }
         manager.notify("approval:"+ref,10,b.build())
     }
 }
 class ApprovalActionReceiver:android.content.BroadcastReceiver() {
     override fun onReceive(context:Context,intent:Intent) {
+        // TRUE private12 (ApprovalActionReceiver decompile): the whole body is
+        // gated on SDK_INT >= 31 AND !KeyguardManager.isDeviceLocked() - a
+        // decision broadcast is ignored on older Android and on a locked phone.
+        if(android.os.Build.VERSION.SDK_INT < 31) return
+        val keyguard=context.getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        if(keyguard.isDeviceLocked) return
         val session=Session(context)
         if(!session.enrolled || session.sessionId!=intent.getStringExtra("session"))return
         val decision=intent.action?.takeIf {it in listOf("approve","reject")} ?: return

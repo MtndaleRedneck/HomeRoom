@@ -78,6 +78,11 @@ class RoomsScreen(context: Context) : Screen(context) {
             cell.background = rounded(C.surface, context.dp(14).toFloat())
             val outer = LinearLayout(context)
             pad(outer, 16, 6)
+            // RecyclerView generates WRAP_CONTENT default params for a root
+            // without params, collapsing weight-based row content to 0 width
+            // (NativeLayoutTest.roomAndMessageTextHaveRealWidth). Rows must
+            // declare MATCH_PARENT before the RV adopts them.
+            outer.layoutParams = android.view.ViewGroup.LayoutParams(-1, -2)
             outer.addView(cell, lp())
             return Holder(outer, cell)
         }
@@ -96,7 +101,7 @@ class RoomsScreen(context: Context) : Screen(context) {
                 val b = text(context, badges.joinToString("  ·  "), 12f, C.accent)
                 top.addView(b)
             }
-            holder.cell.addView(top)
+            holder.cell.addView(top, LinearLayout.LayoutParams(-1, -2))
             if (room.members.isNotEmpty()) {
                 holder.cell.addView(spacer(context, 4))
                 holder.cell.addView(text(
