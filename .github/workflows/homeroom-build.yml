@@ -494,8 +494,6 @@ jobs:
             adb exec-out screencap -p > i-voice.png
             adb shell input keyevent KEYCODE_BACK
             sleep 2
-            adb shell input keyevent KEYCODE_BACK
-            sleep 2
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
             sleep 4
             XY=$(python3 ci/ui-tap.py "Attach photo or file") && adb shell input tap $XY
