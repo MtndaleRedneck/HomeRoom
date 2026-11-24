@@ -302,6 +302,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                         status.text="Couldn't durably record the expired send. Restart the app, then check the room before sending again."
                         return@launch
                     }
+                    // Keep the in-memory record identical to the durably rotated one:
+                    // otherwise a later resend would persist the PRE-rotation record
+                    // (same upload ID) and silently undo prior_posts before a POST
+                    // under the new identity. Only assign AFTER the durable save.
+                    if(rotated!=null)stagedRecord=rotated
                     message.isEnabled=true;send.text="Send attachment";send.isEnabled=true
                     status.text="This send wasn't confirmed and has expired. Check the room, then review and send again."
                 } else if(e.code=="upload_not_ready") {
