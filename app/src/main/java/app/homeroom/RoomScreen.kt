@@ -115,10 +115,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         screenActive = true
         refreshRoomToolsVisibility()
         // Recover an accepted ask whose navigation was dropped by a dismiss:
-        // open the preserved answers page now that the screen is active.
-        pendingAnswers?.let { (requestId, launch) ->
-            pendingAnswers = null
-            host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
+        // retention is room-level, so a recreated screen still opens the
+        // preserved answers page once it is active (consumed on open).
+        askAllPending.takeAccepted(host.session.authSnapshot().generation, room.id)?.let { accepted ->
+            host.openPage("AI answers", AskAllAnswersScreen(context, accepted.requestId, accepted.auth))
         }
         if (events.isEmpty()) loadInitial() else positionAtAnchor(force = true)
     }
@@ -156,22 +156,31 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     // settle the possibly-accepted duplicate, so a further send is blocked while
     // this marker stands. Cleared only by proof of acceptance: the POST returns
     // a request_id, or a room reload surfaces an event carrying this client_id.
-    // Instance-scoped, so it survives dismiss/hide/pause but not leaving the room.
-    private var unresolvedAsk: String? = null
-    // Accepted ask whose answers page was never opened (dialog dismissed before
-    // navigation): recovered as a real view from onShow, not just logged.
-    private var pendingAnswers: Pair<String, Session.OpAuth>? = null
+    // Retained ROOM-LEVEL (askAllPending in the companion), keyed by session
+    // generation + room id, so leaving and re-entering the room keeps the
+    // guard; in-memory only (process death policy in AskAllPendingStore).
 
     private fun beginAskAll() {
-        if (unresolvedAsk != null) {
-            snack(this, "Ask not confirmed. Check this room before resending.")
-            return
-        }
         // Operation-bound auth (I2 pre-certification finding): capture the
         // session identity at flow start and run every request in this flow
         // against it, so a session reset mid-flow is rejected by requestFor
         // instead of rebinding the old intent to a new session.
         val launch = host.session.authSnapshot()
+        if (askAllPending.pendingClientId(launch.generation, room.id) != null) {
+            // Block the blind resend, but offer explicit user resolution:
+            // without an escape, a truly failed ask would lock the room for
+            // the rest of the process lifetime.
+            android.app.AlertDialog.Builder(context)
+                .setTitle("Ask not confirmed")
+                .setMessage("Your previous ask was not confirmed. It may still appear in this room.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Send anyway") { _, _ ->
+                    askAllPending.clear(launch.generation, room.id)
+                    beginAskAll()
+                }
+                .show()
+            return
+        }
         screenScope.launch {
             val aiMembers: List<Pair<String, String>> = try {
                 val roster = host.api.ais(launch).map { it.actor }.toSet()
@@ -234,7 +243,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 askButton.isEnabled = false
                 // Mark before the POST: a dismiss during the flight leaves the
                 // same possibly-accepted state as an explicit failure.
-                unresolvedAsk = askClientId
+                askAllPending.mark(launch.generation, room.id, askClientId)
                 screenScope.launch {
                     // Stage 1: POST acceptance. An exception here means the ask
                     // may or may not be held by the server; the release (K0/x1)
@@ -267,16 +276,18 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     // clears; if the dialog was dismissed during the POST the
                     // request_id is preserved and recovered as a real page from
                     // onShow instead of being dropped to a log line.
-                    unresolvedAsk = null
-                    pendingAnswers = requestId to launch
+                    askAllPending.clear(launch.generation, room.id)
+                    // Retain room-level until the answers page actually opens,
+                    // so recovery survives screen recreation (I2 18:50).
+                    askAllPending.retainAccepted(launch.generation, room.id, requestId, launch)
                     if (dialog.isShowing) {
                         dialog.dismiss()
                         // openPage is outside the POST catch: a failure here is
                         // NOT an uncertain ask (the server accepted). Keep the
-                        // preserved request_id so onShow can recover the page.
+                        // retained request_id so onShow can recover the page.
                         try {
                             host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
-                            pendingAnswers = null
+                            askAllPending.takeAccepted(launch.generation, room.id)
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e
                         } catch (_: Exception) {
                             snack(this@RoomScreen, "Ask accepted. Reopen this room to see the answers.")
@@ -342,6 +353,11 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     }
 
     internal companion object {
+        // Process-level unresolved-ask guard (I2 379008b review): survives
+        // RoomScreen recreation; in-memory only, scoped by session
+        // generation + room id (policy in AskAllPendingStore).
+        internal val askAllPending = AskAllPendingStore()
+
         // Picker-result gate, extracted for focused tests: deliver only a
         // non-null pick to an unchanged session (generation AND destination)
         // with the feature still advertised.
@@ -383,8 +399,8 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 loading = false
                 // Acceptance proof, not assumption: a reload clears the
                 // duplicate guard only when an event carries the ask's own
-                // client_id; a bare successful reload reconciles nothing.
-                unresolvedAsk?.let { pending -> if (events.any { it.clientId == pending }) unresolvedAsk = null }
+                // client_id; a bare or empty fetch reconciles nothing.
+                askAllPending.reconcile(host.session.authSnapshot().generation, room.id, events.map { it.clientId })
                 updateOlderVisibility()
                 positionAtAnchor(force = true)
                 markRead()
