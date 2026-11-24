@@ -45,10 +45,53 @@ ROOMS = {
         {
             "room_id": "stub-room",
             "display_name": "Stub Room",
-            "members": [{"actor": "stub-owner", "display_name": "Stub Owner"}],
+            "members": [
+                {"actor": "stub-owner", "display_name": "Stub Owner"},
+                # Ask-all roster member (synthetic): the app's roster gate
+                # (K0/w1 parity) intersects room members with GET /owner/ais.
+                {"actor": "stub-ai-1", "display_name": "Stub AI One"},
+            ],
             "unread": 0,
         }
     ]
+}
+
+# Finite ask-all responses so the interaction pass exercises the reconstructed
+# private12 ask-all flow end-to-end against the stub (synthetic flow only).
+AIS = {
+    "ais": [
+        {
+            "actor": "stub-ai-1",
+            "display_name": "Stub AI One",
+            "kind": "assistant",
+            "key_status": "active",
+        }
+    ]
+}
+
+ASK_REQUEST = {
+    "request_id": "stub-ask-1",
+    "text": "What is the stub plan?",
+    "targets": [
+        {
+            "actor": "stub-ai-1",
+            "state": "answered",
+            "replies": [{"event_id": "stub-ev-ask-reply"}],
+        }
+    ],
+}
+
+ASK_REPLY_EVENT = {
+    "event": {
+        "event_id": "stub-ev-ask-reply",
+        "seq": 3,
+        "room_id": "stub-room",
+        "actor": "stub-ai-1",
+        "request_id": "stub-ask-1",
+        "text": "Stub AI answer for the debug-interaction job.",
+        "created_at": "2026-11-24T12:02:30Z",
+        "own": False,
+    }
 }
 
 EVENTS = {
@@ -166,6 +209,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(EVENTS)
         if self.command == "GET" and p == "/owner/rooms/stub-room/goal":
             return self._send(GOAL)
+        if self.command == "GET" and p == "/owner/ais":
+            return self._send(AIS)
+        if self.command == "POST" and p == "/owner/rooms/stub-room/ask-all":
+            return self._send({"request_id": "stub-ask-1"})
+        if self.command == "GET" and p == "/owner/requests/stub-ask-1":
+            return self._send(ASK_REQUEST)
+        if self.command == "GET" and p == "/owner/events/stub-ev-ask-reply":
+            return self._send(ASK_REPLY_EVENT)
         if self.command == "GET" and p == "/owner/decisions/stub-decision":
             return self._send(CARD)
         if self.command == "POST" and p == "/owner/decisions/stub-decision/prepare-answer":

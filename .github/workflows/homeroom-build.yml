@@ -490,6 +490,25 @@ jobs:
             sleep 3
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
             sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 6
+            adb exec-out screencap -p > i-askall-dialog.png
+            XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
+            sleep 2
+            adb shell input text "What%sis%sthe%sstub%splan"
+            sleep 2
+            adb exec-out screencap -p > i-askall-filled.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-askall-answers.png
+            python3 ci/ui-tap.py "Stub AI One" >/dev/null || { echo "answers page did not render the stub AI card"; exit 1; }
+            python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "answers page did not render the stub reply"; exit 1; }
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
             XY=$(python3 ci/ui-tap.py "Record voice note") && adb shell input tap $XY
             sleep 6
             adb exec-out screencap -p > i-voice.png
@@ -560,13 +579,13 @@ jobs:
           wc -l stub-log.jsonl
           # Anchored to the logged "path" field with the app's /homeroom/v1 prefix, so the
           # unprefixed readiness probe (curl GET /owner/instance) cannot satisfy these.
-          for pat in '"method": "GET", "path": "/homeroom/v1/owner/instance"' '"path": "/homeroom/v1/owner/rooms/stub-room/events[?"]' '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/prepare-answer"' '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/confirm-answer"'; do
+          for pat in '"method": "GET", "path": "/homeroom/v1/owner/instance"' '"path": "/homeroom/v1/owner/rooms/stub-room/events[?"]' '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/prepare-answer"' '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/confirm-answer"' '"method": "GET", "path": "/homeroom/v1/owner/ais"' '"method": "POST", "path": "/homeroom/v1/owner/rooms/stub-room/ask-all"' '"method": "GET", "path": "/homeroom/v1/owner/requests/stub-ask-1"' '"method": "GET", "path": "/homeroom/v1/owner/events/stub-ev-ask-reply"'; do
             grep -q "$pat" stub-log.jsonl || { echo "STUB LOG MISSING PATTERN: $pat"; tail -20 stub-log.jsonl; exit 1; }
           done
           PRE=$(grep -n '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/prepare-answer"' stub-log.jsonl | head -1 | cut -d: -f1)
           CON=$(grep -n '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/confirm-answer"' stub-log.jsonl | head -1 | cut -d: -f1)
           [ -n "$PRE" ] && [ -n "$CON" ] && [ "$PRE" -lt "$CON" ] || { echo "STUB LOG ORDER VIOLATION: prepare line ${PRE:-none} not before confirm line ${CON:-none}"; exit 1; }
-          echo "ok: stub log shows APP instance GET + room events + decision POST prepare before POST confirm (method+path presence and order only; SYNTHETIC flow)"
+          echo "ok: stub log shows APP instance GET + room events + decision POST prepare before POST confirm + ask-all POST and answers/reply GETs (method+path presence and order only; SYNTHETIC flow)"
 
       - name: Upload interaction evidence
         if: always()
