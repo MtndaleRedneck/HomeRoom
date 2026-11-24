@@ -1,0 +1,242 @@
+[
+  {
+    "vector_description": "Synthetic only. JSON canonical UTF8, no newline/BOM, no Unicode normalization. This example contains nonASCII café.",
+    "action": {
+      "action_id": "fixture_action",
+      "kind": "email",
+      "summary": "Fixture café email",
+      "authorized_actor": {
+        "actor_id": "fixture_ai",
+        "display_name": "Fixture AI",
+        "key_id": "fixture_key"
+      },
+      "details": {
+        "sending_identity": {
+          "account_id": "fixture_account",
+          "from_address": "sender@example.invalid",
+          "display_name": "Fixture Sender"
+        },
+        "to": [
+          {
+            "name": "Fixture Recipient",
+            "address": "recipient@example.invalid"
+          }
+        ],
+        "cc": [],
+        "bcc": [],
+        "subject": "Exact subject",
+        "body": {
+          "format": "plain_text",
+          "text": "Exact fixture words"
+        },
+        "attachments": []
+      }
+    },
+    "action_canonical": "{\"action_id\":\"fixture_action\",\"authorized_actor\":{\"actor_id\":\"fixture_ai\",\"display_name\":\"Fixture AI\",\"key_id\":\"fixture_key\"},\"details\":{\"attachments\":[],\"bcc\":[],\"body\":{\"format\":\"plain_text\",\"text\":\"Exact fixture words\"},\"cc\":[],\"sending_identity\":{\"account_id\":\"fixture_account\",\"display_name\":\"Fixture Sender\",\"from_address\":\"sender@example.invalid\"},\"subject\":\"Exact subject\",\"to\":[{\"address\":\"recipient@example.invalid\",\"name\":\"Fixture Recipient\"}]},\"kind\":\"email\",\"summary\":\"Fixture café email\"}",
+    "action_utf8_hex": "7b22616374696f6e5f6964223a22666978747572655f616374696f6e222c22617574686f72697a65645f6163746f72223a7b226163746f725f6964223a22666978747572655f6169222c22646973706c61795f6e616d65223a2246697874757265204149222c226b65795f6964223a22666978747572655f6b6579227d2c2264657461696c73223a7b226174746163686d656e7473223a5b5d2c22626363223a5b5d2c22626f6479223a7b22666f726d6174223a22706c61696e5f74657874222c2274657874223a224578616374206669787475726520776f726473227d2c226363223a5b5d2c2273656e64696e675f6964656e74697479223a7b226163636f756e745f6964223a22666978747572655f6163636f756e74222c22646973706c61795f6e616d65223a22466978747572652053656e646572222c2266726f6d5f61646472657373223a2273656e646572406578616d706c652e696e76616c6964227d2c227375626a656374223a224578616374207375626a656374222c22746f223a5b7b2261646472657373223a22726563697069656e74406578616d706c652e696e76616c6964222c226e616d65223a224669787475726520526563697069656e74227d5d7d2c226b696e64223a22656d61696c222c2273756d6d617279223a224669787475726520636166c3a920656d61696c227d",
+    "action_sha256": "b007ffd40b8ca8a49b453bb89c2ce4e05bf029fb105e5bb0e5af0e8a19b28a47",
+    "content": {
+      "title": "Fixture decision",
+      "proposal": "Send exact fixture email?",
+      "options": [
+        {
+          "option_id": "yes",
+          "label": "Yes"
+        },
+        {
+          "option_id": "no",
+          "label": "No"
+        }
+      ],
+      "effect_class": "external_action",
+      "context_event_ids": [],
+      "decision_type": "yes_no",
+      "action": {
+        "action_id": "fixture_action",
+        "kind": "email",
+        "summary": "Fixture café email",
+        "authorized_actor": {
+          "actor_id": "fixture_ai",
+          "display_name": "Fixture AI",
+          "key_id": "fixture_key"
+        },
+        "details": {
+          "sending_identity": {
+            "account_id": "fixture_account",
+            "from_address": "sender@example.invalid",
+            "display_name": "Fixture Sender"
+          },
+          "to": [
+            {
+              "name": "Fixture Recipient",
+              "address": "recipient@example.invalid"
+            }
+          ],
+          "cc": [],
+          "bcc": [],
+          "subject": "Exact subject",
+          "body": {
+            "format": "plain_text",
+            "text": "Exact fixture words"
+          },
+          "attachments": []
+        }
+      },
+      "action_sha256": "b007ffd40b8ca8a49b453bb89c2ce4e05bf029fb105e5bb0e5af0e8a19b28a47"
+    },
+    "content_canonical": "{\"action\":{\"action_id\":\"fixture_action\",\"authorized_actor\":{\"actor_id\":\"fixture_ai\",\"display_name\":\"Fixture AI\",\"key_id\":\"fixture_key\"},\"details\":{\"attachments\":[],\"bcc\":[],\"body\":{\"format\":\"plain_text\",\"text\":\"Exact fixture words\"},\"cc\":[],\"sending_identity\":{\"account_id\":\"fixture_account\",\"display_name\":\"Fixture Sender\",\"from_address\":\"sender@example.invalid\"},\"subject\":\"Exact subject\",\"to\":[{\"address\":\"recipient@example.invalid\",\"name\":\"Fixture Recipient\"}]},\"kind\":\"email\",\"summary\":\"Fixture café email\"},\"action_sha256\":\"b007ffd40b8ca8a49b453bb89c2ce4e05bf029fb105e5bb0e5af0e8a19b28a47\",\"context_event_ids\":[],\"decision_type\":\"yes_no\",\"effect_class\":\"external_action\",\"options\":[{\"label\":\"Yes\",\"option_id\":\"yes\"},{\"label\":\"No\",\"option_id\":\"no\"}],\"proposal\":\"Send exact fixture email?\",\"title\":\"Fixture decision\"}",
+    "content_sha256": "e325a16eb39a400c92e285e47db0d2f4d0cadc63b6a755d6fba1705b437916e2",
+    "currency_adapters": {
+      "USD": {
+        "minor_exponent": 2,
+        "display_fixture": {
+          "final_total_minor": 10001,
+          "text": "$100.01 USD"
+        }
+      }
+    }
+  },
+  {
+    "currency_adapters": {
+      "USD": {
+        "minor_exponent": 2
+      }
+    },
+    "action": {
+      "action_id": "fixture_purchase",
+      "kind": "purchase",
+      "summary": "Fixture exact purchase",
+      "authorized_actor": {
+        "actor_id": "fixture_ai",
+        "display_name": "Fixture AI",
+        "key_id": "fixture_key"
+      },
+      "details": {
+        "merchant": {
+          "name": "Fixture merchant",
+          "origin": "https://merchant.example.invalid"
+        },
+        "items": [
+          {
+            "merchant_item_id": "item",
+            "name": "Fixture",
+            "variant": "Blue",
+            "quantity": 1,
+            "unit_price_minor": 100,
+            "line_total_minor": 100
+          }
+        ],
+        "delivery": {
+          "method": "pickup",
+          "recipient_name": "Fixture Recipient",
+          "address": null,
+          "pickup_location": "Fixture store"
+        },
+        "total_components": {
+          "items_minor": 100,
+          "discount_minor": 0,
+          "tax_minor": 0,
+          "shipping_minor": 0,
+          "fees_minor": 0
+        },
+        "final_total_minor": 100,
+        "currency": "USD",
+        "undo_terms": {
+          "cancellable": false,
+          "cancel_until": null,
+          "fee_minor": null,
+          "currency": null,
+          "route": null,
+          "terms_text": "No cancellation after submit"
+        },
+        "checkout_reference": "checkout",
+        "payment_identity": {
+          "adapter_id": "fixture_saved_merchant_card",
+          "account_id": "payment",
+          "method_id": "saved_fixture",
+          "label": "Fixture saved method",
+          "method_kind": "saved_merchant_card"
+        }
+      }
+    },
+    "action_canonical": "{\"action_id\":\"fixture_purchase\",\"authorized_actor\":{\"actor_id\":\"fixture_ai\",\"display_name\":\"Fixture AI\",\"key_id\":\"fixture_key\"},\"details\":{\"checkout_reference\":\"checkout\",\"currency\":\"USD\",\"delivery\":{\"address\":null,\"method\":\"pickup\",\"pickup_location\":\"Fixture store\",\"recipient_name\":\"Fixture Recipient\"},\"final_total_minor\":100,\"items\":[{\"line_total_minor\":100,\"merchant_item_id\":\"item\",\"name\":\"Fixture\",\"quantity\":1,\"unit_price_minor\":100,\"variant\":\"Blue\"}],\"merchant\":{\"name\":\"Fixture merchant\",\"origin\":\"https://merchant.example.invalid\"},\"payment_identity\":{\"account_id\":\"payment\",\"adapter_id\":\"fixture_saved_merchant_card\",\"label\":\"Fixture saved method\",\"method_id\":\"saved_fixture\",\"method_kind\":\"saved_merchant_card\"},\"total_components\":{\"discount_minor\":0,\"fees_minor\":0,\"items_minor\":100,\"shipping_minor\":0,\"tax_minor\":0},\"undo_terms\":{\"cancel_until\":null,\"cancellable\":false,\"currency\":null,\"fee_minor\":null,\"route\":null,\"terms_text\":\"No cancellation after submit\"}},\"kind\":\"purchase\",\"summary\":\"Fixture exact purchase\"}",
+    "action_sha256": "c044705970012da202ad82df00d2f2fa9934e00c5d9eb8c385ee8c8e72cd9a6c",
+    "content": {
+      "title": "Fixture purchase decision",
+      "proposal": "Buy this exact fixture for $1.00 USD?",
+      "decision_type": "yes_no",
+      "options": [
+        {
+          "option_id": "yes",
+          "label": "Yes"
+        },
+        {
+          "option_id": "no",
+          "label": "No"
+        }
+      ],
+      "action": {
+        "action_id": "fixture_purchase",
+        "kind": "purchase",
+        "summary": "Fixture exact purchase",
+        "authorized_actor": {
+          "actor_id": "fixture_ai",
+          "display_name": "Fixture AI",
+          "key_id": "fixture_key"
+        },
+        "details": {
+          "merchant": {
+            "name": "Fixture merchant",
+            "origin": "https://merchant.example.invalid"
+          },
+          "items": [
+            {
+              "merchant_item_id": "item",
+              "name": "Fixture",
+              "variant": "Blue",
+              "quantity": 1,
+              "unit_price_minor": 100,
+              "line_total_minor": 100
+            }
+          ],
+          "delivery": {
+            "method": "pickup",
+            "recipient_name": "Fixture Recipient",
+            "address": null,
+            "pickup_location": "Fixture store"
+          },
+          "total_components": {
+            "items_minor": 100,
+            "discount_minor": 0,
+            "tax_minor": 0,
+            "shipping_minor": 0,
+            "fees_minor": 0
+          },
+          "final_total_minor": 100,
+          "currency": "USD",
+          "undo_terms": {
+            "cancellable": false,
+            "cancel_until": null,
+            "fee_minor": null,
+            "currency": null,
+            "route": null,
+            "terms_text": "No cancellation after submit"
+          },
+          "checkout_reference": "checkout",
+          "payment_identity": {
+            "adapter_id": "fixture_saved_merchant_card",
+            "account_id": "payment",
+            "method_id": "saved_fixture",
+            "label": "Fixture saved method",
+            "method_kind": "saved_merchant_card"
+          }
+        }
+      },
+      "action_sha256": "c044705970012da202ad82df00d2f2fa9934e00c5d9eb8c385ee8c8e72cd9a6c",
+      "effect_class": "money",
+      "context_event_ids": []
+    },
+    "content_canonical": "{\"action\":{\"action_id\":\"fixture_purchase\",\"authorized_actor\":{\"actor_id\":\"fixture_ai\",\"display_name\":\"Fixture AI\",\"key_id\":\"fixture_key\"},\"details\":{\"checkout_reference\":\"checkout\",\"currency\":\"USD\",\"delivery\":{\"address\":null,\"method\":\"pickup\",\"pickup_location\":\"Fixture store\",\"recipient_name\":\"Fixture Recipient\"},\"final_total_minor\":100,\"items\":[{\"line_total_minor\":100,\"merchant_item_id\":\"item\",\"name\":\"Fixture\",\"quantity\":1,\"unit_price_minor\":100,\"variant\":\"Blue\"}],\"merchant\":{\"name\":\"Fixture merchant\",\"origin\":\"https://merchant.example.invalid\"},\"payment_identity\":{\"account_id\":\"payment\",\"adapter_id\":\"fixture_saved_merchant_card\",\"label\":\"Fixture saved method\",\"method_id\":\"saved_fixture\",\"method_kind\":\"saved_merchant_card\"},\"total_components\":{\"discount_minor\":0,\"fees_minor\":0,\"items_minor\":100,\"shipping_minor\":0,\"tax_minor\":0},\"undo_terms\":{\"cancel_until\":null,\"cancellable\":false,\"currency\":null,\"fee_minor\":null,\"route\":null,\"terms_text\":\"No cancellation after submit\"}},\"kind\":\"purchase\",\"summary\":\"Fixture exact purchase\"},\"action_sha256\":\"c044705970012da202ad82df00d2f2fa9934e00c5d9eb8c385ee8c8e72cd9a6c\",\"context_event_ids\":[],\"decision_type\":\"yes_no\",\"effect_class\":\"money\",\"options\":[{\"label\":\"Yes\",\"option_id\":\"yes\"},{\"label\":\"No\",\"option_id\":\"no\"}],\"proposal\":\"Buy this exact fixture for $1.00 USD?\",\"title\":\"Fixture purchase decision\"}",
+    "content_sha256": "43f12b6fcecd923bfad848af895dd688a43c349e3f1ea9b6a51afbbb0024e540"
+  }
+]

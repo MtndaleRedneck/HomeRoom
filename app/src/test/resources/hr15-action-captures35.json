@@ -1,0 +1,1068 @@
+[
+  {
+    "name": "signed_create",
+    "status": 201,
+    "body": {
+      "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+      "room_id": "rm_test_fixture",
+      "actor": "tab",
+      "version": 1,
+      "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+      "title": "Fixture choice",
+      "proposal": "Choose one fixture",
+      "options": [
+        {
+          "option_id": "yes",
+          "label": "Yes"
+        },
+        {
+          "option_id": "no",
+          "label": "No"
+        }
+      ],
+      "effect_class": "external_action",
+      "context_event_ids": [],
+      "decision_type": "yes_no",
+      "action": {
+        "action_id": "fixture_action",
+        "kind": "email",
+        "summary": "Fixture exact email",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "details": {
+          "sending_identity": {
+            "account_id": "fixture_account",
+            "from_address": "sender@example.invalid",
+            "display_name": "Fixture Sender"
+          },
+          "to": [
+            {
+              "name": "Fixture Recipient",
+              "address": "recipient@example.invalid"
+            }
+          ],
+          "cc": [],
+          "bcc": [],
+          "subject": "Exact subject",
+          "body": {
+            "format": "plain_text",
+            "text": "Exact fixture words"
+          },
+          "attachments": []
+        }
+      },
+      "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+      "state": "open",
+      "created_at": "2026-11-11T17:11:53.577Z",
+      "expires_at": "2026-11-18T17:11:53.577Z",
+      "answer": null,
+      "replayed": false,
+      "event_id": "544a9ffa-7499-44cf-a405-8e8932337107"
+    }
+  },
+  {
+    "name": "owner_prepare",
+    "status": 200,
+    "body": {
+      "confirmation_id": "confirm_7a63e9d488331f8c19c8b3a4",
+      "expires_at": "2026-11-11T17:16:53.587Z",
+      "state": "confirmation_required",
+      "confirmation": {
+        "proposal": {
+          "action": {
+            "action_id": "fixture_action",
+            "authorized_actor": {
+              "actor_id": "tab",
+              "display_name": "tab",
+              "key_id": "tab"
+            },
+            "details": {
+              "attachments": [],
+              "bcc": [],
+              "body": {
+                "format": "plain_text",
+                "text": "Exact fixture words"
+              },
+              "cc": [],
+              "sending_identity": {
+                "account_id": "fixture_account",
+                "display_name": "Fixture Sender",
+                "from_address": "sender@example.invalid"
+              },
+              "subject": "Exact subject",
+              "to": [
+                {
+                  "address": "recipient@example.invalid",
+                  "name": "Fixture Recipient"
+                }
+              ]
+            },
+            "kind": "email",
+            "summary": "Fixture exact email"
+          },
+          "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+          "context_event_ids": [],
+          "decision_type": "yes_no",
+          "effect_class": "external_action",
+          "options": [
+            {
+              "label": "Yes",
+              "option_id": "yes"
+            },
+            {
+              "label": "No",
+              "option_id": "no"
+            }
+          ],
+          "proposal": "Choose one fixture",
+          "title": "Fixture choice"
+        },
+        "option": {
+          "label": "Yes",
+          "option_id": "yes"
+        },
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "effect_class": "external_action"
+      },
+      "replayed": false
+    }
+  },
+  {
+    "name": "owner_confirm",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_f9829ef2fdc0679cf4b94623",
+      "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+      "version": 1,
+      "option_id": "yes",
+      "option_label": "Yes",
+      "proposal_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+      "confirmed_at": "2026-11-11T17:11:53.596Z",
+      "state": "answered",
+      "replayed": false,
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "authorized",
+        "claim_id": null,
+        "consumer_operation_id": null,
+        "claimed_at": null,
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "owner_get_decision_receipt_beside_current_approval_readiness",
+    "status": 200,
+    "body": {
+      "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+      "room_id": "rm_test_fixture",
+      "event_id": "544a9ffa-7499-44cf-a405-8e8932337107",
+      "actor": "tab",
+      "version": 1,
+      "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+      "action": {
+        "action_id": "fixture_action",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "details": {
+          "attachments": [],
+          "bcc": [],
+          "body": {
+            "format": "plain_text",
+            "text": "Exact fixture words"
+          },
+          "cc": [],
+          "sending_identity": {
+            "account_id": "fixture_account",
+            "display_name": "Fixture Sender",
+            "from_address": "sender@example.invalid"
+          },
+          "subject": "Exact subject",
+          "to": [
+            {
+              "address": "recipient@example.invalid",
+              "name": "Fixture Recipient"
+            }
+          ]
+        },
+        "kind": "email",
+        "summary": "Fixture exact email"
+      },
+      "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+      "context_event_ids": [],
+      "decision_type": "yes_no",
+      "effect_class": "external_action",
+      "options": [
+        {
+          "label": "Yes",
+          "option_id": "yes"
+        },
+        {
+          "label": "No",
+          "option_id": "no"
+        }
+      ],
+      "proposal": "Choose one fixture",
+      "title": "Fixture choice",
+      "state": "answered",
+      "created_at": "2026-11-11T17:11:53.577Z",
+      "expires_at": "2026-11-18T17:11:53.577Z",
+      "answer": {
+        "answer_id": "ans_f9829ef2fdc0679cf4b94623",
+        "option_id": "yes",
+        "option_label": "Yes",
+        "proposal_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "confirmed_at": "2026-11-11T17:11:53.596Z"
+      },
+      "confirmation_receipt": null,
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "authorized",
+        "claim_id": null,
+        "consumer_operation_id": null,
+        "claimed_at": null,
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "owner_get_approval",
+    "status": 200,
+    "body": {
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "authorized",
+        "claim_id": null,
+        "consumer_operation_id": null,
+        "claimed_at": null,
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "exact_confirm_replay",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_f9829ef2fdc0679cf4b94623",
+      "confirmed_at": "2026-11-11T17:11:53.596Z",
+      "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+      "option_id": "yes",
+      "option_label": "Yes",
+      "proposal_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+      "replayed": true,
+      "state": "answered",
+      "version": 1,
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "authorized",
+        "claim_id": null,
+        "consumer_operation_id": null,
+        "claimed_at": null,
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "changed_action_hash_conflict",
+    "status": 409,
+    "body": {
+      "error": "decision_version_conflict"
+    }
+  },
+  {
+    "name": "signed_claim",
+    "status": 200,
+    "body": {
+      "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+      "claim_id": "claim_765fe94d7e7a0e0f4912132a",
+      "consumer_operation_id": "fixtureop",
+      "replayed": false,
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "claimed",
+        "claim_id": "claim_765fe94d7e7a0e0f4912132a",
+        "consumer_operation_id": "fixtureop",
+        "claimed_at": "2026-11-11T17:11:53.617Z",
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "exact_claim_replay_current_state",
+    "status": 200,
+    "body": {
+      "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+      "claim_id": "claim_765fe94d7e7a0e0f4912132a",
+      "consumer_operation_id": "fixtureop",
+      "replayed": true,
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "claimed",
+        "claim_id": "claim_765fe94d7e7a0e0f4912132a",
+        "consumer_operation_id": "fixtureop",
+        "claimed_at": "2026-11-11T17:11:53.617Z",
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "different_claim_conflict",
+    "status": 409,
+    "body": {
+      "error": "approval_used"
+    }
+  },
+  {
+    "name": "owner_get_claimed",
+    "status": 200,
+    "body": {
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "claimed",
+        "claim_id": "claim_765fe94d7e7a0e0f4912132a",
+        "consumer_operation_id": "fixtureop",
+        "claimed_at": "2026-11-11T17:11:53.617Z",
+        "last_result": null,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "signed_result_unknown",
+    "status": 200,
+    "body": {
+      "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+      "result_seq": 1,
+      "replayed": false,
+      "approval": {
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "state": "outcome_unknown",
+        "claim_id": "claim_765fe94d7e7a0e0f4912132a",
+        "consumer_operation_id": "fixtureop",
+        "claimed_at": "2026-11-11T17:11:53.617Z",
+        "last_result": {
+          "result_seq": 1,
+          "outcome": "outcome_unknown",
+          "checked_at": "2026-11-11T17:11:53.637Z",
+          "provider_reference": null,
+          "verified_state": "fixture response lost after possible commit"
+        },
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_0303be9f8f9690bf2e35a70c",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.596Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_a1a4df7ae70b83a3fbc6804e",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.596Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_a6e06503851524be18f0e37e",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  },
+  {
+    "name": "unconfirmed_prepare_expired",
+    "status": 410,
+    "body": {
+      "error": "confirmation_expired"
+    }
+  },
+  {
+    "name": "no_rejects_without_authority",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_2e06426feaf661651d998ff6",
+      "decision_id": "dec_3541d68ea297ec4fbc0bdf63",
+      "version": 1,
+      "option_id": "no",
+      "option_label": "No",
+      "proposal_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+      "confirmed_at": "2026-11-11T17:11:53.665Z",
+      "state": "rejected",
+      "confirmation_receipt": null,
+      "replayed": false
+    }
+  },
+  {
+    "name": "expired_approval_claim",
+    "status": 410,
+    "body": {
+      "error": "approval_expired"
+    }
+  },
+  {
+    "name": "owner_get_expired_current_state_unchanged_receipt",
+    "status": 200,
+    "body": {
+      "approval": {
+        "approval_id": "approval_9b2984e5a3c8fc1aeb159bcd",
+        "state": "expired",
+        "claim_id": null,
+        "consumer_operation_id": null,
+        "claimed_at": null,
+        "last_result": null,
+        "expires_at": "2026-11-11T17:11:52.692Z",
+        "execution_by_homeroom": false
+      },
+      "receipt": {
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "approval_id": "approval_9b2984e5a3c8fc1aeb159bcd",
+        "authorized_actor": {
+          "actor_id": "tab",
+          "display_name": "tab",
+          "key_id": "tab"
+        },
+        "confirmed_at": "2026-11-11T17:11:53.685Z",
+        "content_sha256": "f52b8077a4bc2b38c27b4291734bb2051fb6612042446488ef210f39c5521c5e",
+        "decision_id": "dec_19bf468a6f74555614328732",
+        "decision_version": 1,
+        "execution_by_homeroom": false,
+        "expires_at": "2026-11-11T17:26:53.685Z",
+        "option_id": "yes",
+        "receipt_id": "receipt_72a7903e36b2627b983d4a85",
+        "source": "authenticated_owner_session"
+      },
+      "snapshot": {
+        "action": {
+          "action_id": "fixture_action",
+          "authorized_actor": {
+            "actor_id": "tab",
+            "display_name": "tab",
+            "key_id": "tab"
+          },
+          "details": {
+            "attachments": [],
+            "bcc": [],
+            "body": {
+              "format": "plain_text",
+              "text": "Exact fixture words"
+            },
+            "cc": [],
+            "sending_identity": {
+              "account_id": "fixture_account",
+              "display_name": "Fixture Sender",
+              "from_address": "sender@example.invalid"
+            },
+            "subject": "Exact subject",
+            "to": [
+              {
+                "address": "recipient@example.invalid",
+                "name": "Fixture Recipient"
+              }
+            ]
+          },
+          "kind": "email",
+          "summary": "Fixture exact email"
+        },
+        "action_sha256": "664b17ffadeaf0244d3afd8dde9efea6a45aa63c0a4f4997ea88c131abe4839d",
+        "context_event_ids": [],
+        "decision_type": "yes_no",
+        "effect_class": "external_action",
+        "options": [
+          {
+            "label": "Yes",
+            "option_id": "yes"
+          },
+          {
+            "label": "No",
+            "option_id": "no"
+          }
+        ],
+        "proposal": "Choose one fixture",
+        "title": "Fixture choice"
+      },
+      "consumer_readiness": {
+        "state": "needs_owner_authority",
+        "reason_code": "consumer_must_verify_trusted_owner_evidence",
+        "checked_at": null
+      }
+    }
+  }
+]
