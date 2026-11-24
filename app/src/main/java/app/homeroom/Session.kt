@@ -202,13 +202,29 @@ class Session(context: Context) {
     // may still have advanced the in-memory map, so a throw here means the save
     // is UNKNOWN, not absent - callers must abort the network operation and let
     // server status govern any later resume.
+    // Process-wide uncertainty latch (I2): a failed commit may leave the
+    // in-memory preference map ahead of disk, and any LATER save would persist
+    // that unknown state. Once latched, ALL staged writes are blocked for the
+    // life of the process - only a process restart (prefs reloaded from disk)
+    // clears it. Composer instances come and go; the boundary must live here.
+    @Volatile private var stagedStoreUnknown = false
+    fun stagedUploadsUnknown(): Boolean = stagedStoreUnknown
+    // Test seam: forces the commit outcome in fault tests (null = real commit).
+    internal var stagedCommitHook: ((String) -> Boolean)? = null
+
     fun saveStagedUpload(id: String, value: JSONObject?) = synchronized(stateLock) {
+        if (stagedStoreUnknown) {
+            throw IllegalStateException("Staged upload persistence is latched unknown from an earlier unconfirmed commit - writes are blocked until the app restarts.")
+        }
         val next = try {
             StagedStore.applySave(prefs.getString(KEY_STAGED, null), id, value)
         } catch (e: StagedStore.Malformed) {
             throw IllegalStateException("Staged upload store is damaged; writes (including removals) are blocked to preserve the existing records.")
         }
-        if (!prefs.edit().putString(KEY_STAGED, next).commit()) {
+        val committed = stagedCommitHook?.invoke(next)
+            ?: prefs.edit().putString(KEY_STAGED, next).commit()
+        if (!committed) {
+            stagedStoreUnknown = true
             throw IllegalStateException("Staged upload persistence unconfirmed (in-memory state may differ) - abort the operation and treat remote state as unknown.")
         }
     }

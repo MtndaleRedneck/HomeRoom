@@ -51,7 +51,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // latched, sends and remote deletion are blocked until process restart
     // re-reads the durable state; resume relies on server status (offsets are
     // not a rollback guarantee).
-    private var persistenceUnknown=false
+    @Volatile private var persistenceUnknown=false
     private var job:Job?=null
     private var draftJob:Job?=null
     private var upload:String?=null
@@ -73,7 +73,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // the first send attempt can persist its exact payload with the staged
     // identities - process death then restores it instead of pairing the
     // original post ID with edited text.
-    private var stagedRecord:JSONObject?=resume
+    // Cross-thread (main/UI + IO chunk + debounced draft writer): visibility
+    // must be guaranteed (I2). terminal serializes retirement with pending
+    // writes: set BEFORE record removal/file delete, checked before any save.
+    @Volatile private var stagedRecord:JSONObject?=resume
+    @Volatile private var terminal=false
     // Resume keeps the ORIGINAL client identities and timestamp: if the
     // interruption happened during or after complete/post, the retry carries
     // the same idempotency keys, so the server can dedup instead of doubling.
@@ -90,6 +94,9 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // the generation is stale (save skipped): the caller must abort with no
     // further network. A commit failure throws (save UNKNOWN, not absent).
     private fun persistSwap(next:JSONObject):Boolean {
+        // Terminal retirement serialization (I2): a pending write must never
+        // re-add a record whose composer already retired it.
+        if(terminal) return false
         var saved=false
         try {
             host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next);saved=true}
@@ -97,6 +104,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         if(saved) stagedRecord=next
         return saved
     }
+    private fun retire() {terminal=true;draftJob?.cancel()}
     // Removal by local_id (historical null-value semantics). False = blocked
     // (damaged store or unconfirmed commit); user-facing paths say so honestly.
     private fun removeRecord():Boolean {
@@ -130,9 +138,10 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 draftJob=screenScope.launch {
                     kotlinx.coroutines.delay(750)
                     withContext(Dispatchers.IO) {
+                        if(terminal) return@withContext
                         val current=stagedRecord ?: return@withContext
                         val ok=try {persistSwap(JSONObject(current.toString()).put("message",text))} catch(e:Exception) {false}
-                        if(!ok) withContext(Dispatchers.Main) {snack(host.window.decorView,"Couldn't save this draft durably - it may not survive an app restart.")}
+                        if(!ok && !terminal) withContext(Dispatchers.Main) {snack(host.window.decorView,"Couldn't save this draft durably - it may not survive an app restart.")}
                     }
                 }
             }
@@ -241,7 +250,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     // failed/expired/unknown state: fail closed, no resume.
                     // The retry is an EXPLICIT new upload with a new identity
                     // (the owner re-attaches) - never a silent reuse (I2).
-                    runCatching {removeRecord()};deleteStagedFiles()
+                    retire();runCatching {removeRecord()};deleteStagedFiles()
                     status.text="This staged upload can no longer be resumed. Cancel it and attach again."
                     return
                 }
@@ -341,14 +350,14 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         } catch(e:SessionEndedException) {throw e}
         catch(_:Exception) {false}
         if(linked) {
-            runCatching {removeRecord()};deleteStagedFiles()
+            retire();runCatching {removeRecord()};deleteStagedFiles()
             status.text="Attachment sent. Server recorded this post."
         } else markConsumedUnresolved()
     }
     // Server-side byte inconsistency (cp42): the staged upload is abandoned -
     // record and staged file removed, Send stays locked, release e1 wording.
     private fun abandonCorruptUpload() {
-        runCatching {removeRecord()}
+        retire();runCatching {removeRecord()}
         deleteStagedFiles();ready=false;send.isEnabled=false
         status.text="This upload was interrupted and cannot resume. Cancel it, then choose the file again to start a new upload. No message was sent."
     }
@@ -416,7 +425,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         if(!ready || posting)return
         // Latched persistence uncertainty (I2): never send while the durable
         // record state is unknown - restart re-reads the durable state.
-        if(persistenceUnknown) {status.text="The local save state is uncertain. Restart the app, then check the room before sending.";return}
+        if(persistenceUnknown || host.session.stagedUploadsUnknown()) {status.text="The local save state is uncertain. Restart the app, then check the room before sending.";return}
         val text=StagedUpload.immutableText(attemptedText,message.text.toString())
         if(text.length>8000) {message.error="Up to 8000 characters";return}
         attemptedText=text
@@ -441,7 +450,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         screenScope.launch {
             try {
                 host.api.postWithUploads(room.id,postClient,created,text,room.mainThreadKey,null,emptyList(),listOf(upload!!),initiatingAuth)
-                if(upload!=null)runCatching {removeRecord()}
+                retire();if(upload!=null)runCatching {removeRecord()}
                 status.text="Attachment sent. Server recorded this post.";ready=false;deleteStagedFiles();send.visibility=android.view.View.GONE
             }catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(e:ApiException) {
@@ -539,9 +548,12 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         job?.cancel();ready=false;send.isEnabled=false
         // Latched persistence uncertainty (I2): neither local removal nor a
         // remote DELETE is safe while the durable state is unknown.
-        if(persistenceUnknown) {status.text="The local save state is uncertain - nothing was deleted or sent. Restart the app, then check the room.";return}
+        if(persistenceUnknown || host.session.stagedUploadsUnknown()) {status.text="The local save state is uncertain - nothing was deleted or sent. Restart the app, then check the room.";return}
         // Blocked removal is shown honestly (I2): a damaged store preserves
         // the record and says nothing was deleted.
+        // Retire BEFORE removal so a pending debounced draft save cannot
+        // re-add the record between the two (I2 terminal serialization).
+        retire()
         if(!removeRecord()) {status.text="Local staged records are damaged - removal is blocked to protect them. Nothing was deleted.";return}
         val id=upload
         if(id==null) {deleteStagedFiles();status.text="Local upload cancelled.";return}

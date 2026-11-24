@@ -54,4 +54,20 @@ class SessionStagedUploadTest {
         assertTrue(after.any {it.optBoolean("quarantined")})
         assertEquals(first[1].optString("local_id"),after.single {it.optBoolean("quarantined")}.optString("local_id"))
     }
+
+    @Test fun commitFailureLatchesUnknownAndBlocksLaterWritesProcessWide() {
+        val s=session()
+        s.saveStagedUpload("a",JSONObject().put("local_id","a"))
+        // Fault injection: the next commit fails (memory may have advanced).
+        s.stagedCommitHook={false}
+        try {s.saveStagedUpload("a",JSONObject().put("local_id","a").put("size",3));fail("unconfirmed commit accepted")} catch(e:IllegalStateException) {}
+        assertTrue(s.stagedUploadsUnknown())
+        // Latch blocks ALL later writes, including removal, even after the
+        // hook is cleared - a later save could persist the unknown state.
+        s.stagedCommitHook=null
+        try {s.saveStagedUpload("b",JSONObject().put("local_id","b"));fail("latched save went through")} catch(e:IllegalStateException) {}
+        try {s.saveStagedUpload("a",null);fail("latched removal went through")} catch(e:IllegalStateException) {}
+        // Reads keep working (the composer surfaces uncertainty, not a crash).
+        s.stagedUploads()
+    }
 }
