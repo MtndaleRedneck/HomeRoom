@@ -67,6 +67,11 @@ class SettingsScreen(context:Context):Screen(context) {
             val current=device.isCurrent(host.session.sessionId)
             row(sessions,if(current) "▯" else "▱",if(current) C.accent else 0xff7b6cf0.toInt(),(if(current) "This phone" else device.label.ifBlank {"Device"}),if(current) "Active now" else device.lastUsed?.let {"Last used "+formatRoomTime(it)} ?: "Last use not recorded",if(current) null else "Remove",if(current) null else { {confirmRemove(device)} })
         }
+        // Restored from d5.java: the Privacy section row opens App lock and
+        // privacy (the screen and gate machinery already exist; only the
+        // entry was missing from Settings).
+        val privacy=group("Privacy")
+        row(privacy,"▣",C.violet,"App lock and privacy","Fingerprint or PIN, lock screen and recent apps","›") {host.openPage("App lock and privacy",PrivacyScreen(context))}
         val app=group("App")
         // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
         row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
