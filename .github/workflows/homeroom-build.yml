@@ -47,6 +47,42 @@ jobs:
             echo "ok: unsigned release packaging is blocked as designed"
           fi
 
+  unsigned-release-artifact:
+    # Builds the UNSIGNED release intermediate for the local vault-signing
+    # verification lane. Explicit opt-in only (-PhrAllowUnsignedRelease); the
+    # guard stays fail-closed by default. Output is conspicuously marked
+    # UNSIGNED and is never a deliverable.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build unsigned release APK (explicit opt-in)
+        run: gradle --no-daemon assembleRelease -PhrAllowUnsignedRelease
+
+      - name: Mark output UNSIGNED and record its hash
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk homeroom-1.5-reconstruction-UNSIGNED.apk
+          sha256sum homeroom-1.5-reconstruction-UNSIGNED.apk | tee unsigned-sha256.txt
+          git rev-parse HEAD | tee source-commit.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-release-apk
+          path: |
+            homeroom-1.5-reconstruction-UNSIGNED.apk
+            unsigned-sha256.txt
+            source-commit.txt
+          retention-days: 5
+
   debug-smoke:
     # Functional smoke on an emulator using the DEBUG variant (auto debug
     # signing, no keystore material needed). This is a QUALIFIED smoke - same

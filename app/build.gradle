@@ -61,9 +61,15 @@ android {
     // Hard-stop: without the keystore, packaging a release would produce an
     // unsigned APK, which is never a valid HomeRoom artifact (same-signer rule).
     // compileReleaseKotlin / processReleaseResources remain available unsigned.
+    // Opt-in escape hatch: -PhrAllowUnsignedRelease permits UNSIGNED release
+    // packaging for ONE purpose only - CI builds an unsigned intermediate that
+    // is signed LOCALLY with the vault keystore for signer verification. The
+    // property is never set in any committed file; the output is never a
+    // deliverable and must carry an UNSIGNED marker in its filename.
+    def allowUnsigned = (project.findProperty('hrAllowUnsignedRelease') ?: '').toString() == 'true'
     tasks.matching { it.name in ['packageRelease', 'assembleRelease', 'bundleRelease'] }.configureEach {
         doFirst {
-            if (!signingReady) {
+            if (!signingReady && !allowUnsigned) {
                 throw new GradleException('HomeRoom release signing unavailable (keystore files not found). ' +
                     'Unsigned release artifacts are never deliverables. Use compileReleaseKotlin and ' +
                     'processReleaseResources for unsigned build verification.')
