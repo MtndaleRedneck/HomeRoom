@@ -114,10 +114,9 @@ fun formatTime(iso: String?): String {
     }
 }
 
-fun dayLabel(iso: String?): String {
+fun dayLabel(iso: String?, now: java.time.LocalDate = java.time.LocalDate.now()): String {
     if (iso.isNullOrBlank()) return ""
     val d = runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).toLocalDate() }.getOrNull() ?: return ""
-    val now = java.time.LocalDate.now()
     // RECONSTRUCTED: release uses "EEE, MMM d" (year appended when not current year).
     return when (d) {
         now -> "Today"

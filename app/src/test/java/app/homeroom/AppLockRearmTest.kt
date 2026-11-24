@@ -73,7 +73,11 @@ class AppLockRearmTest {
         val nav=field(a,"nav").get(a) as GlassNav
         val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         nav.visibility=View.VISIBLE
-        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        // No manual measure/layout: the window traversal re-lays the content
+        // at WINDOW bounds, and a real behind-bounds change re-dirties the
+        // backdrop BY DESIGN (run-87 GLASSNAV-DIAG: re-enqueue from
+        // layoutListener <- View.layout), double-capturing at the baseline.
+        idle()
         // Baseline capture, then enqueue a second and pause before it runs.
         nav.backdropChanged();idle()
         assertEquals(1,nav.captureCount)

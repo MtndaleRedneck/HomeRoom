@@ -39,6 +39,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     private var replyTarget: ChatEvent? = null
 
     private var newestCursor: String? = null
+    // Release chat screen keeps the events-envelope server_time (K0/W3:152;
+    // a missing value keeps the previous one) and labels days against it.
+    private var serverTime: String? = null
     private var oldestCursor: String? = null
     private var hasMore = false
     private var loading = false
@@ -114,6 +117,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             try {
                 val page = host.api.roomEvents(room.id)
                 val pageEvents = page.optJSONArray("events")?.objects()?.map { ChatEvent.from(it) } ?: emptyList()
+                page.optString("server_time").takeUnless { it.isBlank() }?.let { serverTime = it }
                 newestCursor = page.optString("newest").ifBlank { null }
                 oldestCursor = page.optString("oldest").ifBlank { null }
                 hasMore = page.optBoolean("has_more", false)
@@ -243,6 +247,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         if (rows.isNotEmpty()) list.scrollToPosition(rows.size - 1)
     }
 
+    private fun serverNow(): java.time.LocalDate =
+        serverTime?.let { runCatching { java.time.Instant.parse(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate() }.getOrNull() }
+            ?: java.time.LocalDate.now()
+
     private fun rebuild() {
         rows.clear()
         val own = host.session.ownerId
@@ -250,7 +258,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         var anchorPlaced = false
         var lastDay = ""
         for (event in events.sortedWith(compareBy({ it.createdAt }, { it.seq }))) {
-            val day = dayLabel(event.createdAt)
+            val day = dayLabel(event.createdAt, serverNow())
             if (day != lastDay) {
                 rows.add(Row.Day(day))
                 lastDay = day
@@ -385,6 +393,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             // Release cap (K0/N3:708 and :750): message text maxWidth is
             // 0.72*display width (0.64 when the row also carries media, :776).
             body.maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
+            // TEMP DIAGNOSTIC (run-87 message sliver persisted with the 396px
+            // fixture) - removed after diagnosis
+            println("NL-DIAG dmW=${resources.displayMetrics.widthPixels} cap=${body.maxWidth} containerMW=${container.measuredWidth}")
             bubble.addView(body)
             bubble.addView(spacer(context, 2))
             val meta = text(context, formatTime(event.createdAt), 11f, C.muted)

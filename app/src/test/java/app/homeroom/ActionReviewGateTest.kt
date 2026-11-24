@@ -29,7 +29,16 @@ class ActionReviewGateTest {
         val confirm=Button(activity)
         val gate=ActionReviewScrollGate(scroll,confirm)
         scroll.measure(View.MeasureSpec.makeMeasureSpec(300,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(200,View.MeasureSpec.EXACTLY))
-        scroll.layout(0,0,300,200);gate.refresh()
+        scroll.layout(0,0,300,200)
+        // Run-87 GATE-DIAG: attached scroll at 200px but child never measured
+        // (childH=0 childMeasured=0) - the window does not traverse this
+        // replaced content in the sandbox. Give the child its geometry
+        // explicitly; idempotent where the framework already measured it.
+        val child=scroll.getChildAt(0)
+        println("GATE-DIAG2 postScrollMeasure childMW=${child.measuredWidth} childMH=${child.measuredHeight} lpW=${child.layoutParams.width} lpH=${child.layoutParams.height} count=${scroll.childCount}")
+        child.measure(View.MeasureSpec.makeMeasureSpec(300,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(contentHeight,View.MeasureSpec.EXACTLY))
+        child.layout(0,0,300,contentHeight)
+        gate.refresh()
         return Triple(scroll,confirm,gate)
     }
     @Test fun longContentBlocksConfirmBeforeBottomAndAllowsItAtBottom() {
