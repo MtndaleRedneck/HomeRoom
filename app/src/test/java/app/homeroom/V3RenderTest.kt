@@ -62,7 +62,8 @@ class V3RenderTest {
         nav.backdropChanged()
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
         val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
-        File(System.getProperty("homeroom.previewDir")).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
+        File(previewDir).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
     }
     @Test fun fiveScreensAtReferenceSize() {
         val(c,a)=activity()
