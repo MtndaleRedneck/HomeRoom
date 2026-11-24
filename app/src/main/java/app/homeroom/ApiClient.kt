@@ -645,10 +645,15 @@ class ApiClient(
             }
         }
 
-    suspend fun enroll(token: String, deviceLabel: String): Unit = withContext(Dispatchers.IO) {
+    // Original-lineage 3-arg shape (grounded by the Nov 15 SetupChecklist
+    // source usage and the SetupHttpTest call sites): the accepted callback
+    // fires once the server has accepted the enrollment, BEFORE the bootstrap
+    // verification completes, so setup can show sign-in checking in between.
+    suspend fun enroll(token: String, deviceLabel: String, accepted: suspend () -> Unit): Unit = withContext(Dispatchers.IO) {
         raw("/owner/enroll", "POST", JSONObject()
             .put("token", token)
             .put("device_label", deviceLabel), session.authSnapshot())
+        accepted()
         bootstrap()
         Unit
     }

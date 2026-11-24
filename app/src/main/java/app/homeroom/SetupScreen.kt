@@ -70,8 +70,9 @@ class SetupScreen(context: Context) : Screen(context) {
             checklist.connect(parsed!=null,
                 enroll={accepted->
                     val link=parsed ?: throw IllegalArgumentException("invalid_link")
-                    host.api.enroll(link.second,"HomeRoom Android app")
-                    withContext(Dispatchers.Main) {linkInput.setText("");accepted()}
+                    host.api.enroll(link.second,"HomeRoom Android app") {
+                        withContext(Dispatchers.Main) {linkInput.setText("");accepted()}
+                    }
                 },
                 resume={host.api.bootstrap()},
                 rooms={
