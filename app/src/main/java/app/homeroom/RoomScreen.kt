@@ -114,6 +114,12 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     override fun onShow() {
         screenActive = true
         refreshRoomToolsVisibility()
+        // Recover an accepted ask whose navigation was dropped by a dismiss:
+        // open the preserved answers page now that the screen is active.
+        pendingAnswers?.let { (requestId, launch) ->
+            pendingAnswers = null
+            host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
+        }
         if (events.isEmpty()) loadInitial() else positionAtAnchor(force = true)
     }
 
@@ -144,12 +150,17 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     // attach/visibility transitions, not the screen's logical active state, so
     // the roster await re-checks this flag instead.
     private var screenActive = false
-    // Unresolved-ask intent guard (I2): after an uncertain POST the ask may be
-    // held by the server. A new dialog builds a NEW client_id (release parity),
-    // which does NOT settle the possibly-accepted duplicate, so a further send
-    // is blocked while this marker stands. Cleared by a successful room reload
-    // (the user can then see whether the ask landed) and by leaving the screen.
+    // Unresolved-ask intent guard (I2): set BEFORE the POST starts, because an
+    // in-flight ask whose dialog is dismissed is just as unresolved as a failed
+    // one. A new dialog builds a NEW client_id (release parity), which does NOT
+    // settle the possibly-accepted duplicate, so a further send is blocked while
+    // this marker stands. Cleared only by proof of acceptance: the POST returns
+    // a request_id, or a room reload surfaces an event carrying this client_id.
+    // Instance-scoped, so it survives dismiss/hide/pause but not leaving the room.
     private var unresolvedAsk: String? = null
+    // Accepted ask whose answers page was never opened (dialog dismissed before
+    // navigation): recovered as a real view from onShow, not just logged.
+    private var pendingAnswers: Pair<String, Session.OpAuth>? = null
 
     private fun beginAskAll() {
         if (unresolvedAsk != null) {
@@ -221,17 +232,21 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 }
                 val askButton = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
                 askButton.isEnabled = false
+                // Mark before the POST: a dismiss during the flight leaves the
+                // same possibly-accepted state as an explicit failure.
+                unresolvedAsk = askClientId
                 screenScope.launch {
                     // Stage 1: POST acceptance. An exception here means the ask
                     // may or may not be held by the server; the release (K0/x1)
-                    // re-enables Ask but disables the inputs so the same body is
-                    // never resent blindly.
+                    // re-enables Ask but disables the inputs, so an in-dialog
+                    // retry resends the IDENTICAL body with the same client_id
+                    // (release parity; server-side same-ID dedup is the
+                    // operator's contract question, never assumed here).
                     val response = try {
                         V15Api(host.api, launch).askAll(room.id, askClientId, createdAt, question, selected)
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
                     } catch (e: SessionEndedException) { host.onSessionEnded(e); dialog.dismiss(); return@launch
                     } catch (_: Exception) {
-                        unresolvedAsk = askClientId
                         snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
                         askButton.isEnabled = true
                         box.isEnabled = false
@@ -242,18 +257,21 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     // an accepted POST is the same uncertain state, same handling.
                     val requestId = response.nullableString("request_id")?.takeIf { it.isNotBlank() }
                     if (requestId == null) {
-                        unresolvedAsk = askClientId
                         snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
                         askButton.isEnabled = true
                         box.isEnabled = false
                         boxes.forEach { it.isEnabled = false }
                         return@launch
                     }
-                    // Stage 3: navigation. A Cancel/back dismiss during the
-                    // POST drops the navigation instead of opening AI answers
-                    // over a dismissed flow.
+                    // Stage 3: navigation. Accepted, so the unresolved marker
+                    // clears; if the dialog was dismissed during the POST the
+                    // request_id is preserved and recovered as a real page from
+                    // onShow instead of being dropped to a log line.
+                    unresolvedAsk = null
+                    pendingAnswers = requestId to launch
                     if (dialog.isShowing) {
                         dialog.dismiss()
+                        pendingAnswers = null
                         host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
                     }
                 }
@@ -355,9 +373,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 events.addAll(pageEvents)
                 rebuild()
                 loading = false
-                // A successful reload is the user's chance to see whether an
-                // uncertain ask landed, so it resolves the duplicate guard.
-                unresolvedAsk = null
+                // Acceptance proof, not assumption: a reload clears the
+                // duplicate guard only when an event carries the ask's own
+                // client_id; a bare successful reload reconciles nothing.
+                unresolvedAsk?.let { pending -> if (events.any { it.clientId == pending }) unresolvedAsk = null }
                 updateOlderVisibility()
                 positionAtAnchor(force = true)
                 markRead()
