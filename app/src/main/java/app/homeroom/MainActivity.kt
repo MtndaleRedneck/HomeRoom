@@ -128,6 +128,7 @@ class MainActivity : AppCompatActivity() {
         registerConnectivity()
         onConnectIntent(intent)
         onShareIntent(intent)
+        onRoomIntent(intent)
     }
 
     // RECONSTRUCTED from the exact private12 release build (MainActivity.K /
@@ -141,6 +142,35 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         onConnectIntent(intent)
         onShareIntent(intent)
+        onRoomIntent(intent)
+    }
+
+    // RECONSTRUCTED Nov 24 from the exact private12 decompile (MainActivity.J
+    // ROOM_ID block + R): a notification tap carrying a room id consumes the
+    // extra, requires enrollment, unwinds whatever is showing to the Chats
+    // tab root (showTab clears the route stack - Back from the opened room
+    // must land on Chats, never on a stale room or page), refreshes the rooms
+    // screen, and opens the room once it is in the cache. The release calls
+    // R() only from J, so an uncached room never opened; here cacheRooms
+    // retries the pending open, which is the refresh completion point.
+    private var pendingOpenRoomId: String? = null
+
+    private fun onRoomIntent(intent: android.content.Intent?) {
+        val roomId = intent?.getStringExtra(HomeRoomMessagingService.EXTRA_ROOM_ID) ?: return
+        intent.removeExtra(HomeRoomMessagingService.EXTRA_ROOM_ID)
+        if (!session.enrolled) return
+        pendingOpenRoomId = roomId
+        showTab(R.id.nav_chats)
+        if (nav.selectedItemId != R.id.nav_chats) nav.selectedItemId = R.id.nav_chats
+        (tabScreens[R.id.nav_chats] as? RoomsScreen)?.load(showSpinner = false)
+        tryOpenPendingRoom()
+    }
+
+    private fun tryOpenPendingRoom() {
+        val roomId = pendingOpenRoomId ?: return
+        val room = roomCache.firstOrNull { it.id == roomId } ?: return
+        pendingOpenRoomId = null
+        openRoom(room)
     }
 
     // RECONSTRUCTED from the exact private12 release build (MainActivity.J):
@@ -302,7 +332,10 @@ class MainActivity : AppCompatActivity() {
         (content.getChildAt(0) as? Screen)?.onHide()
         content.removeAllViews()
         content.addView(state.screen, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        currentPage = state.screen
+        // A popped route can be a tab ROOT (openRoom pushRoutes the tab root
+        // it was opened over). Keep the invariant currentPage == null at a
+        // tab root: only non-tab screens count as a pushed page.
+        currentPage = state.screen.takeUnless { tabScreens.containsValue(it) }
         roomScreen = state.room
         headerTitle.text = state.title
         headerBack.visibility = state.backVisible
@@ -312,6 +345,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSetup(message: String?) {
+        pendingOpenRoomId = null
         nav.visibility = View.GONE
         header.visibility = View.GONE
         roomScreen = null
@@ -430,6 +464,7 @@ class MainActivity : AppCompatActivity() {
 
     fun cacheRooms(rooms: List<Room>) {
         roomCache = rooms
+        tryOpenPendingRoom()
     }
 
     fun cachedRooms(): List<Room> = roomCache
