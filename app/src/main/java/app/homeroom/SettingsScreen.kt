@@ -73,6 +73,10 @@ class SettingsScreen(context:Context):Screen(context) {
         val privacy=group("Privacy")
         row(privacy,"▣",C.violet,"App lock and privacy","Fingerprint or PIN, lock screen and recent apps","›") {host.openPage("App lock and privacy",PrivacyScreen(context))}
         val app=group("App")
+        // private12 parity (K0/Y4:215 "Unsent attachments", K0/A3:61 "Outgoing
+        // messages" settings rows): both target screens exist but had no entry.
+        row(app,"=",C.violet,"Outgoing messages","Queued sends still waiting to go out","›") {host.openPage("Outgoing messages",OutboxScreen(context))}
+        row(app,"=",C.violet,"Unsent attachments","Staged uploads you can resume or remove","›") {host.openPage("Unsent attachments",StagedUploadsScreen(context))}
         // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
         row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
         // Locked Updates card, restored to the exact private12 arrangement

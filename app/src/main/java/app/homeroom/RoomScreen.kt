@@ -32,6 +32,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     private val list: RecyclerView
     private val layoutManager: LinearLayoutManager
     private val loadOlder = button(context, "Load older messages", primary = false) { loadOlder() }
+    private var roomToolsWrap: LinearLayout? = null
     private val composeInput: EditText
     private val sendButton: ImageButton
     private val replyBanner: LinearLayout
@@ -59,6 +60,16 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         pad(olderWrap, 16, 6)
         olderWrap.addView(loadOlder, lp())
         root.addView(olderWrap)
+
+        // private12 parity (K0/e4:210-227): the release's room screen carries a
+        // "Room tools" button whose entries appear only while the server
+        // advertises the matching feature flag. Hidden when none are on.
+        val toolsWrap = LinearLayout(context)
+        pad(toolsWrap, 16, 6)
+        toolsWrap.addView(button(context, "Room tools · Attach, goals and more", primary = false) { showRoomTools() }, lp())
+        toolsWrap.visibility = View.GONE
+        roomToolsWrap = toolsWrap
+        root.addView(toolsWrap)
 
         layoutManager = LinearLayoutManager(context).apply { stackFromEnd = true }
         list = RecyclerView(context).apply {
@@ -101,7 +112,49 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     }
 
     override fun onShow() {
+        refreshRoomToolsVisibility()
         if (events.isEmpty()) loadInitial() else positionAtAnchor(force = true)
+    }
+
+    // private12 parity (K0/e4:212-224 menu labels, K0/A3 handlers): each entry
+    // is listed only while the connected server advertises the matching feature
+    // flag (ApiClient.hasFeature, fed by /owner/instance). The release's "Ask
+    // AIs side by side" entry (ask_all, K0/z3 case 1) sends an ask-all request;
+    // that flow is not reconstructed, so the entry is not offered (tracked gap).
+    private fun roomToolEntries(): List<Pair<String, () -> Unit>> {
+        val entries = mutableListOf<Pair<String, () -> Unit>>()
+        if (host.api.hasFeature("held_updates")) entries.add("Outgoing messages" to { host.openPage("Outgoing messages", OutboxScreen(context)) })
+        if (host.api.hasFeature("room_goals")) entries.add("Pinned room goal" to { host.openPage("Pinned room goal", RoomGoalScreen(context, room)) })
+        if (host.api.hasFeature("staged_uploads")) entries.add("Attach photo or file" to { attachFile() })
+        if (host.api.hasFeature("voice_notes")) entries.add("Record voice note" to { host.openPage("Record voice note", VoiceCapture(context, room)) })
+        return entries
+    }
+
+    private fun refreshRoomToolsVisibility() {
+        roomToolsWrap?.visibility = if (roomToolEntries().isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun showRoomTools() {
+        val entries = roomToolEntries()
+        if (entries.isEmpty()) {
+            android.widget.Toast.makeText(context, "This server doesn't offer room tools.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        android.app.AlertDialog.Builder(context)
+            .setTitle("Room tools")
+            .setItems(entries.map { it.first }.toTypedArray()) { dialog, which ->
+                dialog.dismiss()
+                entries[which].second.invoke()
+            }
+            .show()
+    }
+
+    // Release handler (K0/A3 case 2): the picker opens with */* and the chosen
+    // file goes to the attachment composer for staging.
+    private fun attachFile() {
+        host.pickFile { uri ->
+            if (uri != null) host.openPage("Attach photo or file", AttachmentComposer(context, room, uri, null, voice = false))
+        }
     }
 
     override fun poll() = loadNew()
@@ -405,6 +458,15 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 true
             }
             container.addView(bubble, bubbleLp)
+
+            event.decisionId?.let { did ->
+                // private12 parity (K0/N3:815-830): decision-linked messages get
+                // a "Review decision" entry under the bubble that opens the
+                // decision screen.
+                val review = text(context, "Review decision", 13f, C.accent, true)
+                review.setOnClickListener { host.openPage("Review decision", DecisionScreen(context, did)) }
+                container.addView(review)
+            }
         }
 
         override fun getItemCount() = rows.size

@@ -605,6 +605,13 @@ class MainActivity : AppCompatActivity() {
         runCatching { pickImageLauncher.launch("image/*") }.onFailure { pickImageCallback = null; callback(null) }
     }
 
+    // private12 parity (K0/A3 case 2 via L.H): the in-room "Attach photo or
+    // file" entry opens the picker with */*, not image/*.
+    fun pickFile(callback: (android.net.Uri?) -> Unit) {
+        pickImageCallback = callback
+        runCatching { pickImageLauncher.launch("*/*") }.onFailure { pickImageCallback = null; callback(null) }
+    }
+
     // RECONSTRUCTED Nov 23, 2026: save a text document (room export) via SAF.
     private var saveDocumentCallback: ((Boolean) -> Unit)? = null
     private var saveDocumentPayload: String? = null
