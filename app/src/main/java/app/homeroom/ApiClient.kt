@@ -657,7 +657,19 @@ class ApiClient(
     // integrity check deletes the partial file; the cookie never leaves the app.
     suspend fun verifiedDownload(path: String, local: java.io.File, size: Long, digest: String?, onProgress: (Long, Long) -> Unit): Boolean =
         withContext(Dispatchers.IO) {
-            val auth = session.authSnapshot()
+            // Same operation prelude as every other route (I2 entry trace):
+            // identity captured before any wait, bootstrap when no session
+            // data exists (the recovered V15 vector enqueues bootstrap first),
+            // then re-derive from authIfUnchanged so a mid-wait re-enroll is
+            // a stale_operation, never a rebinding.
+            val initiating = session.authSnapshot()
+            val entryGen = initiating.generation
+            val entryUrl = initiating.serverUrl
+            if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
+                if (e.status == 401) throw SessionEndedException(e.code, entryGen); throw e
+            }
+            val auth = session.authIfUnchanged(entryGen, entryUrl)
+                ?: throw ApiException(0, "stale_operation")
             val builder = Request.Builder().url(baseUrl(auth) + path).header("Cache-Control", "no-store").get()
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
             applyOriginHeaders(builder, baseUrl(auth) + path, "GET")
@@ -686,7 +698,7 @@ class ApiClient(
                 val okDigest = expected != null && sha.digest().joinToString("") { "%02x".format(it) } == expected
                 if (!okSize || (expected != null && !okDigest)) {
                     local.delete()
-                    throw ApiException(0, "integrity_check_failed")
+                    throw IllegalArgumentException("integrity_check_failed")
                 }
                 reachable = true
                 expected != null
