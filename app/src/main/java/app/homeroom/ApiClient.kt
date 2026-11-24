@@ -220,8 +220,13 @@ class ApiClient(private val session: Session) {
     internal var recoveryTestHook: (() -> Unit)? = null
     internal var preRetryBuildHook: (() -> Unit)? = null
 
-    suspend fun request(route: String, method: String = "GET", body: JSONObject? = null): JSONObject =
-        withContext(Dispatchers.IO) {
+    suspend fun request(route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
+        // Initiating identity at ACTUAL request entry, before any dispatcher
+        // handoff or wait (I2 timing qualification): work that was queued
+        // before this call cannot capture a newer session than the caller
+        // that initiated this operation intended.
+        val initiating = session.authSnapshot()
+        return withContext(Dispatchers.IO) {
             // Operation identity captured at ENTRY (I2 final, operation
             // rebinding): if clear+re-enroll completes while the first attempt
             // is in flight, the recovery path must NOT bootstrap the new
@@ -229,12 +234,12 @@ class ApiClient(private val session: Session) {
             // new destination - stale work is rejected, never rebound. This is
             // ApiException("stale_operation"), NOT SessionEndedException: the
             // NEW session is healthy and must not be torn down.
-            // Initiating identity captured BEFORE any fallible/suspending
-            // wait (I2 final entry trace): a clear+re-enroll completing
-            // during the bootstrap wait must not let this operation's body
-            // acquire a new session or destination.
-            val entryGen = session.generation
-            val entryUrl = session.serverUrl
+            // Identity captured BEFORE any fallible/suspending wait (I2
+            // final entry trace): a clear+re-enroll completing during the
+            // bootstrap wait must not let this operation's body acquire a
+            // new session or destination.
+            val entryGen = initiating.generation
+            val entryUrl = initiating.serverUrl
             if (sessionData == null) bootstrap()
             // Fresh credentials (post-bootstrap CSRF) are adopted only for
             // the SAME identity; a moved identity rejects the operation.
@@ -283,6 +288,7 @@ class ApiClient(private val session: Session) {
                 throw e
             }
         }
+    }
 
     // RECONSTRUCTED Nov 23, 2026: the release renews the owner session when the
     // app opens (session_renew evidence from the exact release build).
@@ -547,7 +553,12 @@ class ApiClient(private val session: Session) {
     private val renewMutex = Mutex()
     private var lastForegroundRenew: Long = 0L
 
-    suspend fun renewOnOpen() = renewMutex.withLock {
+    suspend fun renewOnOpen() {
+        // Initiating identity before the renewMutex wait (I2 timing
+        // qualification): a pass queued behind another renew must not bind
+        // to a session newer than the one its caller acted on.
+        val initiating = session.authSnapshot()
+        renewMutex.withLock {
         // Divergence from the historical source: System.nanoTime() instead of
         // android.os.SystemClock.elapsedRealtime() so the file compiles in the
         // pure-JVM mock harness; both are monotonic clocks.
@@ -557,11 +568,11 @@ class ApiClient(private val session: Session) {
         // Operation identity captured BEFORE any network (I2 recheck of
         // 93a5b8b): capturing after the response would accept a pre-sign-out
         // response under the NEW generation.
-        // Initiating identity captured BEFORE the bootstrap wait (I2 final
-        // entry trace); fresh credentials are adopted only for the SAME
-        // identity, and the bootstrap 401 is attributed to it.
-        val entryGen = session.generation
-        val entryUrl = session.serverUrl
+        // Identity captured BEFORE the bootstrap wait (I2 final entry
+        // trace); fresh credentials are adopted only for the SAME identity,
+        // and the bootstrap 401 is attributed to it.
+        val entryGen = initiating.generation
+        val entryUrl = initiating.serverUrl
         if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
             if (e.status == 401) throw SessionEndedException(e.code, entryGen); throw e
         }
@@ -591,6 +602,7 @@ class ApiClient(private val session: Session) {
                     sessionData = data
                 }
             }
+        }
         }
     }
 
