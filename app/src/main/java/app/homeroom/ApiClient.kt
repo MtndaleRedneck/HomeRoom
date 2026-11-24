@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -71,8 +72,13 @@ class ApiClient(private val session: Session) {
         return if (isEnrolledOrigin(url)) value else null
     }
 
-    internal fun isEnrolledOrigin(url: HttpUrl): Boolean {
-        val origin = enrolledOrigin() ?: return false
+    internal fun isEnrolledOrigin(url: HttpUrl): Boolean = isEnrolledOrigin(url, session.serverUrl)
+
+    // OUTBOUND credential scope (I2 01d1f60 finding): the operation's own
+    // destination decides whether credentials may be attached - never a
+    // foreign absolute URL. Scheme + host + port must all match.
+    internal fun isEnrolledOrigin(url: HttpUrl, serverUrl: String?): Boolean {
+        val origin = enrolledOrigin(serverUrl) ?: return false
         return url.scheme == origin.first && url.host == origin.second && url.port == origin.third
     }
 
@@ -102,8 +108,8 @@ class ApiClient(private val session: Session) {
         }
     }
 
-    private fun enrolledOrigin(): Triple<String, String, Int>? = try {
-        val u = java.net.URI(session.serverUrl ?: return null)
+    private fun enrolledOrigin(serverUrl: String? = session.serverUrl): Triple<String, String, Int>? = try {
+        val u = java.net.URI(serverUrl ?: return null)
         val host = u.host?.lowercase() ?: return null
         val port = if (u.port == -1) (if (u.scheme == "https") 443 else 80) else u.port
         Triple(u.scheme.lowercase(), host, port)
@@ -160,7 +166,7 @@ class ApiClient(private val session: Session) {
         applyOriginHeaders(builder,baseUrl(auth)+"/owner/files/"+enc(id),"GET")
         execute(builder).use { response ->
             acceptResponseCookies(response, auth)
-            checkSession()
+            checkSession(auth.generation)
             if(!response.isSuccessful) {
                 if(response.code==401) throw SessionEndedException("owner_session_required", auth.generation)
                 throw ApiException(response.code,"download_failed")
@@ -370,7 +376,13 @@ class ApiClient(private val session: Session) {
             (auth.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + url
         } else baseUrl(auth) + url
         val req = Request.Builder().url(full).get()
-        auth.cookie?.let { req.header("Cookie", COOKIE_NAME + "=" + it) }
+        // Credentials are attached ONLY when the resolved destination is the
+        // enrolled origin of THIS operation's snapshot: an absolute avatar
+        // URL on a foreign host receives no session cookie (the incoming-
+        // origin guard never protected the outgoing direction).
+        if (isEnrolledOrigin(full.toHttpUrl(), auth.serverUrl)) {
+            auth.cookie?.let { req.header("Cookie", COOKIE_NAME + "=" + it) }
+        }
         applyOriginHeaders(req, full, "GET")
         execute(req).use { response ->
             acceptResponseCookies(response, auth)
@@ -505,8 +517,8 @@ class ApiClient(private val session: Session) {
         builder.header("Sec-Fetch-Dest", "empty")
     }
 
-    private fun checkSession() {
-        if (session.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", session.generation)
+    private fun checkSession(opGeneration: Long? = null) {
+        if (session.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", opGeneration)
     }
 
     // RECONSTRUCTED: exact release routes - GET /owner/events/<id> and
@@ -542,8 +554,9 @@ class ApiClient(private val session: Session) {
         // Operation identity captured BEFORE any network (I2 recheck of
         // 93a5b8b): capturing after the response would accept a pre-sign-out
         // response under the NEW generation.
+        val preBootstrapGen = session.generation
         if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
-            if (e.status == 401) throw SessionEndedException(e.code, session.generation); throw e
+            if (e.status == 401) throw SessionEndedException(e.code, preBootstrapGen); throw e
         }
         // Immutable operation snapshot for this lifecycle pass (I2 4ff0522):
         // the instance GET and the renew POST both run under one identity.
@@ -586,7 +599,7 @@ class ApiClient(private val session: Session) {
             applyOriginHeaders(builder, baseUrl(auth) + path, "GET")
             execute(builder).use { response ->
                 acceptResponseCookies(response, auth)
-                checkSession()
+                checkSession(auth.generation)
                 if (!response.isSuccessful) {
                     if (response.code == 401) throw SessionEndedException("owner_session_required", auth.generation)
                     throw ApiException(response.code, "download_failed")

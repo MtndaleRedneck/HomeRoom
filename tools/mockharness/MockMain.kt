@@ -270,6 +270,17 @@ fun main(args: Array<String>) = runBlocking {
         session.cookie = "test-cookie"
         session.generation -= 1
     }
+    check("avatar-outbound-credential-scope") {
+        // I2 01d1f60 finding: the snapshot cookie may only be attached when
+        // the RESOLVED destination matches the operation's enrolled origin
+        // (scheme + host + port). Pins the exact scoping predicate used by
+        // avatarBytes; the network path for foreign absolute URLs carries no
+        // Cookie header at all.
+        require(!api.isEnrolledOrigin("https://example.com/a.png".toHttpUrl(), "http://127.0.0.1:8471")) { "foreign host treated as enrolled" }
+        require(!api.isEnrolledOrigin("https://127.0.0.1:8471/a.png".toHttpUrl(), "http://127.0.0.1:8471")) { "scheme upgrade treated as enrolled" }
+        require(!api.isEnrolledOrigin("http://127.0.0.1:9999/a.png".toHttpUrl(), "http://127.0.0.1:8471")) { "other port treated as enrolled" }
+        require(api.isEnrolledOrigin("http://127.0.0.1:8471/homeroom/v1/owner/profile/avatar".toHttpUrl(), "http://127.0.0.1:8471")) { "enrolled origin refused" }
+    }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.
         val e = try { api.avatarBytes("http://example.invalid/a.png"); null } catch (x: ApiException) { x }
