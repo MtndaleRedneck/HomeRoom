@@ -539,15 +539,23 @@ class ApiClient(
     // first and this fetch adopts the renewed credentials; 401 ends the
     // session. Currently a test seam - prod callers use the recovering
     // event(); coverage kept honest (no prod caller claimed).
-    suspend fun eventDirect(id: String): JSONObject = renewMutex.withLock {
-        val auth = session.authSnapshot()
-        if (auth.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", auth.generation)
-        withContext(Dispatchers.IO) {
-            try {
-                raw("/owner/events/" + enc(id), auth = auth)
-            } catch (e: ApiException) {
-                if (e.status == 401) throw SessionEndedException(e.code, auth.generation)
-                throw e
+    suspend fun eventDirect(id: String): JSONObject {
+        // Initiating identity captured at ACTUAL entry, BEFORE the renewMutex
+        // wait (I2 timing qualification, same boundary as request()): the wait
+        // only serializes against an in-flight rotation; credentials refresh
+        // solely within the SAME generation/destination, never a rebind.
+        val initiating = session.authSnapshot()
+        return renewMutex.withLock {
+            val auth = session.authIfUnchanged(initiating.generation, initiating.serverUrl)
+                ?: throw ApiException(0, "stale_operation")
+            if (auth.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", auth.generation)
+            withContext(Dispatchers.IO) {
+                try {
+                    raw("/owner/events/" + enc(id), auth = auth)
+                } catch (e: ApiException) {
+                    if (e.status == 401) throw SessionEndedException(e.code, auth.generation)
+                    throw e
+                }
             }
         }
     }
@@ -673,8 +681,12 @@ class ApiClient(
         raw("/owner/enroll", "POST", JSONObject()
             .put("token", token)
             .put("device_label", deviceLabel), session.authSnapshot())
-        accepted()
+        // Session-install atomicity: the callback is UI-facing; its failure
+        // must not strand a server-enrolled device without a local bootstrap.
+        // Bootstrap runs regardless, then a callback failure still propagates.
+        val callbackFailure = runCatching { accepted() }.exceptionOrNull()
         bootstrap()
+        callbackFailure?.let { throw it }
         Unit
     }
 
