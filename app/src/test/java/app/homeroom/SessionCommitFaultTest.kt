@@ -147,7 +147,14 @@ class SessionCommitFaultTest {
         failing = true
         try { session.saveStagedUpload("c", null); fail("failed remove was silent") }
         catch (e: IllegalStateException) { /* expected */ }
-        assertEquals(1, session.stagedUploads().size)
+        // Nov24 I2-reviewed latch semantics: a failed commit leaves the save
+        // UNKNOWN (in-memory map may be ahead of disk), latches all further
+        // staged writes, and signals the UI via stagedUploadsUnknown(). The
+        // pre-latch lineage asserted the record was simply kept.
+        assertTrue(session.stagedUploadsUnknown())
+        try { session.saveStagedUpload("d", record("d")); fail("latched write was allowed") }
+        catch (e: IllegalStateException) { /* expected: writes blocked */ }
+        // The on-disk record was never touched: a fresh session still sees it.
         assertEquals(1, freshSession().stagedUploads().size)
     }
 
@@ -183,7 +190,9 @@ class SessionCommitFaultTest {
         session.replaceCredentials("c1", "t1")
         val gen = session.generation
         val snap = session.authIfUnchanged(gen, "https://a.example")
-        assertEquals(Triple("https://a.example", "c1", "t1"), snap)
+        // Snapshot shape is OpAuth (generation-bound) since the I2 coherent
+        // boundary recheck; the pre-latch lineage compared a Triple.
+        assertEquals(Session.OpAuth(gen, "https://a.example", "c1", "t1"), snap)
         assertNull(session.authIfUnchanged(gen + 1, "https://a.example"))
         assertNull(session.authIfUnchanged(gen, "https://b.example"))
         session.clear()
