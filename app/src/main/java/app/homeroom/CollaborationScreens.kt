@@ -114,11 +114,12 @@ class TeamScreen(context:Context):Screen(context) {
     }
 }
 // private12 parity (K0/p3 mode 3 + K0/U0): the "AI answers" page after an
-// ask-all. GET /owner/requests/<id> ONCE per show (release f1915o gate; a
-// re-shown page refetches - this is not a poll loop), one 300dp card per
-// target in a horizontal strip: display name resolved from cached room members
-// (fallback actor id), the question, the target state, and each reply event
-// fetched and shown. All requests run against the captured operation auth.
+// ask-all. GET /owner/requests/<id> ONCE per page instance (release f1915o
+// gate; re-showing does NOT refetch, retry happens via the error card - this
+// is not a poll loop), one 300dp card per target in a horizontal strip:
+// display name resolved from cached room members (fallback actor id), the
+// question, the target state, and each reply event fetched and shown. All
+// requests run against the captured operation auth.
 class AskAllAnswersScreen(context:Context,private val requestId:String,private val launch:Session.OpAuth):Screen(context) {
     private val strip=LinearLayout(context).apply {orientation=LinearLayout.HORIZONTAL;setPadding(dp(12),dp(12),dp(12),dp(24))}
     private var loaded=false
@@ -144,8 +145,13 @@ class AskAllAnswersScreen(context:Context,private val requestId:String,private v
                 setBackgroundColor(C.surface)
             }
             // private12 parity (K0/U0): each card scrolls vertically, so a long
-            // reply never overflows the strip.
-            val cardScroll=ScrollView(context).apply {addView(card)}
+            // reply never overflows the strip. fillViewport keeps the surface
+            // filling short cards too (GPT/Gemini layout must-fix).
+            val cardScroll=ScrollView(context).apply {
+                isFillViewport=true
+                setBackgroundColor(C.surface)
+                addView(card,LayoutParams(-1,-2))
+            }
             val lp=LinearLayout.LayoutParams(dp(300),-1).apply {rightMargin=dp(12)}
             val displayName=host.cachedRooms().flatMap {it.members}.firstOrNull {it.first==actor}?.second?.takeIf {it.isNotBlank()} ?: actor
             card.addView(text(context,displayName,18f,C.text,true))
@@ -174,7 +180,7 @@ class AskAllAnswersScreen(context:Context,private val requestId:String,private v
                             replyView.text=event.getString("text")
                         } catch(e:kotlinx.coroutines.CancellationException) {throw e}
                         catch(e:SessionEndedException) {host.onSessionEnded(e)}
-                        catch(_:Exception) {replyView.text="Couldn't load this reply."}
+                        catch(_:Exception) {if(gen==generation) replyView.text="Couldn't load this reply."}
                     }
                 }
             }

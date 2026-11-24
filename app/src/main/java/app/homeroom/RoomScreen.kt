@@ -112,6 +112,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     }
 
     override fun onShow() {
+        screenActive = true
         refreshRoomToolsVisibility()
         if (events.isEmpty()) loadInitial() else positionAtAnchor(force = true)
     }
@@ -139,8 +140,22 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     // validation (K0/v1: trimmed text 1..8000, >=1 AI), POST (K0/x1 -> N5.a),
     // then the AI answers page (K0/p3 mode 3). Error strings are the release's.
     private var askAllDialog: android.app.AlertDialog? = null
+    // Screen-active lifecycle token (GPT/Gemini must-fix): View.isShown tracks
+    // attach/visibility transitions, not the screen's logical active state, so
+    // the roster await re-checks this flag instead.
+    private var screenActive = false
+    // Unresolved-ask intent guard (I2): after an uncertain POST the ask may be
+    // held by the server. A new dialog builds a NEW client_id (release parity),
+    // which does NOT settle the possibly-accepted duplicate, so a further send
+    // is blocked while this marker stands. Cleared by a successful room reload
+    // (the user can then see whether the ask landed) and by leaving the screen.
+    private var unresolvedAsk: String? = null
 
     private fun beginAskAll() {
+        if (unresolvedAsk != null) {
+            snack(this, "Ask not confirmed. Check this room before resending.")
+            return
+        }
         // Operation-bound auth (I2 pre-certification finding): capture the
         // session identity at flow start and run every request in this flow
         // against it, so a session reset mid-flow is rejected by requestFor
@@ -156,14 +171,17 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 snack(this@RoomScreen, "Couldn't verify the room's AI members. Refresh before asking."); return@launch
             }
             if (aiMembers.isEmpty()) { snack(this@RoomScreen, "No AIs in this room."); return@launch }
-            // Teardown guard: the roster await can finish after the screen was
-            // hidden; never show the dialog on an inactive screen.
-            if (!isShown) return@launch
+            // Lifecycle guards after the await: the screen must still be the
+            // active one, not covered by the app lock, and the session identity
+            // must not have moved while the roster was in flight.
+            if (!screenActive || host.appLock.coverShowing) return@launch
+            if (host.session.authSnapshot().generation != launch.generation) return@launch
             showAskAllDialog(aiMembers, launch)
         }
     }
 
     private fun showAskAllDialog(aiMembers: List<Pair<String, String>>, launch: Session.OpAuth) {
+        askAllDialog?.dismiss()
         val body = column(context).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
         val box = input(context, "Question for these AIs")
         body.addView(box)
@@ -191,7 +209,13 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 // Deduped and bounded to the server contract (actors 1-20 unique;
                 // release validation in K0/v1 covers blank/>8000/empty).
                 val selected = boxes.filter { it.isChecked }.map { it.tag as String }.distinct()
-                if (question.isBlank() || question.length > 8000 || selected.isEmpty() || selected.size > 20) {
+                if (selected.size > 20) {
+                    // Contract bound is 1-20 unique actors; the release's generic
+                    // error would mislead here (I2), so say what to do.
+                    box.error = "Choose up to 20 AIs - uncheck some."
+                    return@setOnClickListener
+                }
+                if (question.isBlank() || question.length > 8000 || selected.isEmpty()) {
                     box.error = "Enter a question and choose AIs."
                     return@setOnClickListener
                 }
@@ -207,16 +231,18 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e
                     } catch (e: SessionEndedException) { host.onSessionEnded(e); dialog.dismiss(); return@launch
                     } catch (_: Exception) {
+                        unresolvedAsk = askClientId
                         snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
                         askButton.isEnabled = true
                         box.isEnabled = false
                         boxes.forEach { it.isEnabled = false }
                         return@launch
                     }
-                    // Stage 2: result parse. A missing request_id after an
-                    // accepted POST is the same uncertain state, same handling.
-                    val requestId = response.nullableString("request_id")
+                    // Stage 2: result parse. A missing or blank request_id after
+                    // an accepted POST is the same uncertain state, same handling.
+                    val requestId = response.nullableString("request_id")?.takeIf { it.isNotBlank() }
                     if (requestId == null) {
+                        unresolvedAsk = askClientId
                         snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
                         askButton.isEnabled = true
                         box.isEnabled = false
@@ -306,6 +332,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     override fun poll() = loadNew()
 
     override fun onHide() {
+        screenActive = false
         roomToolsDialog?.dismiss()
         askAllDialog?.dismiss()
         rememberPlace()
@@ -328,6 +355,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 events.addAll(pageEvents)
                 rebuild()
                 loading = false
+                // A successful reload is the user's chance to see whether an
+                // uncertain ask landed, so it resolves the duplicate guard.
+                unresolvedAsk = null
                 updateOlderVisibility()
                 positionAtAnchor(force = true)
                 markRead()
