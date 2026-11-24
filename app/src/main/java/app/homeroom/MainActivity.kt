@@ -45,6 +45,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         session = Session(this)
         api = ApiClient(session)
+        // AppLock registers an activity-result launcher in its constructor;
+        // AndroidX requires registerForActivityResult before the lifecycle
+        // reaches STARTED, so the lazy gate must be forced here, not first
+        // touched in onResume (runtime crash: "attempting to register while
+        // current state is STARTED", debug-smoke acd48bf).
+        appLock
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.setBackgroundColor(C.bg)
