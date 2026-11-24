@@ -122,6 +122,9 @@ class TeamScreen(context:Context):Screen(context) {
 class AskAllAnswersScreen(context:Context,private val requestId:String,private val launch:Session.OpAuth):Screen(context) {
     private val strip=LinearLayout(context).apply {orientation=LinearLayout.HORIZONTAL;setPadding(dp(12),dp(12),dp(12),dp(24))}
     private var loaded=false
+    // Reload generation: a retry can overlap in-flight reply fetches from the
+    // failed render; stale completions must not write into the new strip.
+    private var generation=0
     init {addView(android.widget.HorizontalScrollView(context).apply {addView(strip)},LayoutParams(-1,-1))}
     override fun onShow() {if(!loaded) {loaded=true;load()}}
     private fun load() {screenScope.launch {
@@ -132,6 +135,7 @@ class AskAllAnswersScreen(context:Context,private val requestId:String,private v
     }}
     private fun render(data:JSONObject) {
         strip.removeAllViews()
+        val gen=++generation
         val question=data.optString("text")
         for(target in data.requiredArray("targets").objects()) {
             val actor=target.getString("actor")
@@ -139,6 +143,9 @@ class AskAllAnswersScreen(context:Context,private val requestId:String,private v
                 setPadding(dp(12),dp(12),dp(12),dp(12))
                 setBackgroundColor(C.surface)
             }
+            // private12 parity (K0/U0): each card scrolls vertically, so a long
+            // reply never overflows the strip.
+            val cardScroll=ScrollView(context).apply {addView(card)}
             val lp=LinearLayout.LayoutParams(dp(300),-1).apply {rightMargin=dp(12)}
             val displayName=host.cachedRooms().flatMap {it.members}.firstOrNull {it.first==actor}?.second?.takeIf {it.isNotBlank()} ?: actor
             card.addView(text(context,displayName,18f,C.text,true))
@@ -155,7 +162,9 @@ class AskAllAnswersScreen(context:Context,private val requestId:String,private v
                     card.addView(replyView)
                     screenScope.launch {
                         try {
+                            if(gen!=generation) return@launch
                             val event=host.api.event(eventId,launch).getJSONObject("event")
+                            if(gen!=generation) return@launch
                             // private12 guard (K0/U0): only render a reply whose
                             // actor matches the target and whose request ref is
                             // this ask; a mismatched reply is removed, not left
@@ -169,7 +178,7 @@ class AskAllAnswersScreen(context:Context,private val requestId:String,private v
                     }
                 }
             }
-            strip.addView(card,lp)
+            strip.addView(cardScroll,lp)
         }
     }
 }

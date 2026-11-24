@@ -88,7 +88,9 @@ ASK_REPLY_EVENT = {
         "room_id": "stub-room",
         "actor": "stub-ai-1",
         "request_id": "stub-ask-1",
-        "text": "Stub AI answer for the debug-interaction job.",
+        # Long on purpose: the answers screenshot exercises the per-card
+        # vertical scroll (K0/U0 parity) instead of assuming it.
+        "text": "Stub AI answer for the debug-interaction job. " + "This reply is deliberately long so the card scrolls. " * 4,
         "created_at": "2026-11-24T12:02:30Z",
         "own": False,
     }

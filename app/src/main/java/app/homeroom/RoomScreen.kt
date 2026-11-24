@@ -156,6 +156,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 snack(this@RoomScreen, "Couldn't verify the room's AI members. Refresh before asking."); return@launch
             }
             if (aiMembers.isEmpty()) { snack(this@RoomScreen, "No AIs in this room."); return@launch }
+            // Teardown guard: the roster await can finish after the screen was
+            // hidden; never show the dialog on an inactive screen.
+            if (!isShown) return@launch
             showAskAllDialog(aiMembers, launch)
         }
     }
@@ -231,7 +234,8 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             }
         }
         askAllDialog = dialog
-        dialog.setOnDismissListener { askAllDialog = null }
+        host.transientDialog = dialog
+        dialog.setOnDismissListener { askAllDialog = null; if (host.transientDialog === dialog) host.transientDialog = null }
         dialog.show()
     }
 
@@ -303,6 +307,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
     override fun onHide() {
         roomToolsDialog?.dismiss()
+        askAllDialog?.dismiss()
         rememberPlace()
     }
 
