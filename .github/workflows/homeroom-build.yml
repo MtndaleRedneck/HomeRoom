@@ -191,6 +191,24 @@ jobs:
             adb shell screencap -p /data/local/tmp/smoke.png
             adb pull /data/local/tmp/smoke.png smoke.png
             echo "ok: debug APK installs, launches, stays alive, no fatal exception"
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map><string name="server_url">https://smoke.invalid</string><string name="cookie">smoke-cookie</string></map>' > session-seed.xml
+            adb push session-seed.xml /data/local/tmp/session-seed.xml
+            adb shell run-as app.homeroom mkdir -p shared_prefs
+            adb shell 'cat /data/local/tmp/session-seed.xml | run-as app.homeroom sh -c "cat > shared_prefs/homeroom_session.xml"'
+            adb shell am force-stop app.homeroom
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 40
+            adb exec-out screencap -p > main-chats.png
+            adb shell input tap 456 2242
+            sleep 6
+            adb exec-out screencap -p > main-files.png
+            adb shell input tap 624 2242
+            sleep 6
+            adb exec-out screencap -p > main-rules.png
+            adb shell input tap 792 2242
+            sleep 6
+            adb exec-out screencap -p > main-settings.png
+            echo "ok: seeded session captured main-UI chrome on all four tabs (server unreachable by design; shell + floating nav only, not room data)"
 
       - name: Upload smoke screenshot
         if: always()
@@ -199,6 +217,10 @@ jobs:
           name: smoke-screenshot
           path: |
             smoke.png
+            main-chats.png
+            main-files.png
+            main-rules.png
+            main-settings.png
             logcat-full.txt
           if-no-files-found: warn
 
