@@ -6,7 +6,25 @@ import android.graphics.drawable.GradientDrawable
 import android.view.*
 import android.widget.*
 
-/** Floating navigation. Only the captured backdrop is blurred, never its labels. */
+/**
+ * Restored historical private12 floating navigation (exact-release decompile +
+ * Nov 10/11 operator readbacks): four tabs, captured-backdrop blur, badge
+ * overlay. Only the captured backdrop is blurred, never its labels.
+ *
+ * PRODUCTION STATUS: intentionally UNWIRED. The reviewed production layout is
+ * the five-tab BottomNavigationView in MainActivity (Chats/Files/Rules/Search/
+ * Settings); this class differs from it (four tabs, no Search tab, backdrop
+ * blur) and is kept as the owning historical contract for reference and tests.
+ * Feature gap: no production caller instantiates it, so its badges, update dot
+ * and backdrop blur have no production exposure.
+ *
+ * WIRING CONDITION (I2, Nov 24): before any production wiring of the backdrop
+ * capture, the capture path must not snapshot content behind the lock cover or
+ * a FLAG_SECURE window into its retained buffers - view.draw() bypasses
+ * FLAG_SECURE and the cover is a sibling overlay, not part of the captured
+ * source view. Gate capture on cover visibility / window flags and clear the
+ * retained buffers when the cover shows or the window backgrounds.
+ */
 class GlassNav(context: Context, private val behind: View, val choose: (Int) -> Unit) : FrameLayout(context) {
     private val backdrop = ImageView(context)
     private val items = LinearLayout(context)

@@ -97,9 +97,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            // Release back contract (exact private12 decompile): the visible
+            // screen first (its onBack hook, e.g. dismissing transient UI),
+            // then pop the route stack, then fall back to the Chats tab, then
+            // the system default. Rooms are routes too: with the pushRoute
+            // openRoom below, Back from a room returns to whatever was pushed
+            // beneath it (e.g. Waiting), not unconditionally to Chats.
             override fun handleOnBackPressed() {
-                if (roomScreen == null && currentPage != null && closePage()) {
-                    // consumed
+                if ((content.getChildAt(0) as? Screen)?.onBack() == true) {
+                    // consumed by the visible screen
+                } else if (closePage()) {
+                    // consumed - popped a pushed route (page, Waiting, or tab root)
                 } else if (roomScreen != null) closeRoom()
                 else if (currentTab != R.id.nav_chats) {
                     nav.selectedItemId = R.id.nav_chats
@@ -388,12 +396,22 @@ class MainActivity : AppCompatActivity() {
         openRoom(room)
     }
 
+    // RECONSTRUCTED Nov 24 from the exact private12 decompile: the release's
+    // openRoom pushes the current route first (the same pushRoute openPage and
+    // openWaiting use), so Back from a room returns to whatever was beneath it
+    // (Waiting, a page, or the tab root). The earlier reconstruction cleared
+    // the page stack here, which dropped the Waiting route and sent Back to
+    // the Chats tab instead.
     fun openRoom(room: Room) {
         session.lastRoomId = room.id
+        val current = content.getChildAt(0) as? Screen
+        if (current != null) {
+            current.onHide()
+            pageStack.addLast(PageState(current, headerTitle.text.toString(), headerBack.visibility, nav.visibility, roomScreen))
+        }
         val screen = RoomScreen(this, room)
         roomScreen = screen
         currentPage = null
-        pageStack.clear()
         content.removeAllViews()
         content.addView(screen, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.VISIBLE

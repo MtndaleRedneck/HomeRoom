@@ -42,14 +42,24 @@ class V3RenderTest {
         (field(a,"headerTitle").get(a) as TextView).apply {text=title;textSize=if(chat)17f else 26f}
         (field(a,"headerBack").get(a) as View).visibility=if(chat)View.VISIBLE else View.GONE
         (field(a,"headerSearch").get(a) as View).visibility=if(title=="HomeRoom" || title=="Files" || chat)View.VISIBLE else View.GONE
-        val nav=field(a,"nav").get(a) as GlassNav
+        // Drive the ACTUAL production nav (BottomNavigationView, the reviewed
+        // layout). GlassNav is the restored historical private12 nav but is
+        // intentionally unwired production-side; casting nav to it would CCE.
+        // selectedItemId is set via the menu item's checked state so the
+        // tab listener does not fire and clobber the screen under render.
+        val nav=field(a,"nav").get(a) as com.google.android.material.bottomnavigation.BottomNavigationView
         nav.visibility=if(tab==null)View.GONE else View.VISIBLE
-        if(tab!=null)field(nav,"selectedItemId").set(nav,tab)
-        nav.setBadges(2,2)
-        nav.javaClass.getDeclaredMethod("updateSelection").apply {isAccessible=true}.invoke(nav)
+        if(tab!=null){
+            nav.menu.findItem(tab).isChecked=true
+            a.updateBadges(2,2)
+            assertEquals(2,nav.getBadge(R.id.nav_chats)!!.number)
+            assertEquals(2,nav.getBadge(R.id.nav_rules)!!.number)
+            assertTrue(nav.getBadge(R.id.nav_chats)!!.isVisible)
+            assertTrue(nav.getBadge(R.id.nav_rules)!!.isVisible)
+        }
         frame.setPadding(0,24,0,24)
         frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
-        nav.backdropChanged();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
         val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
         File(System.getProperty("homeroom.previewDir")).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
     }
