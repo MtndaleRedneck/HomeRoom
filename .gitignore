@@ -2,4 +2,5 @@
 **/build/
 local.properties
 *.keystore
-*.passci/__pycache__/
+*.pass
+ci/__pycache__/
