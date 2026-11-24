@@ -212,6 +212,19 @@ jobs:
             adb shell input tap 792 2242
             sleep 6
             adb exec-out screencap -p > main-settings.png
+            # Privacy row proof: tap "App lock and privacy", capture the screen it opens.
+            adb shell input tap 540 1526
+            sleep 4
+            adb exec-out screencap -p > main-privacy.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            # Scrolled-bottom proof: the whole Updates card + version line must
+            # clear the floating nav pill (110dp content bottom padding).
+            adb shell input swipe 540 1800 540 500 700
+            sleep 1
+            adb shell input swipe 540 1800 540 500 700
+            sleep 3
+            adb exec-out screencap -p > main-settings-bottom.png
             adb shell cmd uimode night auto
             echo "ok: seeded session captured main-UI chrome on all four tabs (server unreachable by design; shell + floating nav only, not room data)"
 
@@ -226,6 +239,8 @@ jobs:
             main-files.png
             main-rules.png
             main-settings.png
+            main-privacy.png
+            main-settings-bottom.png
             logcat-full.txt
           if-no-files-found: warn
 
