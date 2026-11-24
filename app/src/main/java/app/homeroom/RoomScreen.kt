@@ -382,7 +382,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 bubble.addView(spacer(context, 4))
             }
             val body = text(context, event.text, 15f, C.text)
-            body.maxWidth = (resources.displayMetrics.widthPixels * 0.75).toInt()
+            // Release cap (K0/N3:708 and :750): message text maxWidth is
+            // 0.72*display width (0.64 when the row also carries media, :776).
+            body.maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
             bubble.addView(body)
             bubble.addView(spacer(context, 2))
             val meta = text(context, formatTime(event.createdAt), 11f, C.muted)

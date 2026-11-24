@@ -8,6 +8,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 // Finite coverage for the AppLock pause correction (MainActivity.onPause now
 // calls appLock.onPause - previously never invoked) and the explicit
@@ -17,6 +18,7 @@ import org.robolectric.annotation.Config
 // FLAG_SECURE) no new capture proceeds.
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
+@GraphicsMode(GraphicsMode.Mode.NATIVE) // capture geometry: legacy mode re-lays content at window bounds during idle, double-firing the layout listener
 class AppLockRearmTest {
     private fun field(o:Any,n:String)=o.javaClass.getDeclaredField(n).apply{isAccessible=true}
     private fun succeed(lock:AppLock)=lock.javaClass.getDeclaredMethod("success").apply{isAccessible=true}.invoke(lock)

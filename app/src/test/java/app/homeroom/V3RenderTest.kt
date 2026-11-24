@@ -67,7 +67,7 @@ class V3RenderTest {
             assertEquals("2",rulesBadge.text.toString())
             assertEquals(View.VISIBLE,rulesBadge.visibility)
             assertEquals("no update dot without an update",View.GONE,settingsBadge.visibility)
-            assertEquals("Chats, 2",chatsCell.contentDescription)
+            assertEquals("Rooms, 2",chatsCell.contentDescription) // release label (K0/a2:82): Rooms, Rules, Files, Settings
             assertEquals("Rules, 2",rulesCell.contentDescription)
         }
         frame.setPadding(0,24,0,24)

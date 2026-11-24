@@ -91,8 +91,10 @@ internal class ActionReviewScrollGate(private val scroll:ScrollView,private val 
         scroll.post {refresh()}
     }
     fun canConfirm():Boolean {
-        val child=scroll.getChildAt(0) ?: return false
+        val child=scroll.getChildAt(0) ?: run { println("GATE-DIAG no child"); return false }
         val viewport=scroll.height-scroll.paddingTop-scroll.paddingBottom
+        // TEMP DIAGNOSTIC (run-86 gate failures) - removed after diagnosis
+        println("GATE-DIAG busy=$busy viewport=$viewport childH=${child.height} childBottom=${child.bottom} scrollY=${scroll.scrollY} scrollH=${scroll.height} padB=${scroll.paddingBottom} childMeasured=${child.measuredHeight} attached=${scroll.isAttachedToWindow}")
         return !busy && viewport>0 && child.height>0 && child.bottom<=scroll.scrollY+scroll.height-scroll.paddingBottom
     }
     fun refresh() {confirm.isEnabled=canConfirm()}

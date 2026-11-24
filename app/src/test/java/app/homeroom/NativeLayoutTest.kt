@@ -32,6 +32,10 @@ class NativeLayoutTest {
     @Test fun roomAndMessageTextHaveRealWidth() {
         val controller=Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity=controller.get()
+        // The release caps bubble text at 0.72*display width (K0/N3:708); the
+        // sandbox display reports ~0px even with qualifiers, collapsing the
+        // cap - give the display a real width for this geometry test.
+        activity.resources.displayMetrics.widthPixels=396
         val room=Room.from(JSONObject("""{"room_id":"demo","display_name":"HomeRoom test","unread_count":1,"members":[{"actor":"tab","display_name":"Tab"}],"last_post":{"text":"This room will stay available.","created_at":"2026-11-09T22:30:00Z"}}"""))
         val rooms=RoomsScreen(activity)
         @Suppress("UNCHECKED_CAST")
