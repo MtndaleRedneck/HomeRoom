@@ -138,7 +138,9 @@ class MainActivity : AppCompatActivity() {
     // screen's link and starts connecting.
     private var pendingHandoff: ConnectionHandoff? = null
 
-    override fun onNewIntent(intent: android.content.Intent) {
+    // Public to match the release's MainActivity.onNewIntent (and so tests
+    // can drive the notification route); the framework override is protected.
+    public override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         onConnectIntent(intent)
         onShareIntent(intent)
