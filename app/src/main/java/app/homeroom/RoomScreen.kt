@@ -141,20 +141,26 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     private var askAllDialog: android.app.AlertDialog? = null
 
     private fun beginAskAll() {
+        // Operation-bound auth (I2 pre-certification finding): capture the
+        // session identity at flow start and run every request in this flow
+        // against it, so a session reset mid-flow is rejected by requestFor
+        // instead of rebinding the old intent to a new session.
+        val launch = host.session.authSnapshot()
         screenScope.launch {
             val aiMembers: List<Pair<String, String>> = try {
-                val roster = host.api.ais().map { it.actor }.toSet()
+                val roster = host.api.ais(launch).map { it.actor }.toSet()
                 room.members.filter { it.first in roster }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: SessionEndedException) { host.onSessionEnded(e); return@launch
             } catch (_: Exception) {
                 snack(this@RoomScreen, "Couldn't verify the room's AI members. Refresh before asking."); return@launch
             }
             if (aiMembers.isEmpty()) { snack(this@RoomScreen, "No AIs in this room."); return@launch }
-            showAskAllDialog(aiMembers)
+            showAskAllDialog(aiMembers, launch)
         }
     }
 
-    private fun showAskAllDialog(aiMembers: List<Pair<String, String>>) {
+    private fun showAskAllDialog(aiMembers: List<Pair<String, String>>, launch: Session.OpAuth) {
         val body = column(context).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
         val box = input(context, "Question for these AIs")
         body.addView(box)
@@ -179,24 +185,47 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         dialog.setOnShowListener {
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val question = box.text.toString().trim()
-                val selected = boxes.filter { it.isChecked }.map { it.tag as String }
-                if (question.isBlank() || question.length > 8000 || selected.isEmpty()) {
+                // Deduped and bounded to the server contract (actors 1-20 unique;
+                // release validation in K0/v1 covers blank/>8000/empty).
+                val selected = boxes.filter { it.isChecked }.map { it.tag as String }.distinct()
+                if (question.isBlank() || question.length > 8000 || selected.isEmpty() || selected.size > 20) {
                     box.error = "Enter a question and choose AIs."
                     return@setOnClickListener
                 }
                 val askButton = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
                 askButton.isEnabled = false
                 screenScope.launch {
-                    try {
-                        val response = V15Api(host.api).askAll(room.id, askClientId, createdAt, question, selected)
-                        dialog.dismiss()
-                        host.openPage("AI answers", AskAllAnswersScreen(context, response.getString("request_id")))
-                    } catch (e: SessionEndedException) { host.onSessionEnded(e); dialog.dismiss()
+                    // Stage 1: POST acceptance. An exception here means the ask
+                    // may or may not be held by the server; the release (K0/x1)
+                    // re-enables Ask but disables the inputs so the same body is
+                    // never resent blindly.
+                    val response = try {
+                        V15Api(host.api, launch).askAll(room.id, askClientId, createdAt, question, selected)
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                    } catch (e: SessionEndedException) { host.onSessionEnded(e); dialog.dismiss(); return@launch
                     } catch (_: Exception) {
                         snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
                         askButton.isEnabled = true
                         box.isEnabled = false
                         boxes.forEach { it.isEnabled = false }
+                        return@launch
+                    }
+                    // Stage 2: result parse. A missing request_id after an
+                    // accepted POST is the same uncertain state, same handling.
+                    val requestId = response.nullableString("request_id")
+                    if (requestId == null) {
+                        snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
+                        askButton.isEnabled = true
+                        box.isEnabled = false
+                        boxes.forEach { it.isEnabled = false }
+                        return@launch
+                    }
+                    // Stage 3: navigation. A Cancel/back dismiss during the
+                    // POST drops the navigation instead of opening AI answers
+                    // over a dismissed flow.
+                    if (dialog.isShowing) {
+                        dialog.dismiss()
+                        host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
                     }
                 }
             }

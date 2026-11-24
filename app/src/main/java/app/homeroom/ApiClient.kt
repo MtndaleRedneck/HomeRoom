@@ -959,6 +959,7 @@ class ApiClient(
         ais() to roomRoster().rooms.map { it.id }
 
     suspend fun ais(): List<OwnerAi> = request("/owner/ais").requiredArray("ais").objects().map {OwnerAi.from(it)}
+    suspend fun ais(initiating: Session.OpAuth): List<OwnerAi> = requestFor(initiating, "/owner/ais").requiredArray("ais").objects().map {OwnerAi.from(it)}
     /** No idempotency key: never resend after an ambiguous failure; reload the list first. */
     suspend fun createAi(displayName:String, kind:String): OwnerAi =
         OwnerAi.from(request("/owner/ais", "POST", JSONObject().put("display_name", displayName).put("kind", kind)))
