@@ -16,7 +16,10 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     private val body=column(context).apply {setPadding(dp(16),dp(12),dp(16),dp(24))}
     private val status=text(context,"Preparing attachment...",14f,C.muted)
     private val message=input(context,"Optional message")
-    private val send=button(context,"Send attachment",true) {post()}
+    // After a failed resume the button re-runs status-first recovery instead
+    // of an inert post() (I2 UX residual: retry while ready=false no-ops).
+    private var retryResume=false
+    private val send=button(context,"Send attachment",true) {if(retryResume)resumeUpload() else post()}
     private val privateFile=File(context.cacheDir,resume?.optString("file")?.takeIf {it.matches(Regex("[A-Za-z0-9._-]+"))} ?: ("attachment-"+clientId()))
     private var job:Job?=null
     private var upload:String?=null
@@ -70,9 +73,9 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     override fun onShow() {if(job==null && !ready) {if(resume!=null)resumeUpload() else prepare()}}
     override fun onHide() {job?.cancel();job=null;super.onHide()}
     // RECONSTRUCTED: resume an interrupted staged upload from its local record.
-    private fun resumeUpload() {job=screenScope.launch {
+    private suspend fun resumeUploadInner() {
         try {
-            val record=resume ?: return@launch
+            val record=resume ?: return
             require(StagedUpload.resumable(record)) {"staged record lacks hash or original identities"}
             upload=record.getString("upload")
             val total=record.getLong("size")
@@ -87,7 +90,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     val eventId=srv.optString("event_id")
                     if(eventId.isEmpty()) markConsumedUnresolved()
                     else reconcileConsumed(eventId)
-                    return@launch
+                    return
                 }
                 "ready" -> {
                     val recordHash=record.getString("sha256")
@@ -95,17 +98,17 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     StagedUpload.requireComplete(recordHash,total,actualHash,"ready",srv.optString("verified_sha256").ifEmpty {null},srv.optLong("byte_size"))
                     ready=true;send.isEnabled=true
                     restoreUnconfirmedAttempt(record)
-                    return@launch
+                    return
                 }
                 "staged" -> {
                     // status() wire key is error_code (fail() bodies use error).
-                    if(srv.optBoolean("requires_restart",false) || srv.optString("error_code")=="upload_bytes_inconsistent") {abandonCorruptUpload();return@launch}
+                    if(srv.optBoolean("requires_restart",false) || srv.optString("error_code")=="upload_bytes_inconsistent") {abandonCorruptUpload();return}
                 }
                 else -> {
                     // failed/expired/unknown state: fail closed, no resume.
                     host.session.removeStagedUpload(upload!!);privateFile.delete()
                     status.text="This staged upload can no longer be resumed. Cancel it and attach again."
-                    return@launch
+                    return
                 }
             }
             // Server-authoritative resume point (files15 status received/
@@ -127,7 +130,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             val recordHash=record.getString("sha256")
             val actualHash=withContext(Dispatchers.IO) {java.io.File(privateFile.absolutePath).readBytes().let {sha256(it)}}
             val completeJson=V15Api(host.api).mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient))
-            if(markConsumedIfPosted(completeJson))return@launch
+            if(markConsumedIfPosted(completeJson))return
             val complete=UploadStatus.from(completeJson)
             StagedUpload.requireComplete(recordHash,total,actualHash,complete.state,complete.verified,complete.size)
             ready=true;send.isEnabled=true
@@ -141,14 +144,19 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             else resumeFailed()
         }
         catch(_:Exception) {resumeFailed()}
-    }}
+    }
     // Status-first resume failed BEFORE any ready/complete recovery (I2
     // early-resume hole): when the durable record carries ANY uncertainty
     // marker the upload may already be posted - come back ambiguous
     // (check-room, retry-same-post, two-tap local-only cancel). Only a
     // marker-free record gets the plain cannot-resume message.
     private fun resumeFailed() {
-        if(stagedRecord?.let {StagedUpload.hasUnresolvedCancellation(it)}==true) {setAmbiguous();return}
+        if(stagedRecord?.let {StagedUpload.hasUnresolvedCancellation(it)}==true) {
+            // Wire the retry to recovery, not an inert post: ready is false,
+            // so the ambiguous retry must re-run the status-first resume.
+            retryResume=true;setAmbiguous();send.text="Retry recovery"
+            return
+        }
         status.text="This staged upload can no longer be resumed. Cancel it and attach again."
     }
     // Same-ID complete replay can return CONSUMED with linkage + replayed
@@ -176,6 +184,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // asserts sent (I2): the event's client_id must equal the deterministic
     // double-namespaced ID (outgoing15 o15_ then files15 fu_). Any doubt ->
     // neutral copy, no claimed success, no repost.
+    private fun resumeUpload() {retryResume=false;job=screenScope.launch {resumeUploadInner()}}
     private suspend fun reconcileConsumed(eventId:String) {
         ready=false;send.isEnabled=false
         val linked=try {
