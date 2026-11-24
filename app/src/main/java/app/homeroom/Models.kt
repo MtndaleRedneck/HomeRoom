@@ -62,16 +62,18 @@ data class Room(
             val arr = o.optJSONArray("members") ?: JSONArray()
             for (i in 0 until arr.length()) {
                 val m = arr.optJSONObject(i) ?: continue
-                members.add(m.optString("actor") to m.optString("display_name"))
+                members.add(m.optString("actor") to (m.nullableString("display_name") ?: ""))
             }
             // RECONSTRUCTED: the release resolves display_name first, then name,
             // then room_id, and drops the synthetic "homeroom-test" member.
-            val displayName = o.optString("display_name")
-            val resolvedName = (if (displayName.isNotBlank()) displayName else o.optString("name")).ifBlank { o.optString("room_id") }
+            val displayName = o.nullableString("display_name")
+            val resolvedName = displayName?.takeIf { it.isNotBlank() }
+                ?: o.nullableString("name")?.takeIf { it.isNotBlank() }
+                ?: o.optString("room_id")
             return Room(
                 id = o.optString("room_id"),
                 name = resolvedName,
-                mainThreadKey = o.optString("main_thread_key").ifBlank { null },
+                mainThreadKey = o.nullableString("main_thread_key"),
                 unreadCount = o.optInt("unread_count", 0),
                 muted = o.optBoolean("muted", false),
                 waitingCount = o.optInt("waiting_count", 0),
@@ -271,7 +273,7 @@ data class RoomFile(
         fun from(o: JSONObject): RoomFile = RoomFile(
             id = o.optString("file_id"),
             name = o.optString("name").ifBlank { o.optString("file_id") },
-            mimeType = o.optString("mime_type"),
+            mimeType = o.nullableString("mime_type") ?: "",
             size = o.optLong("byte_size", 0),
             uploader = o.optString("uploader"),
             createdAt = o.optString("created_at").ifBlank { o.optString("ts") },
@@ -321,9 +323,9 @@ data class OwnerAiGuide(
 }
 
 data class RuleActor(val actor: String, val displayName: String, val lastCheckInAt: String?, val lastRulesReadAt: String?) {
-    companion object { fun from(o: JSONObject) = RuleActor(o.optString("actor"), o.optString("display_name"), o.nullableString("last_check_in_at"), o.nullableString("last_rules_read_at")) }
+    companion object { fun from(o: JSONObject) = RuleActor(o.optString("actor"), o.nullableString("display_name") ?: "", o.nullableString("last_check_in_at"), o.nullableString("last_rules_read_at")) }
 }
-data class RuleScope(val rules: List<Rule>, val pendingCount: Int, val rereads: Map<String, String>, val ais: List<RuleActor> = emptyList()) {
+data class RuleScope(val rules: List<Rule>, val pendingCount: Int, val rereads: Map<String, String>, val ais: List<RuleActor>? = null) {
     val active get() = rules.filter { it.status == "active" }
     val pending get() = rules.filter { it.status == "proposed" }
     val sentBack get() = rules.filter { it.status == "sent_back" }
@@ -331,8 +333,9 @@ data class RuleScope(val rules: List<Rule>, val pendingCount: Int, val rereads: 
     companion object {
         fun from(o: JSONObject): RuleScope {
             val rr = o.optJSONObject("rereads")
-            val map = rr?.let { r -> r.keys().asSequence().associateWith { r.optString(it) } } ?: emptyMap()
-            val ais = o.optJSONArray("ais")?.objects()?.map { RuleActor.from(it) } ?: emptyList()
+            val map = mutableMapOf<String, String>()
+            rr?.let { r -> for (k in r.keys()) r.nullableString(k)?.let { map[k] = it } }
+            val ais = o.optJSONArray("ais")?.objects()?.map { RuleActor.from(it) }
             return RuleScope(o.requiredArray("rules").objects().map { Rule.from(it) }, o.optInt("pending_count", 0), map, ais)
         }
     }
