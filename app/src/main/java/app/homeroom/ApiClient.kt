@@ -110,13 +110,18 @@ class ApiClient(
     // pre-renew response must not clobber the rotation. The renew's own
     // response cookie is captured (capture != null) and committed explicitly
     // by renewOnOpen after body validation, mirroring s0's explicit commit.
-    private fun acceptResponseCookies(response: Response, auth: Session.OpAuth, capture: MutableList<Cookie>? = null) {
+    private fun acceptResponseCookies(response: Response, auth: Session.OpAuth, capture: MutableList<Cookie>? = null, dispatchEpoch: Long) {
         val url = response.request.url
         for (h in response.headers("Set-Cookie")) {
             val parsed = Cookie.parse(url, h) ?: continue
             if (parsed.name == COOKIE_NAME) {
                 capture?.add(parsed)
-                if (!renewInFlight) acceptSessionCookie(url, listOf(parsed), auth.generation)
+                // Rotation ordering (ChatGPT A2): reject when a renew is in
+                // flight OR a rotation completed since this request was
+                // dispatched - a delayed pre-rotation response must not
+                // overwrite the rotated cookie after the in-flight window.
+                if (!session.renewal.inFlight && dispatchEpoch == session.renewal.rotationEpoch)
+                    acceptSessionCookie(url, listOf(parsed), auth.generation)
             }
         }
     }
@@ -155,8 +160,9 @@ class ApiClient(
         // Same-origin CSRF header: only ever attached to enrolled-server
         // requests, and only from the operation's own snapshot.
         if (method != "GET") auth.csrf?.let { builder.header("X-CSRF-Token", it) }
+        val dispatchEpoch = session.renewal.rotationEpoch
         execute(builder).use { response ->
-            acceptResponseCookies(response, auth, captureCookies)
+            acceptResponseCookies(response, auth, captureCookies, dispatchEpoch)
             val text = response.body?.string().orEmpty()
             val data = try {
                 if (text.isEmpty()) JSONObject() else JSONObject(text)
@@ -177,8 +183,9 @@ class ApiClient(
         val builder=Request.Builder().url(baseUrl(auth)+"/owner/files/"+enc(id)).header("Cache-Control","no-store").get()
         auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
         applyOriginHeaders(builder,baseUrl(auth)+"/owner/files/"+enc(id),"GET")
+        val dispatchEpoch = session.renewal.rotationEpoch
         execute(builder).use { response ->
-            acceptResponseCookies(response, auth)
+            acceptResponseCookies(response, auth, null, dispatchEpoch)
             checkSession(auth.generation)
             if(!response.isSuccessful) {
                 if(response.code==401) throw SessionEndedException("owner_session_required", auth.generation)
@@ -249,7 +256,16 @@ class ApiClient(
     // stale_operation, which is NOT SessionEndedException: the new session
     // is healthy and must not be torn down.
     suspend fun requestFor(initiating: Session.OpAuth, route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
-        return withContext(Dispatchers.IO) {
+        // Request-entry exclusion (binary parity, J0.p): the session's
+        // renewal mutex is held across bootstrap, credential read and
+        // dispatch, so a request can neither race an in-flight rotation nor
+        // complete a pre-renew bootstrap behind it (I2 07d27a8: a bootstrap
+        // outside the mutex could land older SAME-generation CSRF/session
+        // after the renew commit). JSON routes already serialize this way in
+        // the historical build; streaming/upload paths stay outside and are
+        // covered by the in-flight commit gate instead.
+        return session.renewal.mutex.withLock {
+        withContext(Dispatchers.IO) {
             // Operation identity captured at ENTRY (I2 final, operation
             // rebinding): if clear+re-enroll completes while the first attempt
             // is in flight, the recovery path must NOT bootstrap the new
@@ -263,11 +279,6 @@ class ApiClient(
             // new session or destination.
             val entryGen = initiating.generation
             val entryUrl = initiating.serverUrl
-            // Requests wait out an in-flight foreground renewal (bounded ~1s,
-            // binary request-entry k-loop parity) so the authIfUnchanged
-            // re-read below adopts the rotated credentials of the SAME
-            // generation instead of racing the renew commit.
-            awaitForegroundRenewal()
             if (sessionData == null) bootstrap()
             // Fresh credentials (post-bootstrap CSRF) are adopted only for
             // the SAME identity; a moved identity rejects the operation.
@@ -316,6 +327,7 @@ class ApiClient(
                 throw e
             }
         }
+        }
     }
 
     // RECONSTRUCTED Nov 23, 2026: the release renews the owner session when the
@@ -363,8 +375,9 @@ class ApiClient(
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
             auth.csrf?.let { builder.header("X-CSRF-Token", it) }
             applyOriginHeaders(builder, fullUrl, "PUT")
+            val dispatchEpoch = session.renewal.rotationEpoch
             execute(builder).use { response ->
-                acceptResponseCookies(response, auth)
+                acceptResponseCookies(response, auth, null, dispatchEpoch)
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     if (response.code == 401) throw SessionEndedException("owner_session_required", auth.generation)
@@ -430,8 +443,9 @@ class ApiClient(
             auth.cookie?.let { req.header("Cookie", COOKIE_NAME + "=" + it) }
         }
         applyOriginHeaders(req, full, "GET")
+        val dispatchEpoch = session.renewal.rotationEpoch
         execute(req).use { response ->
-            acceptResponseCookies(response, auth)
+            acceptResponseCookies(response, auth, null, dispatchEpoch)
             if (!response.isSuccessful) throw ApiException(response.code, "download_failed")
             val stream = response.body?.byteStream() ?: throw ApiException(response.code, "download_failed")
             stream.use { input ->
@@ -566,17 +580,18 @@ class ApiClient(
     // Direct single-shot event fetch (RotationHttpTest lineage): never
     // bootstraps, renews or retries - a 409 session_rotated propagates so the
     // caller cannot invent recovery with a retired secret. Serialized behind
-    // an in-flight renewOnOpen via renewMutex so a concurrent rotation lands
-    // first and this fetch adopts the renewed credentials; 401 ends the
-    // session. Currently a test seam - prod callers use the recovering
-    // event(); coverage kept honest (no prod caller claimed).
+    // an in-flight renewOnOpen via the session's renewal mutex so a
+    // concurrent rotation lands first and this fetch adopts the renewed
+    // credentials; 401 ends the session. Currently a test seam - prod
+    // callers use the recovering event(); coverage kept honest (no prod
+    // caller claimed).
     suspend fun eventDirect(id: String): JSONObject {
         // Initiating identity captured at ACTUAL entry, BEFORE the renewMutex
         // wait (I2 timing qualification, same boundary as request()): the wait
         // only serializes against an in-flight rotation; credentials refresh
         // solely within the SAME generation/destination, never a rebind.
         val initiating = session.authSnapshot()
-        return renewMutex.withLock {
+        return session.renewal.mutex.withLock {
             val auth = session.authIfUnchanged(initiating.generation, initiating.serverUrl)
                 ?: throw ApiException(0, "stale_operation")
             if (auth.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", auth.generation)
@@ -605,42 +620,36 @@ class ApiClient(
     // /owner/session/renew commits the rotated cookie+CSRF under the session
     // generation guard before later requests run ("requests wait until fresh
     // credentials are committed").
-    // RESTORED Nov 24, 2026 (binary parity, K0/J0.java): the historical build
-    // gates request entry on a PROCESS-WIDE static mutex (`public static final
-    // d3.d J0.p`, acquired in the request entry at J0.java:609), waits out an
-    // in-flight foreground renew on the shared k flag with a bounded ~1s
-    // elapsed loop, then adopts the renewed credentials. An earlier revision
-    // of this file kept renewMutex instance-private and left request()
-    // uncovered: a second ApiClient sharing the Session never waited and
-    // could snapshot pre-rotation credentials (RotationHttpTest
-    // .backgroundWaitsForForegroundRenewalAcrossClients failed fast - old
-    // cookie on the wire - whenever its auth read beat the renew commit).
-    // The binary's `if (!this.k)` commit gate is ported at
-    // acceptResponseCookies: response Set-Cookie commits drop while a renew
-    // is in flight, and the renew's own cookie lands via an explicit
+    // RESTORED Nov 24, 2026 (binary parity, K0/J0.java): the historical
+    // build's request entry acquires one mutex (`public static final d3.d
+    // J0.p`, J0.java:609) and the renew worker holds it across the rotation,
+    // so requests serialize against an in-flight renew and adopt the renewed
+    // credentials. Coordination state is SESSION-scoped (Session.renewal):
+    // the binary's fields sit on J0, and production effectively has one J0
+    // per session; process-wide statics would suppress unrelated sessions
+    // (I2 07d27a8 review). The binary's `if (!this.k)` commit gate is ported
+    // at acceptResponseCookies: response Set-Cookie commits drop while a
+    // renew is in flight, and the renew's own cookie lands via an explicit
     // captured commit (mirroring s0's explicit session-store call).
-    // LABELED REMAINING DIVERGENCE: the binary's request entry RUNS the
-    // renew itself when due; this tree renews only from renewOnOpen call
-    // sites, so requests wait but never trigger.
-    // Companion members live in the single companion object at the end of
-    // this file (renewMutex / renewInFlight / awaitForegroundRenewal). The
-    // open-throttle stays instance-scoped: renewing at most once per second
-    // is a per-client UI concern, and sharing it leaks throttle state across
-    // unrelated clients (and tests).
-    private var lastForegroundRenew: Long = 0L
-
+    // CORRECTED CLAIM: the ~1000ms constant in the decompiled entry excerpt
+    // is the renew-once-per-second throttle, NOT a bounded flag-wait - an
+    // earlier revision misread it as one and briefly polled the flag; the
+    // exclusion guarantee is the mutex, not a poll. LABELED REMAINING
+    // DIVERGENCE: the binary's request entry RUNS the renew itself when
+    // due; this tree renews only from renewOnOpen call sites, so requests
+    // wait (via the mutex) but never trigger.
     suspend fun renewOnOpen() {
         // Initiating identity before the renewMutex wait (I2 timing
         // qualification): a pass queued behind another renew must not bind
         // to a session newer than the one its caller acted on.
         val initiating = session.authSnapshot()
-        renewMutex.withLock {
+        session.renewal.mutex.withLock {
         // Divergence from the historical source: System.nanoTime() instead of
         // android.os.SystemClock.elapsedRealtime() so the file compiles in the
         // pure-JVM mock harness; both are monotonic clocks.
         val now = System.nanoTime() / 1_000_000L
-        if (lastForegroundRenew != 0L && now - lastForegroundRenew < 1000L) return@withLock
-        lastForegroundRenew = now
+        if (session.renewal.lastForegroundRenew != 0L && now - session.renewal.lastForegroundRenew < 1000L) return@withLock
+        session.renewal.lastForegroundRenew = now
         // Operation identity captured BEFORE any network (I2 recheck of
         // 93a5b8b): capturing after the response would accept a pre-sign-out
         // response under the NEW generation.
@@ -671,7 +680,7 @@ class ApiClient(
                 // k-flag parity (J0.java): the in-flight marker is set BEFORE
                 // the POST and cleared only AFTER the commit below, so
                 // waiting requests always observe the renewed credentials.
-                renewInFlight = true
+                session.renewal.inFlight = true
                 try {
                 val renewCookies = mutableListOf<Cookie>()
                 val data = try { raw("/owner/session/renew", "POST", JSONObject(), renewAuth, renewCookies) } catch (e: ApiException) {
@@ -687,9 +696,14 @@ class ApiClient(
                     session.replaceCredentials(session.cookie, freshCsrf)
                     csrf = freshCsrf
                     sessionData = data
+                    // Rotation ordering (ChatGPT A2): the epoch bumps WITH
+                    // the commit, so late pre-rotation responses are rejected
+                    // by their dispatch-time epoch even after the in-flight
+                    // window closes.
+                    session.renewal.rotationEpoch++
                 }
                 } finally {
-                    renewInFlight = false
+                    session.renewal.inFlight = false
                 }
             }
         }
@@ -717,8 +731,9 @@ class ApiClient(
             val builder = Request.Builder().url(baseUrl(auth) + path).header("Cache-Control", "no-store").get()
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
             applyOriginHeaders(builder, baseUrl(auth) + path, "GET")
+            val dispatchEpoch = session.renewal.rotationEpoch
             execute(builder).use { response ->
-                acceptResponseCookies(response, auth)
+                acceptResponseCookies(response, auth, null, dispatchEpoch)
                 checkSession(auth.generation)
                 if (!response.isSuccessful) {
                     if (response.code == 401) throw SessionEndedException("owner_session_required", auth.generation)
@@ -820,8 +835,9 @@ class ApiClient(
                 .get()
                 .apply { applyOriginHeaders(this, previewUrl, "GET") }
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
+            val dispatchEpoch = session.renewal.rotationEpoch
             execute(builder).use { response ->
-                acceptResponseCookies(response, auth)
+                acceptResponseCookies(response, auth, null, dispatchEpoch)
                 if (response.code == 401) throw SessionEndedException("unauthorized", auth.generation)
                 if (!response.isSuccessful) throw ApiException(response.code, "preview_failed")
                 val type = (response.header("Content-Type") ?: "").split(';')[0]
@@ -972,22 +988,6 @@ class ApiClient(
         const val API_PREFIX = "/homeroom/v1"
         private val JSON = "application/json".toMediaType()
 
-        // PROCESS-WIDE renewal coordination (binary parity, K0/J0.java): the
-        // historical build gates request entry on a single static mutex
-        // (`public static final d3.d J0.p`), waits out an in-flight renew on
-        // a shared flag, then adopts renewed credentials.
-        private val renewMutex = Mutex()
-        @Volatile private var renewInFlight = false
-
-        // Bounded wait mirroring the request-entry k loop (~1s elapsed
-        // window). System.nanoTime(): this file also compiles into the
-        // pure-JVM mock harness, where android.os.SystemClock is absent.
-        internal suspend fun awaitForegroundRenewal() {
-            val start = System.nanoTime() / 1_000_000L
-            while (renewInFlight && System.nanoTime() / 1_000_000L - start < 1000L) {
-                kotlinx.coroutines.delay(25L)
-            }
-        }
 
         fun enc(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
 

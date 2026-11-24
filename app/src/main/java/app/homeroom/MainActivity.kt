@@ -365,10 +365,24 @@ class MainActivity : AppCompatActivity() {
     private val afterUnlockActions = mutableListOf<() -> Unit>()
 
     fun runWhenUnlocked(action: () -> Unit) {
+        // Bound to the session generation at SUBMISSION (ChatGPT B4 finite
+        // review): the reset clears afterUnlockActions, but an off-main call
+        // posted to the main looper has not entered the queue yet - without
+        // this epoch check it could execute into the NEW session after a
+        // reset. The generation captured here is re-checked when the posted
+        // runnable actually runs. (Reachability: the only production caller
+        // today is AttachmentComposer.onShow on the main thread; the off-main
+        // branch is defensive and now structurally safe.)
+        val gen = session.authSnapshot().generation
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post { runWhenUnlocked(action) }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { runWhenUnlockedGenerationBound(gen, action) }
             return
         }
+        runWhenUnlockedGenerationBound(gen, action)
+    }
+
+    private fun runWhenUnlockedGenerationBound(gen: Long, action: () -> Unit) {
+        if (session.authSnapshot().generation != gen) return // session reset since submission: drop the stale action
         if (!appLock.coverShowing) action() else synchronized(afterUnlockActions) { afterUnlockActions.add(action) }
     }
 
@@ -437,6 +451,14 @@ class MainActivity : AppCompatActivity() {
         transientDialog?.dismiss()
         transientDialog = null
         synchronized(afterUnlockActions) { afterUnlockActions.clear() }
+        // Reset contract (I2 76e trace): entering Setup discards pushed pages
+        // too - an unconsumed Back on SetupScreen falls to closePage(), which
+        // must NOT re-show a pre-reset page (old room/page over a new or
+        // absent session). Every page-carrying entry bumps the session
+        // generation first (endSession/clear), so a re-shown page's guards
+        // would reject anyway; discarding makes the contract structural.
+        pageStack.clear()
+        currentPage = null
         setNavVisible(View.GONE)
         header.visibility = View.GONE
         roomScreen = null

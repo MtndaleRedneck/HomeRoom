@@ -62,22 +62,74 @@ class RotationHttpTest {
         assertTrue(request.getHeader("Cookie")!!.contains("renewed-secret"))
         assertEquals("renewed-csrf",session.csrf)
     }
-    // Mid-renew response cookies must not clobber the rotation (binary
-    // parity: J0.java `if (!this.k)` commit gate + s0's explicit renew
-    // commit). A request already in flight when the renew starts gets its
-    // poison Set-Cookie DROPPED; the renew's own Set-Cookie lands via the
-    // explicit captured commit. Outcome invariant: the rotation wins.
+    // Request-path coordination (mutation-sensitive): a request() call made
+    // DURING an in-flight foreground renew must wait on the session's
+    // renewal mutex and dispatch with the RENEWED credentials. Removing the
+    // request-entry lock makes this fail (the request would go out with the
+    // pre-renew cookie). Complements the eventDirect pin, which covers the
+    // same mutex via the test seam only.
+    @Test fun requestPathWaitsForForegroundRenewal()=fixture {server,session,client ->
+        val api=client()
+        server.enqueue(bootstrap())
+        api.bootstrap()
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // drain the prewarm arrival
+        server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
+        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(500,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
+        server.enqueue(MockResponse().setBody("""{"entries":[]}"""))
+        val renew=async(Dispatchers.IO) {api.renewOnOpen()}
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
+        val activity=async(Dispatchers.IO) {api.activity(null)}
+        val request=withContext(Dispatchers.IO) {server.takeRequest(3,TimeUnit.SECONDS)}!!
+        renew.await();activity.await()
+        assertEquals("/homeroom/v1/owner/activity?limit=50",request.path)
+        assertTrue(request.getHeader("Cookie")!!.contains("renewed-secret"))
+    }
+    // Late pre-rotation response (ChatGPT A2 closure ordering): the request
+    // is dispatched BEFORE the renew but its response is held until AFTER
+    // the rotation commits and the in-flight window closes. The poison
+    // Set-Cookie must still be rejected - the dispatch-time rotation epoch
+    // no longer matches. Fails against the in-flight-flag-only gate.
+    @Test fun latePreRotationResponseCookieRejected()=fixture {server,session,client ->
+        val api=client()
+        server.enqueue(bootstrap())
+        api.bootstrap()
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // drain the prewarm arrival
+        server.enqueue(MockResponse().setBody("""{"ok":true}""").setBodyDelay(800,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
+        server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
+        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
+        val slow=async(Dispatchers.IO) {api.uploadChunk("u",0,byteArrayOf(1),"x")}
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
+        api.renewOnOpen()
+        assertEquals("renewed-secret",session.cookie)
+        slow.await()
+        assertEquals("renewed-secret",session.cookie)
+        assertEquals("renewed-csrf",session.csrf)
+    }
+    // Mid-renew commit gate (binary parity: J0.java `if (!this.k)` + s0's
+    // explicit renew commit), pinned DETERMINISTICALLY on a non-mutex path
+    // (uploadChunk streams outside the request-entry lock): the in-flight
+    // response's poison Set-Cookie must be REJECTED while the renew is in
+    // flight (asserted before the renew commits: cookie still holds the
+    // bootstrap value), and the renew's own Set-Cookie must land via the
+    // explicit captured commit. Margins: upload body 100ms, renew body
+    // 600ms, so the poison arrives squarely inside the renew window.
     @Test fun rotationSurvivesInFlightResponseCookie()=fixture {server,session,client ->
         val api=client()
         server.enqueue(bootstrap())
         api.bootstrap()
-        server.enqueue(MockResponse().setBody("""{"entries":[]}""").setBodyDelay(200,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // drain the prewarm arrival
         server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
-        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(250,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
-        val slow=async(Dispatchers.IO) {api.activity(null)}
+        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(600,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
+        server.enqueue(MockResponse().setBody("""{"ok":true}""").setBodyDelay(100,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
+        val renew=async(Dispatchers.IO) {api.renewOnOpen()}
         withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
-        api.renewOnOpen()
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
+        val slow=async(Dispatchers.IO) {api.uploadChunk("u",0,byteArrayOf(1),"x")}
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
         slow.await()
+        assertEquals("new-secret",session.cookie)
+        renew.await()
         assertEquals("renewed-secret",session.cookie)
         assertEquals("renewed-csrf",session.csrf)
     }

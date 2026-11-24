@@ -35,6 +35,28 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_COOKIE, null)
         set(v) = prefs.edit().putString(KEY_COOKIE, v).apply()
 
+    // Per-session renewal coordination (binary parity, K0/J0.java): the
+    // release's J0 holder carries the request-entry mutex and the in-flight
+    // renew marker as INSTANCE state, and production effectively keeps one
+    // J0 per session; this tree creates several ApiClient objects per
+    // Session, so the coordination state lives HERE - the scope the binary's
+    // per-instance state effectively had. Process-wide static state would
+    // suppress unrelated sessions' responses (I2 07d27a8 review).
+    internal val renewal = RenewalState()
+
+    internal class RenewalState {
+        val mutex = kotlinx.coroutines.sync.Mutex()
+        @Volatile var inFlight = false
+        var lastForegroundRenew = 0L
+        // Rotation ordering (ChatGPT A2 finite review): bumped at every
+        // completed foreground renew commit. A response's Set-Cookie is
+        // accepted only when the request's DISPATCH-time epoch still matches
+        // - a delayed pre-rotation response must not overwrite the rotated
+        // cookie after the in-flight window closes; the session generation
+        // guard alone cannot order same-generation responses.
+        @Volatile var rotationEpoch = 0L
+    }
+
     var csrf: String?
         get() = prefs.getString(KEY_CSRF, null)
         set(v) = prefs.edit().putString(KEY_CSRF, v).apply()
