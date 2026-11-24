@@ -207,7 +207,12 @@ class Session(context: Context) {
     // that unknown state. Once latched, ALL staged writes are blocked for the
     // life of the process - only a process restart (prefs reloaded from disk)
     // clears it. Composer instances come and go; the boundary must live here.
-    @Volatile private var stagedStoreUnknown = false
+    // The latch lives on the companion: Session is instantiated per callsite
+    // (activities, services, workers), but every instance shares the same
+    // underlying store file (fixed PREFS name), so commit uncertainty on one
+    // instance must block writes from all of them. Process-scoped only: a
+    // process restart re-reads disk and resets it, which is the correct
+    // semantic - the uncertainty is memory-vs-disk divergence.
     fun stagedUploadsUnknown(): Boolean = stagedStoreUnknown
     // Test seam: forces the commit outcome in fault tests (null = real commit).
     internal var stagedCommitHook: ((String) -> Boolean)? = null
@@ -251,6 +256,9 @@ class Session(context: Context) {
         set(v) = prefs.edit().putString(KEY_SKIPPED_TAG, v).apply()
 
     companion object {
+        @Volatile private var stagedStoreUnknown = false
+        /** Test-only: the latch is process-scoped state, reset between tests. */
+        internal fun resetStagedStoreUnknownForTests() { stagedStoreUnknown = false }
         private const val PREFS = "homeroom_session"
         private const val LEGACY_PREFS = "homeroom"
         private const val LEGACY_KEY_START_URL = "start_url"

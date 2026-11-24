@@ -11,6 +11,7 @@ import org.robolectric.RobolectricTestRunner
 // malformed-store write blocking that preserves the raw content.
 @RunWith(RobolectricTestRunner::class)
 class SessionStagedUploadTest {
+    @org.junit.Before fun resetLatch() { Session.resetStagedStoreUnknownForTests() }
     private fun session():Session=Session(org.robolectric.RuntimeEnvironment.getApplication()).apply {clear()}
 
     @Test fun saveReplaceRemoveByLocalId() {
