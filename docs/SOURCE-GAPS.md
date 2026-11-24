@@ -46,13 +46,20 @@ Grounded against the production source and FIXED in the reconstruction:
    ABSENT from the production 1.4 router. NEEDS: held-1.5 contract.
 3. postWithUploads body keys (client_created_at, upload_ids): held-1.5;
    production 1.4 /rooms/<id>/posts accepts exactly {client_id, text,
-   thread_key, parent_id, mentions, asks_owner}. thread_key/parent_id
-   PRESENCE is fine (both are in the 1.4 allowed set), and the exact
-   private12 post builder (K0/J0) sends them as JSONObject.NULL when unset -
-   the reconstruction matches the release here. What remains ungrounded is
-   SERVER-side handling of those null values (not covered by the 1.4
-   excerpts). NEEDS: post() body handling from the owning server source or
-   the held-1.5 contract.
+   thread_key, parent_id, mentions, asks_owner}. SETTLED Nov 24, 2026 -
+   operator inspected the exact production 1.4 post() source (lines 137-151):
+   null or missing thread_key AND parent_id creates a new thread; a string
+   thread_key with null parent_id is accepted only for the room main_thread;
+   null thread_key with a nonnull parent_id is rejected 400; a nonnull pair
+   requires the parent to be retained in that exact thread (422 otherwise).
+   Optional key presence itself is allowed, so the app's explicit
+   JSONObject.NULL sends are 1.4-compatible. Plain text chat against the
+   deployed 1.4 server is therefore expected to work; retries must preserve
+   the exact original body (explicit null vs absent can change an
+   idempotency digest), which the reconstruction's retry path already does.
+   The upload-specific keys (client_created_at, upload_ids) remain
+   held-1.5-only; the plain-post body carrying them is unused by any
+   production flow (no enqueue call sites).
 4. Rule.decidedBy / decidedAt: fields exist in the release Rule model (v4
    toString); JSON key names (decided_by / decided_at) are inferred snake_case.
 5. Avatar fetch path handling: relative vs absolute avatar URLs assumed both
@@ -73,3 +80,20 @@ Grounded against the production source and FIXED in the reconstruction:
 - DecisionScreen generic prepare-flow vs release No=reject-answer divergence
   (noted; release semantics are implemented in V15Api)
 - OwnerAiGuide ack display (model verified; UI surface minimal)
+
+4. RECOVERED Nov 24, 2026 - feature-flag population gap (was: refreshFeatures()
+   existed with NO call site, so hasFeature() was always false and the
+   capability rules + FeedbackScreen owner_room_management branch were dead
+   against ANY server). Operator recovered the exact Nov 15 application
+   source (historical-app-feature-lifecycle-42d75768): population lived in
+   ApiClient.renewOnOpen(), the foreground lifecycle worker (1s debounce,
+   bootstrap on demand, GET /owner/instance replaces the feature map,
+   conditional POST /owner/session/renew committing rotated cookie+CSRF
+   under the session generation guard), called from MainActivity.onEnrolled()
+   and resumeContent() (via onResume after privacy/app-lock gating). All
+   three pieces are now restored in this tree. Labeled divergences: the
+   historical build serialized ALL requests on the renew mutex (this tree's
+   request() path is not mutex-covered), and the historical resumeContent's
+   live-updates/server-bar helpers are not in this tree (startLiveUpdates /
+   updateServerBar unrecovered - the poller covers polling). Manual refresh
+   (StatusScreen) now runs the same renewOnOpen worker.

@@ -306,8 +306,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onEnrolled() {
-        showMain()
-        UpdateCheck.checkInBackground(scope)
+        // RECOVERED Nov 24, 2026 (operator Nov 15 readback, pre-checklist
+        // signature): the release renewed features/session before showing main.
+        scope.launch {
+            try { api.renewOnOpen() }
+            catch (e: SessionEndedException) { onSessionEnded(e.reason); return@launch }
+            catch (_: Exception) { snack(window.decorView, "Connected. Feature status couldn't refresh yet.") }
+            if (!isForeground) return@launch
+            showMain()
+            UpdateCheck.checkInBackground(scope)
+        }
     }
 
     fun onSessionEnded(reason: String?) {
@@ -403,11 +411,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onResume() {
-        isForeground = true
         super.onResume()
+        // RECOVERED Nov 24, 2026 (operator Nov 15 readback): the release's
+        // onResume applied privacy, gated on the app lock, then resumed
+        // content; resumeContent renewed features/session when enrolled.
+        // (Its live-updates/server-bar parts are not in this tree yet.)
+        applyPrivacy()
+        if (appLock.gate()) return
+        isForeground = true
         startPoller()
         val screen = roomScreen ?: tabScreens[currentTab]
         screen?.poll()
+        if (session.enrolled) {
+            scope.launch {
+                try { api.renewOnOpen() }
+                catch (e: SessionEndedException) { onSessionEnded(e.reason) }
+                catch (_: Exception) { }
+            }
+        }
     }
 
     // RECONSTRUCTED Nov 23, 2026: image picking for the profile avatar and

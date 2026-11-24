@@ -12,4 +12,13 @@ class Session {
     var ownerId: String? = "owner1"
     var ownerName: String? = "Test Owner"
     fun clear() { cookie = null; csrf = null; sessionId = null }
+    // In-memory stand-ins for the generation guard + durable credential commit
+    // (the real Session persists via SharedPreferences commit()).
+    var generation: Long = 0L
+    fun withinGeneration(generation: Long, block: () -> Unit) {
+        if (this.generation == generation) block()
+    }
+    fun replaceCredentials(newCookie: String?, newCsrf: String?) {
+        cookie = newCookie; csrf = newCsrf
+    }
 }

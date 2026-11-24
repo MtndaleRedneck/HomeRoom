@@ -441,7 +441,49 @@ class ApiClient(private val session: Session) {
             .put("thread_key", threadKey)
             .put("event_ids", JSONArray(eventIds)))
 
-    suspend fun renewOnOpen(): JSONObject = request("/owner/session/renew", "POST")
+    // RECOVERED Nov 24, 2026 from the exact Nov 15 application source (operator
+    // readback, historical-app-feature-lifecycle-42d75768): the release's
+    // foreground feature/session worker, called on enrollment and on resume.
+    // 1s foreground debounce; bootstraps when needed (401 -> session ended);
+    // GET /owner/instance replaces the feature map (a non-401 error leaves it
+    // empty); when the server advertises "session_renew", POST
+    // /owner/session/renew commits the rotated cookie+CSRF under the session
+    // generation guard before later requests run ("requests wait until fresh
+    // credentials are committed"). LABELED DIVERGENCE: the historical build
+    // serialized ALL requests on the same mutex as this worker; this tree's
+    // request() path is not mutex-covered, so only renew calls serialize here.
+    private val renewMutex = Mutex()
+    private var lastForegroundRenew: Long = 0L
+
+    suspend fun renewOnOpen() = renewMutex.withLock {
+        // Divergence from the historical source: System.nanoTime() instead of
+        // android.os.SystemClock.elapsedRealtime() so the file compiles in the
+        // pure-JVM mock harness; both are monotonic clocks.
+        val now = System.nanoTime() / 1_000_000L
+        if (lastForegroundRenew != 0L && now - lastForegroundRenew < 1000L) return@withLock
+        lastForegroundRenew = now
+        if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
+            if (e.status == 401) throw SessionEndedException(e.code); throw e
+        }
+        withContext(Dispatchers.IO) {
+            val flags = try { raw("/owner/instance").optJSONObject("features") } catch (e: ApiException) {
+                if (e.status == 401) throw SessionEndedException(e.code); null
+            }
+            features.clear()
+            flags?.keys()?.forEach { features[it] = flags.optBoolean(it, false) }
+            if (features["session_renew"] == true) {
+                val data = try { raw("/owner/session/renew", "POST", JSONObject()) } catch (e: ApiException) {
+                    if (e.status == 401) throw SessionEndedException(e.code); throw e
+                }
+                val freshCsrf = data.optString("csrf").ifBlank { csrf }
+                session.withinGeneration(session.generation) {
+                    session.replaceCredentials(session.cookie, freshCsrf)
+                    csrf = freshCsrf
+                    sessionData = data
+                }
+            }
+        }
+    }
 
     // RECONSTRUCTED Nov 23, 2026: verified download. Streams through the app's own
     // client, checks byte size, then SHA-256 when a digest was published. A failed
@@ -617,22 +659,9 @@ class ApiClient(private val session: Session) {
     suspend fun denyAiKey(keyId:String): JSONObject =
         request("/owner/ai-keys/" + enc(keyId) + "/reject", "POST", JSONObject())
 
-    /** Server-advertised feature flags (reconstructed member; population site still being verified). */
+    /** Server-advertised feature flags, populated by renewOnOpen() (recovered
+        foreground worker; was previously never populated - no call site existed). */
     val features=java.util.concurrent.ConcurrentHashMap<String,Boolean>()
-
-    // RECONSTRUCTED Nov 23, 2026: population site recovered from the exact
-    // private12 release build's feature-refresh worker: GET /owner/instance,
-    // take its "features" object, every key becomes a boolean flag. The release
-    // also renews the session when the server advertises "session_renew" (401 ->
-    // session ended); that worker is still being recovered separately.
-    suspend fun refreshFeatures() {
-        val data = request("/owner/instance")
-        val advertised = data.optJSONObject("features")
-        val fresh = java.util.concurrent.ConcurrentHashMap<String,Boolean>()
-        advertised?.keys()?.forEach { k -> fresh[k] = advertised.optBoolean(k, false) }
-        features.clear()
-        features.putAll(fresh)
-    }
     fun hasFeature(name:String):Boolean = features[name]==true
 
     /** Private feedback: server stores it in the owner's Feedback room; client_id dedupes retries. */

@@ -39,6 +39,15 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_CSRF, null)
         set(v) = prefs.edit().putString(KEY_CSRF, v).apply()
 
+    // RECOVERED Nov 24, 2026 (operator Nov 15 readback): the foreground renew
+    // worker committed rotated credentials durably before later requests ran.
+    // A failed commit is loud (IllegalStateException) - same durability rule as
+    // the staged-record transitions.
+    fun replaceCredentials(newCookie: String?, newCsrf: String?) {
+        if (!prefs.edit().putString(KEY_COOKIE, newCookie).putString(KEY_CSRF, newCsrf).commit())
+            throw IllegalStateException("session_credentials_commit_failed")
+    }
+
     var ownerId: String?
         get() = prefs.getString(KEY_OWNER_ID, null)
         set(v) = prefs.edit().putString(KEY_OWNER_ID, v).apply()
