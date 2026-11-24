@@ -388,3 +388,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         }
     }
 }
+
+// Actual original source (restart patch read Nov 11 23:30:32 EST):
+// only a 409 upload_bytes_inconsistent forces a fresh upload.
+internal fun uploadMustRestart(error:ApiException)=error.status==409 && error.code=="upload_bytes_inconsistent"

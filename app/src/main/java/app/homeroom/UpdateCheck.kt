@@ -202,6 +202,8 @@ object UpdateCheck {
         val host=u.host?.lowercase() ?: return false
         return u.scheme=="https" && (host=="github.com" || host.endsWith(".github.com") || host.endsWith(".githubusercontent.com"))
     }
+    // Actual original source (UpdateCheck.kt read Nov 11 08:57:39 EST).
+    internal fun digestMatches(expected:String?,actual:String):Boolean = expected!=null && expected.equals(actual,true)
     internal fun parseDigest(d:String?):String? = d?.removePrefix("sha256:")?.takeIf {it.length==64 && it.all {c -> c.isDigit() || c in 'a'..'f' || c in 'A'..'F'}}
 
     internal fun isNewer(tag:String,current:String):Boolean {

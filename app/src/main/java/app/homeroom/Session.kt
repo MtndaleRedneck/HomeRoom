@@ -172,6 +172,12 @@ class Session(context: Context) {
     fun outboxData(): String? = prefs.getString(KEY_OUTBOX, null)
     fun saveOutboxData(value: String) { prefs.edit().putString(KEY_OUTBOX, value).apply() }
 
+    // Actual original source (read Nov 15 12:34:08 EST): checked synchronous
+    // commit, same fail-loudly pattern as the staged-upload records.
+    var lastSetupLinkHash: String?
+        get() = prefs.getString("last_setup_link_hash", null)
+        set(value) { check(prefs.edit().putString("last_setup_link_hash", value).commit()) }
+
     fun stagedUploads(): List<JSONObject> =
         runCatching { JSONArray(prefs.getString(KEY_STAGED, "[]")).objects() }.getOrDefault(emptyList())
 

@@ -3,6 +3,33 @@ package app.homeroom
 import org.json.JSONArray
 import org.json.JSONObject
 
+// RECONSTRUCTED-INFERRED Nov 24, 2026: the original Room.pinnedGuide type was
+// not retained; fields follow the exact private12 release parser (m3/l):
+// kind, document_path, version (optInt 0), sha256. The release only wraps the
+// object when kind=ai_guide at the owner docs path.
+data class PinnedGuide(val kind: String?, val documentPath: String?, val version: Int, val sha256: String?) {
+    companion object {
+        fun from(o: JSONObject): PinnedGuide = PinnedGuide(
+            kind = o.nullableString("kind"),
+            documentPath = o.nullableString("document_path"),
+            version = o.optInt("version", 0),
+            sha256 = o.nullableString("sha256"),
+        )
+    }
+}
+
+// Original-lineage helper object (actual historical source, Models.kt read
+// Nov 11 11:03:01 EST): roster aggregates and ordering.
+object RoomSummary {
+    fun unreadRooms(rooms: List<Room>) = rooms.count { !it.muted && it.unreadCount > 0 }
+    fun pendingRules(rooms: List<Room>, global: Int) = global + rooms.sumOf { it.pendingRulesCount }
+    fun waiting(rooms: List<Room>) = rooms.sumOf { it.waitingCount }
+    fun sorted(rooms: List<Room>) = rooms.sortedWith(compareByDescending<Room> { it.pinned }.thenByDescending { it.lastSeq ?: Long.MIN_VALUE })
+}
+
+// Field set, order and parser aligned to the actual original source
+// (Models.kt read Nov 15 01:28:10 EST, via operator), which matches the
+// private12 release ctor (k3) and parser (m3/l).
 data class Room(
     val id: String,
     val name: String,
@@ -12,28 +39,21 @@ data class Room(
     val waitingCount: Int,
     val pendingRulesCount: Int,
     val members: List<Pair<String, String>>,
-    val waitingEntries: List<WaitingEntry> = emptyList(),
-    val waitingHasMore: Boolean = false,
-    val waitingCursor: String? = null,
-    val lastPostExcerpt: String = "",
-    val lastPostCreatedAt: String = "",
-    val lastPostSeq: Long? = null,
-    // RECONSTRUCTED: icon/metadata_version/archived/pinned recovered from the
-    // exact private12 release build's room parser (k3 fields i/v/w + pin ops).
     val icon: JSONObject? = null,
-    val metadataVersion: Int = 0,
-    val archived: Boolean = false,
+    val preview: String = "",
+    val lastTime: String = "",
     val pinned: Boolean = false,
-    // RECONSTRUCTED Nov 24, 2026: remaining release Room fields (k3, 24-param
-    // ctor, parser in m3/l): muted_until (preferences override top-level),
-    // first_unread_seq, last_post actor/own, pinned_guide (raw object; the
-    // release wraps it as W2 only for kind=ai_guide at the owner docs path),
-    // alert_level (default "all").
     val mutedUntil: String? = null,
     val firstUnreadSeq: Long? = null,
+    val waiting: List<WaitingEntry> = emptyList(),
+    val waitingHasMore: Boolean = false,
+    val waitingCursor: String? = null,
     val lastActor: String? = null,
     val lastOwn: Boolean = false,
-    val pinnedGuide: JSONObject? = null,
+    val lastSeq: Long? = null,
+    val pinnedGuide: PinnedGuide? = null,
+    val metadataVersion: Int = 0,
+    val archived: Boolean = false,
     val alertLevel: String = "all",
 ) {
     companion object {
@@ -57,23 +77,29 @@ data class Room(
                 waitingCount = o.optInt("waiting_count", 0),
                 pendingRulesCount = o.optInt("pending_rules_count", 0),
                 members = members.filter { it.first != "homeroom-test" },
-                waitingEntries = (o.optJSONArray("waiting")?.objects() ?: emptyList()).map { WaitingEntry.from(it) },
-                waitingHasMore = o.optBoolean("waiting_has_more", false),
-                waitingCursor = o.nullableString("waiting_cursor"),
-                lastPostExcerpt = o.optJSONObject("last_post")?.let { lp -> lp.nullableString("excerpt") ?: lp.optString("text") } ?: "",
-                lastPostCreatedAt = o.optJSONObject("last_post")?.optString("created_at") ?: "",
-                lastPostSeq = o.optJSONObject("last_post")?.let { lp -> if (lp.has("seq")) lp.optLong("seq") else null },
                 icon = o.optJSONObject("icon"),
-                metadataVersion = o.optInt("metadata_version", 0),
-                archived = o.optBoolean("archived", false),
-                pinned = o.optJSONObject("preferences")?.optBoolean("pinned")
+                preview = o.optJSONObject("last_post")?.let { lp -> lp.optString("excerpt").ifBlank { lp.optString("text") } } ?: "No retained messages",
+                lastTime = o.optJSONObject("last_post")?.optString("created_at") ?: "",
+                // Wire precedence per the owning historical parser (Models.kt
+                // read Nov 15 01:28:10 EST, I2-reviewed): the preferences
+                // OBJECT's presence gates the override - when it exists,
+                // optBoolean("pinned") answers false even for a missing key
+                // and top-level pinned is NOT consulted; only an absent
+                // preferences object falls through to top-level pinned.
+                pinned = o.optJSONObject("preferences")?.let { it.optBoolean("pinned") }
                     ?: o.optBoolean("pinned", false),
                 mutedUntil = o.optJSONObject("preferences")?.nullableString("muted_until")
                     ?: o.nullableString("muted_until"),
                 firstUnreadSeq = if (o.has("first_unread_seq") && !o.isNull("first_unread_seq")) o.optLong("first_unread_seq") else null,
+                waiting = (o.optJSONArray("waiting")?.objects() ?: emptyList()).map { WaitingEntry.from(it) },
+                waitingHasMore = o.optBoolean("waiting_has_more", false),
+                waitingCursor = o.nullableString("waiting_cursor"),
                 lastActor = o.optJSONObject("last_post")?.nullableString("actor"),
                 lastOwn = o.optJSONObject("last_post")?.optBoolean("own", false) ?: false,
-                pinnedGuide = o.optJSONObject("pinned_guide"),
+                lastSeq = o.optJSONObject("last_post")?.let { lp -> if (lp.has("seq") && !lp.isNull("seq")) lp.optLong("seq") else null },
+                pinnedGuide = o.optJSONObject("pinned_guide")?.let { PinnedGuide.from(it) },
+                metadataVersion = o.optInt("metadata_version", 0),
+                archived = o.optBoolean("archived", false),
                 alertLevel = o.optString("alert_level", "all"),
             )
         }
@@ -123,16 +149,24 @@ data class RoomRoster(
 // build), carried on ChatEvent.assistant_statuses: actor, reply_event_id,
 // notified_at.
 data class AssistantStatus(val actor: String, val replyEventId: String?, val notifiedAt: String?) {
-    // INFERRED FROM ORIGINAL-LINEAGE TEST USE (V3ModelsTest): convenience
-    // flags derived from the release fields; the release model itself carries
-    // only the three constructor fields above.
-    val replied: Boolean get() = replyEventId != null
-    val notified: Boolean get() = notifiedAt != null
+    // Actual original source (Models.kt read Nov 11 08:20:50 EST, verified by
+    // operator against the earlier inference): blank strings count as absent.
+    val replied: Boolean get() = !replyEventId.isNullOrBlank()
+    val notified: Boolean get() = !notifiedAt.isNullOrBlank()
+    companion object {
+        fun from(o: JSONObject) = AssistantStatus(o.optString("actor"), o.nullableString("reply_event_id"), o.nullableString("notified_at"))
+    }
 }
 
-// RECONSTRUCTED Nov 24, 2026: reaction summary (j3 in the release build):
-// reaction (required), count (required), mine (optBoolean, default false).
-data class Reaction(val reaction: String, val count: Int, val mine: Boolean)
+// Original-lineage reaction summary (actual historical source names it
+// ReactionCount; j3 in the release build): reaction (required), count
+// (required), mine (optBoolean, default false).
+data class ReactionCount(val reaction: String, val count: Int, val mine: Boolean) {
+    companion object {
+        fun from(o: JSONObject): ReactionCount =
+            ReactionCount(o.getString("reaction"), o.getInt("count"), o.optBoolean("mine", false))
+    }
+}
 
 data class ChatEvent(
     val eventId: String,
@@ -144,35 +178,31 @@ data class ChatEvent(
     val text: String,
     val createdAt: String,
     val clientId: String?,
-    // RECONSTRUCTED: events carry an edit/delete version (release model field,
-    // optInt("version", 1) in the release parser) and a nullable room_id.
-    val version: Int = 1,
-    val roomId: String? = null,
-    // RECONSTRUCTED Nov 24, 2026: remaining release ChatEvent fields recovered
-    // from the exact private12 release parser (s1 -> t1, 21-param ctor): own
-    // flag, mentions string list, assistant statuses, kind, attachments
-    // (parsed with the release file parser), edited_at, deleted, decision_id,
-    // request_id, reaction summaries. Appended with defaults so existing
-    // callers and older wire payloads remain valid.
+    // Remaining fields aligned to the actual original source (Models.kt read
+    // Nov 15 01:28:10 EST, via operator), matching the private12 release ctor
+    // (s1 -> t1, 21 params) and parser.
     val own: Boolean = false,
     val mentions: List<String> = emptyList(),
     val assistantStatuses: List<AssistantStatus> = emptyList(),
     val kind: String? = null,
+    val roomId: String? = null,
     val attachments: List<RoomFile> = emptyList(),
+    val version: Int = 1,
     val editedAt: String? = null,
     val deleted: Boolean = false,
     val decisionId: String? = null,
     val requestId: String? = null,
-    val reactions: List<Reaction> = emptyList(),
+    val reactions: List<ReactionCount> = emptyList(),
 ) {
     companion object {
         fun from(o: JSONObject): ChatEvent {
             val actor = o.optJSONObject("actor")
-            // Release semantics: a deleted event renders as "Message deleted"
-            // and carries no attachments.
+            // Release semantics (s1): a deleted event renders as
+            // "Message deleted" and carries no attachments. Parser throws on a
+            // malformed mentions array; the release's page-level caller
+            // catches Exception and drops the page update, never crashes
+            // (verified in the private12 decompile, e4).
             val deleted = o.optBoolean("deleted", false)
-            // Release semantics: when "mentions" is present and non-null it
-            // must be an array of strings, otherwise invalid_response_mentions.
             val mentions = if (!o.isNull("mentions") && o.has("mentions")) {
                 val arr = o.optJSONArray("mentions")
                     ?: throw IllegalArgumentException("invalid_response_mentions")
@@ -196,13 +226,7 @@ data class ChatEvent(
                 clientId = o.optString("client_id").ifBlank { null },
                 own = o.optBoolean("own", false),
                 mentions = mentions,
-                assistantStatuses = (o.optJSONArray("assistant_statuses")?.objects() ?: emptyList()).map {
-                    AssistantStatus(
-                        actor = it.optString("actor"),
-                        replyEventId = it.nullableString("reply_event_id"),
-                        notifiedAt = it.nullableString("notified_at"),
-                    )
-                },
+                assistantStatuses = (o.optJSONArray("assistant_statuses")?.objects() ?: emptyList()).map { AssistantStatus.from(it) },
                 kind = o.nullableString("kind"),
                 attachments = if (deleted) emptyList() else
                     (o.optJSONArray("attachments")?.objects() ?: emptyList()).map { RoomFile.from(it) },
@@ -210,9 +234,7 @@ data class ChatEvent(
                 deleted = deleted,
                 decisionId = o.nullableString("decision_id"),
                 requestId = o.nullableString("request_id"),
-                reactions = (o.optJSONArray("reactions")?.objects() ?: emptyList()).map {
-                    Reaction(it.getString("reaction"), it.getInt("count"), it.optBoolean("mine", false))
-                },
+                reactions = (o.optJSONArray("reactions")?.objects() ?: emptyList()).map { ReactionCount.from(it) },
             )
         }
     }
@@ -223,21 +245,20 @@ data class ChatEvent(
 // RECONSTRUCTED: release file page wrapper (O1 in the release build).
 data class RoomFilePage(val files: List<RoomFile>, val hasMore: Boolean, val cursor: String?)
 
+// Field order/defaults aligned to the actual original source (Models.kt read
+// Nov 15 01:28:10 EST, via operator), matching the private12 release ctor
+// (l3) and file parser (n1/a.z).
 data class RoomFile(
     val id: String,
     val name: String,
-    // RECONSTRUCTED: title exists in the release RoomFile model (l3).
-    val title: String? = null,
     val mimeType: String,
     val size: Long,
     val uploader: String,
     val createdAt: String,
-    val kind: String,
-    val url: String?,
-    val eventId: String?,
-    // RECONSTRUCTED Nov 24, 2026: remaining release RoomFile fields (l3, from
-    // the release file parser n1/a.z): sha256 (nullable), digest_state
-    // (default "unverified"), transcript (nullable JSON object).
+    val kind: String = "file",
+    val url: String? = null,
+    val title: String? = null,
+    val eventId: String? = null,
     val sha256: String? = null,
     val digestState: String = "unverified",
     val transcript: JSONObject? = null,
@@ -249,15 +270,17 @@ data class RoomFile(
         fun from(o: JSONObject): RoomFile = RoomFile(
             id = o.optString("file_id"),
             name = o.optString("name").ifBlank { o.optString("file_id") },
-            title = o.nullableString("title"),
             mimeType = o.optString("mime_type"),
-            size = o.optLong("byte_size", o.optLong("size", 0)),
+            size = o.optLong("byte_size", 0),
             uploader = o.optString("uploader"),
             createdAt = o.optString("created_at").ifBlank { o.optString("ts") },
             kind = o.optString("kind").ifBlank { "file" },
             url = o.nullableString("url"),
+            title = o.nullableString("title"),
             eventId = o.nullableString("event_id"),
-            sha256 = o.nullableString("sha256"),
+            // Original source: sha256 runs through UpdateCheck.parseDigest
+            // (sha256: prefix stripped, must be 64 hex chars, else null).
+            sha256 = UpdateCheck.parseDigest(o.nullableString("sha256")),
             digestState = o.optString("digest_state", "unverified"),
             transcript = o.optJSONObject("transcript"),
         )
@@ -390,6 +413,10 @@ data class AiKey(
     val name:String get() = displayName ?: actor
     /** Lowercased trailing characters of the fingerprint the owner must type to approve. */
     fun suffix():String = publicKeySha256.lowercase().takeLast(suffixLength.coerceIn(0, publicKeySha256.length))
+    /** Original source (Models.kt read Nov 15 01:28:31 EST): the characters the
+        owner types to confirm: the end of the full fingerprint, lowercase. */
+    val confirmationSuffix:String get()=publicKeySha256.lowercase().takeLast(suffixLength)
+    fun confirmationMatches(typed:String):Boolean=typed.trim().lowercase().let {it.length==suffixLength && it==confirmationSuffix}
     companion object {
         fun from(o:JSONObject):AiKey {
             val arr = o.optJSONArray("rooms")

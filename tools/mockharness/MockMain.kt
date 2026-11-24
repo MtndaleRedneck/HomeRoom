@@ -357,9 +357,20 @@ fun main(args: Array<String>) = runBlocking {
         // the synthetic homeroom-test member must be filtered out by the release behavior
         require(room.members.size == 1 && room.members[0].first == "ai_1" && room.members[0].second == "Helper") {
             "member filter wrong: ${room.members}" }
-        require(room.waitingEntries.size == 1 && room.waitingEntries[0].eventId == "ev9" &&
-            room.waitingEntries[0].waitingOn == "ai_1") { "waiting entry lost" }
-        require(room.lastPostExcerpt == "last words" && room.lastPostSeq == 41L) { "last_post lost" }
+        require(room.waiting.size == 1 && room.waiting[0].eventId == "ev9" &&
+            room.waiting[0].waitingOn == "ai_1") { "waiting entry lost" }
+        require(room.preview == "last words" && room.lastSeq == 41L) { "last_post lost" }
+        // Pinned wire precedence (owning historical parser, I2-reviewed):
+        // preferences object present WITHOUT the key suppresses top-level
+        // pinned=true; only an absent preferences object falls through.
+        val base = """{"room_id":"r1","unread_count":0,"muted":false,"waiting_count":0,"pending_rules_count":0,"members":[],"pinned":true}"""
+        require(Room.from(org.json.JSONObject(base)).pinned) { "top-level pinned lost" }
+        val baseNoKey = """{"room_id":"r1","unread_count":0,"muted":false,"waiting_count":0,"pending_rules_count":0,"members":[],"pinned":true,"preferences":{}}"""
+        val basePrefTrue = """{"room_id":"r1","unread_count":0,"muted":false,"waiting_count":0,"pending_rules_count":0,"members":[],"pinned":false,"preferences":{"pinned":true}}"""
+        val baseFalse = """{"room_id":"r1","unread_count":0,"muted":false,"waiting_count":0,"pending_rules_count":0,"members":[],"pinned":false}"""
+        require(!Room.from(org.json.JSONObject(baseNoKey)).pinned) { "preferences without key must suppress top-level pinned" }
+        require(Room.from(org.json.JSONObject(basePrefTrue)).pinned) { "preferences pinned=true lost" }
+        require(!Room.from(org.json.JSONObject(baseFalse)).pinned) { "top-level pinned=false wrong" }
         require(room.icon?.optString("emoji") == "den") { "icon lost" }
         require(room.metadataVersion == 3 && room.pinned && !room.archived) { "metadata flags lost" }
         require(r.globalPendingRulesCount == 1) { "global pending count lost" }

@@ -54,7 +54,8 @@ class WaitingScreen(context:Context,private val onlyRoom:String?=null):Screen(co
 }
 // RECONSTRUCTED Nov 23, 2026: relative age for waiting rows. No matching helper
 // was found in the exact release build; reconstruction-original, labeled gap.
-private fun serverAge(since: String, serverTime: String?): String? {
+// internal: original-lineage tests exercise this directly (V3BehaviorTest).
+internal fun serverAge(since: String, serverTime: String?): String? {
     val start = runCatching { java.time.Instant.parse(since) }.getOrNull() ?: return null
     val end = runCatching { java.time.Instant.parse(serverTime ?: return null) }.getOrNull() ?: return null
     val mins = java.time.Duration.between(start, end).toMinutes().coerceAtLeast(0)

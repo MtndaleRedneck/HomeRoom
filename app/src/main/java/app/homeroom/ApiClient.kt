@@ -762,6 +762,21 @@ class ApiClient(
             .put("muted", muted)
             .put("until", JSONObject.NULL))
 
+    // Receipt hints never bootstrap or renew a session (actual original
+    // source, patch read Nov 11 10:51:34 EST; adapted to the current OpAuth
+    // boundary: identity snapshot captured at entry, 401 -> session ended).
+    suspend fun testReceiptDirect(test: String, stage: String, client: String): JSONObject = withContext(Dispatchers.IO) {
+        val auth = session.authSnapshot()
+        if (auth.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", auth.generation)
+        try {
+            raw("/owner/status/test-alerts/" + enc(test) + "/receipts", "POST",
+                JSONObject().put("client_id", client).put("stage", stage), auth)
+        } catch (e: ApiException) {
+            if (e.status == 401) throw SessionEndedException(e.code, auth.generation)
+            throw e
+        }
+    }
+
     suspend fun aiKeys(): List<AiKey> = request("/owner/ai-keys").requiredArray("keys").objects().map {AiKey.from(it)}
 
     // RECONSTRUCTED Nov 23, 2026: not original source. Behavior recovered from
