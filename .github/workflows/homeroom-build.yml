@@ -520,38 +520,32 @@ jobs:
             adb shell input tap 792 2242
             sleep 6
             adb exec-out screencap -p > i-settings-rows.png
-            XY=$(python3 ci/ui-tap.py "Needs you") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Needs you"); }
-            [ -n "$XY" ] && adb shell input tap $XY
+            XY=$(python3 ci/ui-tap.py "Needs you") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Needs you"); }; [ -n "$XY" ] && adb shell input tap $XY
             sleep 5
             adb exec-out screencap -p > i-settings-needsyou.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "Activity") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Activity"); }
-            [ -n "$XY" ] && adb shell input tap $XY
+            XY=$(python3 ci/ui-tap.py "Activity") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Activity"); }; [ -n "$XY" ] && adb shell input tap $XY
             sleep 5
             adb exec-out screencap -p > i-settings-activity.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "AI team") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI team"); }
-            [ -n "$XY" ] && adb shell input tap $XY
+            XY=$(python3 ci/ui-tap.py "AI team") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI team"); }; [ -n "$XY" ] && adb shell input tap $XY
             sleep 5
             adb exec-out screencap -p > i-settings-aiteam.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "AI guide") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI guide"); }
-            [ -n "$XY" ] && adb shell input tap $XY
+            XY=$(python3 ci/ui-tap.py "AI guide") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI guide"); }; [ -n "$XY" ] && adb shell input tap $XY
             sleep 5
             adb exec-out screencap -p > i-settings-aiguide.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "Connection and features") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Connection and features"); }
-            [ -n "$XY" ] && adb shell input tap $XY
+            XY=$(python3 ci/ui-tap.py "Connection and features") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Connection and features"); }; [ -n "$XY" ] && adb shell input tap $XY
             sleep 5
             adb exec-out screencap -p > i-settings-connection.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "Unsent attachments") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Unsent attachments"); }
-            [ -n "$XY" ] && adb shell input tap $XY
+            XY=$(python3 ci/ui-tap.py "Unsent attachments") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Unsent attachments"); }; [ -n "$XY" ] && adb shell input tap $XY
             sleep 5
             adb exec-out screencap -p > i-settings-unsent.png
             adb shell input keyevent KEYCODE_BACK
