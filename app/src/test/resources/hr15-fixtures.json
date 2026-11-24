@@ -1,0 +1,1718 @@
+{
+  "contract": "HomeRoom1.5-draft5",
+  "fixture_only": true,
+  "implemented": false,
+  "notes": [
+    "Opaque cursor strings are nonfunctional test sentinels.",
+    "No hosts, cookies, keys or enrollment secrets represent real accounts.",
+    "zero digests are shape sentinels for unavailable synthetic media/bundle bytes, never test hash success against them.",
+    "Auth headers are omitted: apply actual owner or signed lane at runtime.",
+    "Response examples are exact proposed new shapes; existing1.4fields remain unchanged."
+  ],
+  "canonical_hashes": {
+    "decision": "{\"context_event_ids\":[],\"effect_class\":\"discussion\",\"options\":[{\"label\":\"Preview A\",\"option_id\":\"a\"},{\"label\":\"Preview B\",\"option_id\":\"b\"}],\"proposal\":\"Which preview should I prepare?\",\"title\":\"Choose a preview\"}",
+    "decision_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+    "goal_utf8": "Keep decisions and preview feedback in this room.",
+    "goal_sha256": "54ad84598b13fd7b81f5591001fd1bb1111d78ceab8da1e8cf87dc1ffafde339"
+  },
+  "payloads": {
+    "attachment_utf8": "HomeRoom fixture attachment\n",
+    "attachment_sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3"
+  },
+  "push_payload": {
+    "message": {
+      "data": {
+        "kind": "test_alert",
+        "test_id": "test_fixture"
+      },
+      "android": {
+        "priority": "HIGH",
+        "collapse_key": "test:test_fixture",
+        "ttl": "300s"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "01_instance",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/instance"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "api_base": "https://fixture.invalid/homeroom/v1",
+          "api_contract": "1.5",
+          "features": {
+            "room_conversations": true,
+            "ai_modes": true,
+            "real_room_grants": true,
+            "session_renew": true,
+            "notice_long_poll": true,
+            "owner_room_management": true,
+            "owner_rules": true,
+            "inline_files": true,
+            "approval_push": true,
+            "needs_you": true,
+            "owner_activity": true,
+            "file_upload": true,
+            "held_updates": true,
+            "staged_uploads": true,
+            "voice_notes": true,
+            "decision_cards": true,
+            "team_status": true,
+            "reactions": true,
+            "message_revision": true,
+            "room_goals": true,
+            "global_owner_rules": true,
+            "ask_all": true,
+            "export_bundle": true,
+            "status_test_alert": true,
+            "guide_ack_times": true,
+            "voice_transcription": false,
+            "ai_uploads": false
+          },
+          "limits": {
+            "file_bytes": 26214400,
+            "post_attachments": 4,
+            "post_bytes": 52428800,
+            "chunk_bytes": 262144,
+            "staged_per_session": 2,
+            "staged_owner_bytes": 104857600,
+            "committed_instance_bytes": 1073741824,
+            "min_free_disk_bytes": 1073741824,
+            "voice_bytes": 10485760,
+            "voice_seconds": 300,
+            "export_bytes": 104857600,
+            "upload_reservation_seconds": 1800,
+            "ready_upload_seconds": 86400,
+            "held_wait_seconds": 25,
+            "held_limit": 100,
+            "held_per_principal": 1,
+            "held_global": 32,
+            "idempotency_days": 30,
+            "cursor_hours": 24
+          },
+          "upload_mime_types": [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "audio/mp4",
+            "application/pdf",
+            "text/plain",
+            "text/markdown",
+            "application/json",
+            "application/zip",
+            "application/vnd.android.package-archive",
+            "application/octet-stream"
+          ],
+          "server_time": "2026-11-11T16:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "02_event",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/events/evt_fixture1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "event": {
+            "event_id": "evt_fixture1",
+            "seq": 41,
+            "thread_key": "th_fixture",
+            "parent_id": null,
+            "actor": "owner_fixture",
+            "created_at": "2026-11-11T16:00:00Z",
+            "text": "Fixture message",
+            "mentions": [],
+            "own": true,
+            "room_id": "rm_fixture",
+            "kind": "message",
+            "version": 1,
+            "edited_at": null,
+            "deleted": false,
+            "deleted_at": null,
+            "attachments": [
+              {
+                "file_id": "file_fixture1",
+                "name": "notes.txt",
+                "mime_type": "text/plain",
+                "byte_size": 28,
+                "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+                "digest_state": "verified",
+                "kind": "file",
+                "event_id": "evt_fixture1",
+                "download_path": "/homeroom/v1/owner/files/file_fixture1",
+                "transcript": null
+              }
+            ],
+            "reactions": [
+              {
+                "reaction": "like",
+                "count": 1,
+                "mine": false
+              }
+            ],
+            "request_id": null,
+            "decision_id": null
+          }
+        }
+      }
+    },
+    {
+      "name": "03_event_edited",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/events/evt_fixture1/edit",
+        "body": {
+          "client_id": "edit_1",
+          "version": 1,
+          "text": "Updated fixture message"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "event": {
+            "event_id": "evt_fixture1",
+            "seq": 41,
+            "thread_key": "th_fixture",
+            "parent_id": null,
+            "actor": "owner_fixture",
+            "created_at": "2026-11-11T16:00:00Z",
+            "text": "Updated fixture message",
+            "mentions": [],
+            "own": true,
+            "room_id": "rm_fixture",
+            "kind": "message",
+            "version": 2,
+            "edited_at": "2026-11-11T16:00:00Z",
+            "deleted": false,
+            "deleted_at": null,
+            "attachments": [
+              {
+                "file_id": "file_fixture1",
+                "name": "notes.txt",
+                "mime_type": "text/plain",
+                "byte_size": 28,
+                "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+                "digest_state": "verified",
+                "kind": "file",
+                "event_id": "evt_fixture1",
+                "download_path": "/homeroom/v1/owner/files/file_fixture1",
+                "transcript": null
+              }
+            ],
+            "reactions": [
+              {
+                "reaction": "like",
+                "count": 1,
+                "mine": false
+              }
+            ],
+            "request_id": null,
+            "decision_id": null
+          },
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "04_event_tombstone",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/events/evt_fixture1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "event": {
+            "event_id": "evt_fixture1",
+            "seq": 41,
+            "thread_key": "th_fixture",
+            "parent_id": null,
+            "actor": "owner_fixture",
+            "created_at": "2026-11-11T16:00:00Z",
+            "text": null,
+            "mentions": [],
+            "own": true,
+            "room_id": "rm_fixture",
+            "kind": "message",
+            "version": 3,
+            "edited_at": null,
+            "deleted": true,
+            "deleted_at": "2026-11-11T16:00:00Z",
+            "attachments": [],
+            "reactions": [],
+            "request_id": null,
+            "decision_id": null
+          }
+        }
+      }
+    },
+    {
+      "name": "05_file_voice",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/files"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "files": [
+            {
+              "file_id": "file_fixture1",
+              "name": "notes.txt",
+              "mime_type": "text/plain",
+              "byte_size": 28,
+              "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+              "digest_state": "verified",
+              "kind": "file",
+              "event_id": "evt_fixture1",
+              "download_path": "/homeroom/v1/owner/files/file_fixture1",
+              "transcript": null
+            },
+            {
+              "file_id": "file_voice1",
+              "name": "voice.m4a",
+              "mime_type": "audio/mp4",
+              "byte_size": 128000,
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "digest_state": "verified",
+              "kind": "voice",
+              "event_id": "evt_fixture2",
+              "duration_ms": 4000,
+              "download_path": "/homeroom/v1/owner/files/file_voice1",
+              "transcript": {
+                "state": "unavailable",
+                "text": null,
+                "language": null,
+                "updated_at": "2026-11-11T16:00:00Z",
+                "error_code": "processor_not_configured",
+                "source": "machine"
+              }
+            }
+          ],
+          "next_cursor": null,
+          "has_more": false
+        }
+      }
+    },
+    {
+      "name": "06_file_legacy_digest",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/files"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "files": [
+            {
+              "file_id": "file_legacy",
+              "name": "notes.txt",
+              "mime_type": "text/plain",
+              "byte_size": 28,
+              "sha256": null,
+              "digest_state": "unverified",
+              "kind": "file",
+              "event_id": "evt_fixture1",
+              "download_path": "/homeroom/v1/owner/files/file_legacy",
+              "transcript": null
+            }
+          ],
+          "next_cursor": null,
+          "has_more": false
+        }
+      }
+    },
+    {
+      "name": "07_updates_bootstrap",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?wait=0&limit=100"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "changes": [],
+          "next_cursor": "fixture_cursor_bootstrap",
+          "has_more": false,
+          "server_time": "2026-11-11T16:00:00Z",
+          "bootstrap": true
+        }
+      }
+    },
+    {
+      "name": "08_updates_change",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_bootstrap&wait=25&limit=100"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "changes": [
+            {
+              "change_id": "chg_42",
+              "kind": "event_created",
+              "room_id": "rm_fixture",
+              "object_id": "evt_fixture1",
+              "version": 1,
+              "occurred_at": "2026-11-11T16:00:00Z"
+            }
+          ],
+          "next_cursor": "fixture_cursor_next",
+          "has_more": false,
+          "server_time": "2026-11-11T16:00:00Z",
+          "bootstrap": false
+        }
+      }
+    },
+    {
+      "name": "09_updates_empty",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_next&wait=25&limit=100"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "changes": [],
+          "next_cursor": "fixture_cursor_next",
+          "has_more": false,
+          "server_time": "2026-11-11T16:00:00Z",
+          "bootstrap": false
+        }
+      }
+    },
+    {
+      "name": "10_updates_access",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_bootstrap&wait=25"
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": "access_changed",
+          "rebootstrap": true
+        }
+      }
+    },
+    {
+      "name": "11_updates_expired",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_bootstrap&wait=25"
+      },
+      "response": {
+        "status": 410,
+        "headers": {},
+        "body": {
+          "error": "cursor_expired",
+          "rebootstrap": true
+        }
+      }
+    },
+    {
+      "name": "12_updates_per_principal",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_bootstrap&wait=25"
+      },
+      "response": {
+        "status": 429,
+        "headers": {
+          "Retry-After": "1"
+        },
+        "body": {
+          "error": "held_request_exists",
+          "retry_after": 1,
+          "scope": "principal",
+          "limit": 1
+        }
+      }
+    },
+    {
+      "name": "13_updates_admission",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_bootstrap&wait=25"
+      },
+      "response": {
+        "status": 503,
+        "headers": {
+          "Retry-After": "5"
+        },
+        "body": {
+          "error": "held_capacity",
+          "retry_after": 5,
+          "scope": "global",
+          "limit": 32
+        }
+      }
+    },
+    {
+      "name": "14_upload_create",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/uploads",
+        "body": {
+          "client_id": "up_new_1",
+          "name": "notes.txt",
+          "mime_type": "text/plain",
+          "byte_size": 28,
+          "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "kind": "file"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "room_id": "rm_fixture",
+          "state": "staged",
+          "name": "notes.txt",
+          "mime_type": "text/plain",
+          "kind": "file",
+          "byte_size": 28,
+          "received_bytes": 0,
+          "next_offset": 0,
+          "chunk_bytes": 262144,
+          "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "verified_sha256": null,
+          "created_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-11T16:30:00Z",
+          "file_id": null,
+          "event_id": null,
+          "error_code": null,
+          "transcript": null
+        }
+      }
+    },
+    {
+      "name": "15_upload_status",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "room_id": "rm_fixture",
+          "state": "staged",
+          "name": "notes.txt",
+          "mime_type": "text/plain",
+          "kind": "file",
+          "byte_size": 28,
+          "received_bytes": 0,
+          "next_offset": 0,
+          "chunk_bytes": 262144,
+          "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "verified_sha256": null,
+          "created_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-11T16:30:00Z",
+          "file_id": null,
+          "event_id": null,
+          "error_code": null,
+          "transcript": null
+        }
+      }
+    },
+    {
+      "name": "16_upload_chunk",
+      "request": {
+        "method": "PUT",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1/chunks/0",
+        "body": {
+          "fixture_bytes_utf8": "HomeRoom fixture attachment\n"
+        },
+        "headers": {
+          "Content-Type": "application/octet-stream",
+          "Content-Length": "28",
+          "X-Chunk-SHA256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3"
+        },
+        "body_encoding": "fixture annotation, send exact UTF-8 bytes not JSON"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "state": "staged",
+          "received_bytes": 28,
+          "next_offset": 28
+        }
+      }
+    },
+    {
+      "name": "17_chunk_conflict",
+      "request": {
+        "method": "PUT",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1/chunks/0"
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": "chunk_conflict",
+          "upload_id": "up_fixture1",
+          "next_offset": 28,
+          "received_bytes": 28,
+          "reason": "different_bytes"
+        }
+      }
+    },
+    {
+      "name": "18_upload_complete",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1/complete",
+        "body": {
+          "client_id": "up_finish_1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "room_id": "rm_fixture",
+          "state": "ready",
+          "name": "notes.txt",
+          "mime_type": "text/plain",
+          "kind": "file",
+          "byte_size": 28,
+          "received_bytes": 28,
+          "next_offset": 28,
+          "chunk_bytes": 262144,
+          "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "verified_sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "created_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-12T16:00:00Z",
+          "file_id": null,
+          "event_id": null,
+          "error_code": null,
+          "transcript": null,
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "19_complete_replay",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1/complete",
+        "body": {
+          "client_id": "up_finish_1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "room_id": "rm_fixture",
+          "state": "ready",
+          "name": "notes.txt",
+          "mime_type": "text/plain",
+          "kind": "file",
+          "byte_size": 28,
+          "received_bytes": 28,
+          "next_offset": 28,
+          "chunk_bytes": 262144,
+          "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "verified_sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "created_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-12T16:00:00Z",
+          "file_id": null,
+          "event_id": null,
+          "error_code": null,
+          "transcript": null,
+          "replayed": true
+        }
+      }
+    },
+    {
+      "name": "20_upload_zero_refused",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/uploads",
+        "body": {
+          "client_id": "empty",
+          "name": "empty.txt",
+          "mime_type": "text/plain",
+          "byte_size": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "kind": "file"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {},
+        "body": {
+          "error": "empty_file"
+        }
+      }
+    },
+    {
+      "name": "21_upload_cancel",
+      "request": {
+        "method": "DELETE",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "state": "cancelled",
+          "reservation_released": true
+        }
+      }
+    },
+    {
+      "name": "22_post_attachment",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/rooms/rm_fixture/posts",
+        "body": {
+          "client_id": "post_1",
+          "client_created_at": "2026-11-11T16:00:00Z",
+          "text": "",
+          "upload_ids": [
+            "up_fixture1"
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {},
+        "body": {
+          "event_id": "evt_fixture1",
+          "seq": 41,
+          "room_id": "rm_fixture",
+          "thread_key": "th_fixture",
+          "parent_id": null,
+          "actor": "owner_fixture",
+          "created_at": "2026-11-11T16:00:00Z",
+          "version": 1,
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "23_offline_expired",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/rooms/rm_fixture/posts",
+        "body": {
+          "client_id": "old_post",
+          "client_created_at": "2026-10-01T16:00:00Z",
+          "text": "Stale queued message"
+        }
+      },
+      "response": {
+        "status": 410,
+        "headers": {},
+        "body": {
+          "error": "outgoing_expired",
+          "retry_new_id": false,
+          "requires_user_resend": true
+        }
+      }
+    },
+    {
+      "name": "24_decision",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/rooms/rm_fixture/decisions",
+        "body": {
+          "client_id": "dec_new",
+          "title": "Choose a preview",
+          "proposal": "Which preview should I prepare?",
+          "options": [
+            {
+              "option_id": "a",
+              "label": "Preview A"
+            },
+            {
+              "option_id": "b",
+              "label": "Preview B"
+            }
+          ],
+          "effect_class": "discussion",
+          "context_event_ids": [],
+          "client_created_at": "2026-11-11T16:00:00Z"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {},
+        "body": {
+          "decision_id": "dec_fixture",
+          "room_id": "rm_fixture",
+          "event_id": "evt_decision",
+          "actor": "ai_fixture",
+          "version": 1,
+          "content_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+          "title": "Choose a preview",
+          "proposal": "Which preview should I prepare?",
+          "options": [
+            {
+              "option_id": "a",
+              "label": "Preview A"
+            },
+            {
+              "option_id": "b",
+              "label": "Preview B"
+            }
+          ],
+          "effect_class": "discussion",
+          "context_event_ids": [],
+          "state": "open",
+          "created_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-18T16:00:00Z",
+          "answer": null
+        }
+      }
+    },
+    {
+      "name": "25_prepare_answer",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/decisions/dec_fixture/prepare-answer",
+        "body": {
+          "client_id": "select_a",
+          "version": 1,
+          "content_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+          "option_id": "a"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "confirmation_id": "confirm_fixture",
+          "expires_at": "2026-11-11T16:05:00Z",
+          "state": "confirmation_required",
+          "confirmation": {
+            "proposal": {
+              "title": "Choose a preview",
+              "proposal": "Which preview should I prepare?",
+              "options": [
+                {
+                  "option_id": "a",
+                  "label": "Preview A"
+                },
+                {
+                  "option_id": "b",
+                  "label": "Preview B"
+                }
+              ],
+              "effect_class": "discussion",
+              "context_event_ids": []
+            },
+            "option": {
+              "option_id": "a",
+              "label": "Preview A"
+            },
+            "content_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+            "effect_class": "discussion"
+          }
+        }
+      }
+    },
+    {
+      "name": "26_confirm_answer",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/decisions/dec_fixture/confirm-answer",
+        "body": {
+          "client_id": "confirm_a",
+          "confirmation_id": "confirm_fixture",
+          "content_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+          "confirmed": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "answer_id": "ans_fixture",
+          "decision_id": "dec_fixture",
+          "version": 1,
+          "option_id": "a",
+          "option_label": "Preview A",
+          "proposal_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+          "confirmed_at": "2026-11-11T16:00:00Z",
+          "state": "answered",
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "27_answer_conflict",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/decisions/dec_fixture/confirm-answer"
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": "decision_already_answered",
+          "current": {
+            "answer_id": "ans_fixture",
+            "decision_id": "dec_fixture",
+            "version": 1,
+            "option_id": "a",
+            "option_label": "Preview A",
+            "proposal_sha256": "4dc3e2d5e361118ac7a6bc4cb8571f9b9ae4e4133853ddb5f8c8637c0d34495b",
+            "confirmed_at": "2026-11-11T16:00:00Z",
+            "state": "answered",
+            "replayed": false
+          }
+        }
+      }
+    },
+    {
+      "name": "28_team",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/team"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "actors": [
+            {
+              "actor": "ai_fixture",
+              "display_name": "Fixture AI",
+              "mode": "read_and_reply",
+              "last_authenticated_at": "2026-11-11T16:00:00Z",
+              "work_state": {
+                "state": "waiting",
+                "summary": "Waiting for a preview choice",
+                "room_id": "rm_fixture",
+                "event_id": "evt_decision",
+                "waiting_on": "owner",
+                "version": 2
+              },
+              "work_state_received_at": "2026-11-11T16:00:00Z",
+              "work_state_expires_at": "2026-11-11T16:05:00Z",
+              "stale": false,
+              "source": "ai_reported",
+              "guide_ack": {
+                "version": 8,
+                "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "acknowledged_at": "2026-11-11T16:00:00Z",
+                "current": true
+              }
+            }
+          ],
+          "server_time": "2026-11-11T16:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "29_ask_all",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/ask-all",
+        "body": {
+          "client_id": "ask_1",
+          "client_created_at": "2026-11-11T16:00:00Z",
+          "text": "Compare these previews",
+          "actors": [
+            "ai_fixture",
+            "ai_readonly"
+          ],
+          "upload_ids": []
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {},
+        "body": {
+          "request_id": "req_fixture",
+          "event_id": "evt_ask",
+          "room_id": "rm_fixture",
+          "created_at": "2026-11-11T16:00:00Z",
+          "targets": [
+            {
+              "actor": "ai_fixture",
+              "state": "notified",
+              "reason": null
+            },
+            {
+              "actor": "ai_readonly",
+              "state": "unavailable",
+              "reason": "mode_requires_read_and_reply"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "30_ask_results",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/requests/req_fixture"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "request_id": "req_fixture",
+          "room_id": "rm_fixture",
+          "event_id": "evt_ask",
+          "text": "Compare these previews",
+          "targets": [
+            {
+              "actor": "ai_fixture",
+              "state": "answered",
+              "seen_at": null,
+              "working_at": "2026-11-11T16:00:00Z",
+              "answered_at": "2026-11-11T16:00:00Z",
+              "replies": [
+                {
+                  "event_id": "evt_reply",
+                  "actor": "ai_fixture",
+                  "request_id": "req_fixture"
+                }
+              ]
+            },
+            {
+              "actor": "ai_readonly",
+              "state": "unavailable",
+              "reason": "mode_requires_read_and_reply",
+              "replies": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "31_goal_propose",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/rooms/rm_fixture/goal-proposals",
+        "body": {
+          "client_id": "goal_1",
+          "base_version": 0,
+          "text": "Keep decisions and preview feedback in this room."
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {},
+        "body": {
+          "proposal_id": "goalprop_fixture",
+          "room_id": "rm_fixture",
+          "base_version": 0,
+          "text": "Keep decisions and preview feedback in this room.",
+          "proposal_sha256": "54ad84598b13fd7b81f5591001fd1bb1111d78ceab8da1e8cf87dc1ffafde339",
+          "proposed_by": "ai_fixture",
+          "state": "pending",
+          "created_at": "2026-11-11T16:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "32_goal_approve",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/goal-proposals/goalprop_fixture/decision",
+        "body": {
+          "client_id": "goal_yes",
+          "base_version": 0,
+          "proposal_sha256": "54ad84598b13fd7b81f5591001fd1bb1111d78ceab8da1e8cf87dc1ffafde339",
+          "decision": "approve"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "room_id": "rm_fixture",
+          "version": 1,
+          "text": "Keep decisions and preview feedback in this room.",
+          "approved_at": "2026-11-11T16:00:00Z",
+          "proposed_by": "ai_fixture",
+          "proposal_id": "goalprop_fixture"
+        }
+      }
+    },
+    {
+      "name": "33_global_rule",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/rules",
+        "body": {
+          "client_id": "rule_1",
+          "scope": "all_rooms",
+          "text": "Check facts before answering."
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {},
+        "body": {
+          "rule_id": "rule_fixture",
+          "scope": "all_rooms",
+          "room_id": null,
+          "version": 1,
+          "text": "Check facts before answering.",
+          "state": "active",
+          "owner_authored": true,
+          "created_at": "2026-11-11T16:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "34_preferences",
+      "request": {
+        "method": "PUT",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/preferences",
+        "body": {
+          "client_id": "prefs_1",
+          "version": 1,
+          "pinned": true,
+          "mute_mode": "until",
+          "muted_until": "2026-11-11T18:00:00Z",
+          "archived": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "room_id": "rm_fixture",
+          "version": 2,
+          "pinned": true,
+          "mute_mode": "until",
+          "muted_until": "2026-11-11T18:00:00Z",
+          "archived": false,
+          "archive_scope": "room_shared",
+          "metadata_version": 3
+        }
+      }
+    },
+    {
+      "name": "35_reaction",
+      "request": {
+        "method": "PUT",
+        "path": "/homeroom/v1/owner/events/evt_fixture1/reaction",
+        "body": {
+          "client_id": "reaction_1",
+          "reaction": "like"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "event_id": "evt_fixture1",
+          "reactions": [
+            {
+              "reaction": "like",
+              "count": 2,
+              "mine": true
+            }
+          ],
+          "authorization_effect": "none"
+        }
+      }
+    },
+    {
+      "name": "36_edit_conflict",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/events/evt_fixture1/edit",
+        "body": {
+          "client_id": "edit_stale",
+          "version": 1,
+          "text": "Changed"
+        }
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": "message_version_conflict",
+          "current": {
+            "event": {
+              "event_id": "evt_fixture1",
+              "seq": 41,
+              "thread_key": "th_fixture",
+              "parent_id": null,
+              "actor": "owner_fixture",
+              "created_at": "2026-11-11T16:00:00Z",
+              "text": "Updated fixture message",
+              "mentions": [],
+              "own": true,
+              "room_id": "rm_fixture",
+              "kind": "message",
+              "version": 2,
+              "edited_at": "2026-11-11T16:00:00Z",
+              "deleted": false,
+              "deleted_at": null,
+              "attachments": [
+                {
+                  "file_id": "file_fixture1",
+                  "name": "notes.txt",
+                  "mime_type": "text/plain",
+                  "byte_size": 28,
+                  "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+                  "digest_state": "verified",
+                  "kind": "file",
+                  "event_id": "evt_fixture1",
+                  "download_path": "/homeroom/v1/owner/files/file_fixture1",
+                  "transcript": null
+                }
+              ],
+              "reactions": [
+                {
+                  "reaction": "like",
+                  "count": 1,
+                  "mine": false
+                }
+              ],
+              "request_id": null,
+              "decision_id": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "37_export_ready",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/exports/export_fixture"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "job_id": "export_fixture",
+          "room_id": "rm_fixture",
+          "state": "ready",
+          "files_done": 1,
+          "files_total": 1,
+          "bytes_done": 28,
+          "bytes_total": 28,
+          "missing_files": [],
+          "omitted_files": [],
+          "progress_basis": "source_bytes",
+          "bundle": {
+            "byte_size": 2048,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "download_path": "/homeroom/v1/owner/exports/export_fixture/download",
+            "etag": "\"0000000000000000000000000000000000000000000000000000000000000000\""
+          },
+          "expires_at": "2026-11-12T16:00:00Z",
+          "before_seq": 41
+        }
+      }
+    },
+    {
+      "name": "38_export_too_large",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/exports",
+        "body": {
+          "client_id": "export_big",
+          "format": "bundle",
+          "include_attachments": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "job_id": "export_fixture",
+          "room_id": "rm_fixture",
+          "state": "failed",
+          "error_code": "export_too_large",
+          "limit_bytes": 104857600,
+          "requires_user_subset": true,
+          "bundle": null
+        }
+      }
+    },
+    {
+      "name": "39_export_partial",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/exports/export_fixture"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "job_id": "export_fixture",
+          "room_id": "rm_fixture",
+          "state": "ready_with_omissions",
+          "files_done": 1,
+          "files_total": 1,
+          "bytes_done": 28,
+          "bytes_total": 28,
+          "missing_files": [
+            {
+              "file_id": "file_legacy",
+              "reason": "bytes_unavailable"
+            }
+          ],
+          "omitted_files": [],
+          "progress_basis": "source_bytes",
+          "bundle": {
+            "byte_size": 2048,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "download_path": "/homeroom/v1/owner/exports/export_fixture/download",
+            "etag": "\"0000000000000000000000000000000000000000000000000000000000000000\""
+          },
+          "expires_at": "2026-11-12T16:00:00Z",
+          "before_seq": 41
+        }
+      }
+    },
+    {
+      "name": "40_status",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/status"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "server_time": "2026-11-11T16:00:00Z",
+          "release": "1.5",
+          "features": {
+            "room_conversations": true,
+            "ai_modes": true,
+            "real_room_grants": true,
+            "session_renew": true,
+            "notice_long_poll": true,
+            "owner_room_management": true,
+            "owner_rules": true,
+            "inline_files": true,
+            "approval_push": true,
+            "needs_you": true,
+            "owner_activity": true,
+            "file_upload": true,
+            "held_updates": true,
+            "staged_uploads": true,
+            "voice_notes": true,
+            "decision_cards": true,
+            "team_status": true,
+            "reactions": true,
+            "message_revision": true,
+            "room_goals": true,
+            "global_owner_rules": true,
+            "ask_all": true,
+            "export_bundle": true,
+            "status_test_alert": true,
+            "guide_ack_times": true,
+            "voice_transcription": false,
+            "ai_uploads": false
+          },
+          "limits": {
+            "file_bytes": 26214400,
+            "post_attachments": 4,
+            "post_bytes": 52428800,
+            "chunk_bytes": 262144,
+            "staged_per_session": 2,
+            "staged_owner_bytes": 104857600,
+            "committed_instance_bytes": 1073741824,
+            "min_free_disk_bytes": 1073741824,
+            "voice_bytes": 10485760,
+            "voice_seconds": 300,
+            "export_bytes": 104857600,
+            "upload_reservation_seconds": 1800,
+            "ready_upload_seconds": 86400,
+            "held_wait_seconds": 25,
+            "held_limit": 100,
+            "held_per_principal": 1,
+            "held_global": 32,
+            "idempotency_days": 30,
+            "cursor_hours": 24
+          },
+          "last_refreshed_at": "2026-11-11T16:00:00Z",
+          "last_verified_backup": {
+            "at": "2026-11-11T16:00:00Z",
+            "byte_size": 128000,
+            "restore_verified_at": "2026-11-11T16:00:00Z",
+            "scope": "homeroom_database_and_committed_blobs"
+          },
+          "push": {
+            "registered": true,
+            "provider_state": "available",
+            "device_receipt_state": "unknown"
+          }
+        }
+      }
+    },
+    {
+      "name": "41_test_queue",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/status/test-alert",
+        "body": {
+          "client_id": "test_1"
+        }
+      },
+      "response": {
+        "status": 202,
+        "headers": {},
+        "body": {
+          "test_id": "test_fixture",
+          "state": "queued",
+          "server_queued_at": "2026-11-11T16:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "42_test_status",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/status/test-alerts/test_fixture"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "test_id": "test_fixture",
+          "state": "provider_accepted",
+          "server_queued_at": "2026-11-11T16:00:00Z",
+          "provider_accepted_at": "2026-11-11T16:00:00Z",
+          "device_received_at": null,
+          "display_reported_at": null,
+          "opened_at": null,
+          "error_code": null,
+          "receipt_source": "app_reported"
+        }
+      }
+    },
+    {
+      "name": "43_test_receipt",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/status/test-alerts/test_fixture/receipts",
+        "body": {
+          "client_id": "receipt_1",
+          "stage": "received"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "test_id": "test_fixture",
+          "state": "device_received",
+          "server_queued_at": "2026-11-11T16:00:00Z",
+          "provider_accepted_at": "2026-11-11T16:00:00Z",
+          "device_received_at": "2026-11-11T16:00:00Z",
+          "display_reported_at": null,
+          "opened_at": null,
+          "error_code": null,
+          "receipt_source": "app_reported"
+        }
+      }
+    },
+    {
+      "name": "44_test_no_device",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/status/test-alert",
+        "body": {
+          "client_id": "test_no_device"
+        }
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": "push_not_registered",
+          "state": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "45_range_headers",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/files/file_fixture1",
+        "headers": {
+          "Range": "bytes=0-7"
+        }
+      },
+      "response": {
+        "status": 206,
+        "headers": {
+          "Content-Type": "text/plain",
+          "Content-Length": "8",
+          "Content-Range": "bytes 0-7/28",
+          "Accept-Ranges": "bytes",
+          "ETag": "\"31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3\""
+        },
+        "body": {
+          "fixture_bytes_utf8": "HomeRoom"
+        },
+        "body_encoding": "fixture annotation, raw UTF-8 bytes"
+      }
+    },
+    {
+      "name": "46_outgoing_lookup_unknown",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/outgoing/post_1"
+      },
+      "response": {
+        "status": 404,
+        "headers": {},
+        "body": {
+          "error": "outgoing_not_found",
+          "resend_same_id_only": true
+        }
+      }
+    },
+    {
+      "name": "47_upload_consumed",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/uploads/up_fixture1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "upload_id": "up_fixture1",
+          "room_id": "rm_fixture",
+          "state": "consumed",
+          "name": "notes.txt",
+          "mime_type": "text/plain",
+          "kind": "file",
+          "byte_size": 28,
+          "received_bytes": 28,
+          "next_offset": 28,
+          "chunk_bytes": 262144,
+          "sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "verified_sha256": "31c512126cece2f06731b83ddfedbf997f7729ec542e64010fdd5890fcaff0b3",
+          "created_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-12T16:00:00Z",
+          "file_id": "file_fixture1",
+          "event_id": "evt_fixture1",
+          "error_code": null,
+          "transcript": null
+        }
+      }
+    },
+    {
+      "name": "48_work_state_put",
+      "request": {
+        "method": "PUT",
+        "path": "/homeroom/v1/me/work-state",
+        "body": {
+          "client_id": "work_1",
+          "version": 1,
+          "state": "working",
+          "summary": "Comparing previews",
+          "room_id": "rm_fixture",
+          "event_id": "evt_ask",
+          "waiting_on": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "actor": "ai_fixture",
+          "version": 2,
+          "state": "working",
+          "summary": "Comparing previews",
+          "room_id": "rm_fixture",
+          "event_id": "evt_ask",
+          "waiting_on": null,
+          "received_at": "2026-11-11T16:00:00Z",
+          "expires_at": "2026-11-11T16:05:00Z",
+          "source": "ai_reported"
+        }
+      }
+    },
+    {
+      "name": "49_request_work_receipt",
+      "request": {
+        "method": "PUT",
+        "path": "/homeroom/v1/requests/req_fixture/state",
+        "body": {
+          "client_id": "req_seen",
+          "state": "seen"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "request_id": "req_fixture",
+          "actor": "ai_fixture",
+          "state": "seen",
+          "received_at": "2026-11-11T16:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "50_goal_read",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/goal"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "room_id": "rm_fixture",
+          "current": {
+            "version": 0,
+            "text": null,
+            "approved_at": null,
+            "proposed_by": null
+          },
+          "pending_proposals": [
+            {
+              "proposal_id": "goalprop_fixture",
+              "room_id": "rm_fixture",
+              "base_version": 0,
+              "text": "Keep decisions and preview feedback in this room.",
+              "proposal_sha256": "54ad84598b13fd7b81f5591001fd1bb1111d78ceab8da1e8cf87dc1ffafde339",
+              "proposed_by": "ai_fixture",
+              "state": "pending",
+              "created_at": "2026-11-11T16:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "51_enrollment_used",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/enroll",
+        "body": {
+          "token": "FIXTURE-NOT-A-VALID-CODE",
+          "device_label": "Fixture phone"
+        }
+      },
+      "response": {
+        "status": 403,
+        "headers": {},
+        "body": {
+          "error": "enrollment_used"
+        }
+      }
+    },
+    {
+      "name": "52_enrollment_expired",
+      "request": {
+        "method": "POST",
+        "path": "/homeroom/v1/owner/enroll",
+        "body": {
+          "token": "FIXTURE-EXPIRED-NOT-VALID",
+          "device_label": "Fixture phone"
+        }
+      },
+      "response": {
+        "status": 403,
+        "headers": {},
+        "body": {
+          "error": "enrollment_expired"
+        }
+      }
+    },
+    {
+      "name": "53_preferences_get",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/rooms/rm_fixture/preferences"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "room_id": "rm_fixture",
+          "version": 1,
+          "pinned": false,
+          "mute_mode": "off",
+          "muted_until": null,
+          "archived": false,
+          "archive_scope": "room_shared",
+          "metadata_version": 3
+        }
+      }
+    },
+    {
+      "name": "54_attachment_change",
+      "request": {
+        "method": "GET",
+        "path": "/homeroom/v1/owner/updates?cursor=fixture_cursor_next&wait=25"
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "changes": [
+            {
+              "change_id": "chg_43",
+              "kind": "attachment_changed",
+              "room_id": "rm_fixture",
+              "object_id": "evt_fixture1",
+              "version": 2,
+              "occurred_at": "2026-11-11T16:00:00Z"
+            }
+          ],
+          "next_cursor": "fixture_cursor_attachment",
+          "has_more": false,
+          "server_time": "2026-11-11T16:00:00Z",
+          "bootstrap": false
+        }
+      }
+    }
+  ],
+  "link_handoff": {
+    "action": "android.intent.action.VIEW",
+    "categories": [
+      "android.intent.category.BROWSABLE",
+      "android.intent.category.DEFAULT"
+    ],
+    "data_uri": "homeroom://connect",
+    "package": "app.homeroom",
+    "extras": {
+      "server_origin": "https://fixture.invalid",
+      "enrollment_code": "FIXTURE-NOT-A-VALID-CODE"
+    },
+    "new_origin_action": "confirm_hostname",
+    "active_different_origin_action": "refuse_until_signout",
+    "verified_app_links": false
+  }
+}
