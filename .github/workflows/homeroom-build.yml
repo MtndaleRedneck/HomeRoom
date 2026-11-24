@@ -122,6 +122,7 @@ jobs:
           # TCG emulation is slow, so no `am start -W` (launch wait times out
           # even when healthy); poll instead.
           script: |
+            while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n app.homeroom/.MainActivity
             sleep 45
