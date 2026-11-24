@@ -26,6 +26,10 @@ object NotificationActions {
 }
 class NotificationActionReceiver:BroadcastReceiver() {
     override fun onReceive(context:Context,intent:Intent) {
+        // Binary parity (private12): the app lock gates every notification action
+        // before any session or payload check. A PendingIntent posted by an older
+        // build survives the upgrade, so fail closed here, not in the worker.
+        if(PrivacyPrefs.locked(context))return
         val session=Session(context)
         if(!session.enrolled || session.sessionId!=intent.getStringExtra("session"))return
         val room=intent.getStringExtra("room") ?: return
