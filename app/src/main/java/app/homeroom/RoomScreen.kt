@@ -116,14 +116,13 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         if (events.isEmpty()) loadInitial() else positionAtAnchor(force = true)
     }
 
-    // private12 parity (K0/e4:212-224 menu labels, K0/A3 handlers): each entry
-    // is listed only while the connected server advertises the matching feature
-    // flag (ApiClient.hasFeature, fed by /owner/instance). The release's "Ask
-    // AIs side by side" entry (ask_all, K0/z3 case 1) sends an ask-all request;
-    // that flow is not reconstructed, so the entry is not offered (tracked gap).
+    // private12 parity (K0/e4 menu labels in release order, K0/A3 handlers):
+    // each entry is listed only while the connected server advertises the
+    // matching feature flag (ApiClient.hasFeature, fed by /owner/instance).
     private fun roomToolEntries(): List<Triple<String, String, () -> Unit>> {
         val entries = mutableListOf<Triple<String, String, () -> Unit>>()
         if (host.api.hasFeature("held_updates")) entries.add(Triple("held_updates", "Outgoing messages", { -> host.openPage("Outgoing messages", OutboxScreen(context)) }))
+        if (host.api.hasFeature("ask_all")) entries.add(Triple("ask_all", "Ask AIs side by side", { -> beginAskAll() }))
         if (host.api.hasFeature("room_goals")) entries.add(Triple("room_goals", "Pinned room goal", { -> host.openPage("Pinned room goal", RoomGoalScreen(context, room)) }))
         if (host.api.hasFeature("staged_uploads")) entries.add(Triple("staged_uploads", "Attach photo or file", { -> attachFile() }))
         if (host.api.hasFeature("voice_notes")) entries.add(Triple("voice_notes", "Record voice note", { -> host.openPage("Record voice note", VoiceCapture(context, room)) }))
@@ -132,6 +131,79 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
     private fun refreshRoomToolsVisibility() {
         roomToolsWrap?.visibility = if (roomToolEntries().isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    // private12 parity: ask-all flow recovered from the exact release build -
+    // roster gate (K0/w1: GET /owner/ais, room members filtered to roster),
+    // dialog (m3/d.L: title, hint, per-AI checkboxes default-checked, caption),
+    // validation (K0/v1: trimmed text 1..8000, >=1 AI), POST (K0/x1 -> N5.a),
+    // then the AI answers page (K0/p3 mode 3). Error strings are the release's.
+    private var askAllDialog: android.app.AlertDialog? = null
+
+    private fun beginAskAll() {
+        screenScope.launch {
+            val aiMembers: List<Pair<String, String>> = try {
+                val roster = host.api.ais().map { it.actor }.toSet()
+                room.members.filter { it.first in roster }
+            } catch (e: SessionEndedException) { host.onSessionEnded(e); return@launch
+            } catch (_: Exception) {
+                snack(this@RoomScreen, "Couldn't verify the room's AI members. Refresh before asking."); return@launch
+            }
+            if (aiMembers.isEmpty()) { snack(this@RoomScreen, "No AIs in this room."); return@launch }
+            showAskAllDialog(aiMembers)
+        }
+    }
+
+    private fun showAskAllDialog(aiMembers: List<Pair<String, String>>) {
+        val body = column(context).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
+        val box = input(context, "Question for these AIs")
+        body.addView(box)
+        val boxes = aiMembers.map { (actor, name) ->
+            android.widget.CheckBox(context).apply {
+                text = name.ifBlank { actor }
+                isChecked = true
+                setTextColor(C.text)
+                tag = actor
+                body.addView(this)
+            }
+        }
+        body.addView(text(context, "Only selected AIs already granted this room can answer. No access is added.", 14f, C.muted))
+        val askClientId = clientId()
+        val createdAt = java.time.Instant.now().toString()
+        val dialog = android.app.AlertDialog.Builder(context)
+            .setTitle("Ask AIs side by side")
+            .setView(body)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Ask", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val question = box.text.toString().trim()
+                val selected = boxes.filter { it.isChecked }.map { it.tag as String }
+                if (question.isBlank() || question.length > 8000 || selected.isEmpty()) {
+                    box.error = "Enter a question and choose AIs."
+                    return@setOnClickListener
+                }
+                val askButton = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+                askButton.isEnabled = false
+                screenScope.launch {
+                    try {
+                        val response = V15Api(host.api).askAll(room.id, askClientId, createdAt, question, selected)
+                        dialog.dismiss()
+                        host.openPage("AI answers", AskAllAnswersScreen(context, response.getString("request_id")))
+                    } catch (e: SessionEndedException) { host.onSessionEnded(e); dialog.dismiss()
+                    } catch (_: Exception) {
+                        snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
+                        askButton.isEnabled = true
+                        box.isEnabled = false
+                        boxes.forEach { it.isEnabled = false }
+                    }
+                }
+            }
+        }
+        askAllDialog = dialog
+        dialog.setOnDismissListener { askAllDialog = null }
+        dialog.show()
     }
 
     private var roomToolsDialog: android.app.AlertDialog? = null

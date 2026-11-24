@@ -113,6 +113,62 @@ class TeamScreen(context:Context):Screen(context) {
         }
     }
 }
+// private12 parity (K0/p3 mode 3 + K0/U0): the "AI answers" page after an
+// ask-all. GET /owner/requests/<id>, one 300dp card per target in a horizontal
+// strip: display name resolved from cached room members (fallback actor id),
+// the question, the target state, and each reply event fetched and shown.
+class AskAllAnswersScreen(context:Context,private val requestId:String):Screen(context) {
+    private val strip=LinearLayout(context).apply {orientation=LinearLayout.HORIZONTAL;setPadding(dp(12),dp(12),dp(12),dp(24))}
+    private var loaded=false
+    init {addView(android.widget.HorizontalScrollView(context).apply {addView(strip)},LayoutParams(-1,-1))}
+    override fun onShow() {if(!loaded) {loaded=true;load()}}
+    private fun load() {screenScope.launch {
+        try {render(V15Api(host.api).askRequest(requestId))}
+        catch(e:SessionEndedException) {host.onSessionEnded(e)}
+        catch(_:Exception) {strip.removeAllViews();strip.addView(errorCard(context,"Couldn't load the AI answers.") {load()})}
+    }}
+    private fun render(data:JSONObject) {
+        strip.removeAllViews()
+        val question=data.optString("text")
+        for(target in data.requiredArray("targets").objects()) {
+            val actor=target.getString("actor")
+            val card=column(context).apply {
+                setPadding(dp(12),dp(12),dp(12),dp(12))
+                setBackgroundColor(C.surface)
+            }
+            val lp=LinearLayout.LayoutParams(dp(300),-1).apply {rightMargin=dp(12)}
+            val displayName=host.cachedRooms().flatMap {it.members}.firstOrNull {it.first==actor}?.second?.takeIf {it.isNotBlank()} ?: actor
+            card.addView(text(context,displayName,18f,C.text,true))
+            card.addView(text(context,question,15f,C.text))
+            val reason=target.nullableString("reason")
+            card.addView(text(context,"State: "+target.getString("state")+(reason?.let {"\n"+it} ?: "")+"\nNotifications are not proof of reading.",13f,C.muted))
+            val replies=target.optJSONArray("replies")
+            if(replies!=null) {
+                for(i in 0 until replies.length()) {
+                    val eventId=replies.getJSONObject(i).optString("event_id")
+                    if(eventId.isBlank()) continue
+                    val replyView=text(context,"…",15f,C.text)
+                    replyView.setTextIsSelectable(true)
+                    card.addView(replyView)
+                    screenScope.launch {
+                        try {
+                            val event=host.api.event(eventId).getJSONObject("event")
+                            // private12 guard (K0/U0): only render a reply whose
+                            // actor matches the target and whose request ref is
+                            // this ask; anything else is not this request's reply.
+                            if(event.optString("actor")!=actor) return@launch
+                            if(event.nullableString("request_id")!=requestId) return@launch
+                            replyView.text=event.getString("text")
+                        } catch(e:SessionEndedException) {host.onSessionEnded(e)}
+                        catch(_:Exception) {replyView.text="Couldn't load this reply."}
+                    }
+                }
+            }
+            strip.addView(card,lp)
+        }
+    }
+}
+
 class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
     private val body=column(context).apply {setPadding(dp(16),dp(12),dp(16),dp(24))}
     private var busy=false

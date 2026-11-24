@@ -54,6 +54,13 @@ internal class V15Api(private val api:ApiClient,private val initiating:Session.O
     suspend fun confirm(card:DecisionCard,confirmation:String,client:String)=mutate("decisions/"+id(card.id)+"/confirm-answer",JSONObject().put("client_id",client).put("confirmation_id",confirmation).put("content_sha256",card.hash).put("action_sha256",card.actionHash ?: JSONObject.NULL).put("confirmed",true))
     suspend fun reject(card:DecisionCard,client:String)=mutate("decisions/"+id(card.id)+"/reject-answer",JSONObject().put("client_id",client).put("version",card.version).put("content_sha256",card.hash))
     suspend fun team()=get("team")
+    // RECONSTRUCTED (private12 K0/N5.a): exact ask-all body. upload_ids stays
+    // an empty array - the release client never fills it (the cp68->69 askall15
+    // server patch accepts <=4 via the attachment path, but no release caller
+    // exists), so this mirrors the release, not the server's wider contract.
+    suspend fun askAll(room:String,client:String,createdAt:String,text:String,actors:List<String>)=mutate("rooms/"+id(room)+"/ask-all",JSONObject().put("client_id",client).put("client_created_at",createdAt).put("text",text).put("actors",JSONArray(actors)).put("upload_ids",JSONArray()))
+    // RECONSTRUCTED (private12 K0/U0): the AI answers page polls the request.
+    suspend fun askRequest(requestId:String)=get("requests/"+id(requestId))
     suspend fun goal(room:String)=get("rooms/"+id(room)+"/goal")
     suspend fun goalProposal(room:String,base:Int,text:String,client:String)=mutate("rooms/"+id(room)+"/goal-proposals",JSONObject().put("client_id",client).put("base_version",base).put("text",text))
     suspend fun goalDecision(proposal:JSONObject,decision:String,client:String)=mutate("goal-proposals/"+id(proposal.getString("proposal_id"))+"/decision",JSONObject().put("client_id",client).put("base_version",proposal.getInt("base_version")).put("proposal_sha256",proposal.getString("proposal_sha256")).put("decision",decision))
