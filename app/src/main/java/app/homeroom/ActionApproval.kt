@@ -104,3 +104,16 @@ private fun canonicalDecisionString(value: String): String {
     out.append('"')
     return out.toString()
 }
+
+// Actual original source (ActionApproval.kt read Nov 12 11:44:13 EST). Unknown
+// states THROW per the owning function; callers must only pass validated states
+// (ActionApproval.parse already restricts the state set before this can apply).
+internal fun actionApprovalStateLabel(state:String):String=when(state) {
+    "authorized"->"Confirmation recorded; not yet reserved"
+    "claimed"->"Reserved by the original consumer; not proof of execution"
+    "succeeded"->"Consumer reports completed"
+    "failed_no_effect"->"Consumer reports no action occurred"
+    "outcome_unknown"->"Outcome unknown; do not retry"
+    "expired"->"Expired; no new action may start"
+    else->throw IllegalArgumentException("Unknown action state")
+}
