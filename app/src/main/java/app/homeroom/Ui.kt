@@ -128,9 +128,13 @@ fun dayLabel(iso: String?): String {
 // RECONSTRUCTED Nov 23, 2026: not original source. Time formatting recovered
 // exactly from the exact private12 release build: 24h flag from
 // DateFormat.is24HourFormat (set by MainActivity), time pattern "H:mm"/"h:mm a".
-var time24Hour = true
+// Original-lineage names (actual source read Nov 11 10:40:19 EST): the 24h
+// flag is use24Hour and the pattern helper is the no-arg clockPattern().
+@Volatile var use24Hour = true
 
-private fun roomTimePattern(): String = if (time24Hour) "H:mm" else "h:mm a"
+fun clockPattern(): String = if (use24Hour) "H:mm" else "h:mm a"
+
+private fun roomTimePattern(): String = clockPattern()
 
 private fun parseRoomInstant(iso: String): java.time.ZonedDateTime? =
     runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()) }.getOrNull()
