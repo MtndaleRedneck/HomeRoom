@@ -409,7 +409,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             upload=result.getString("upload_id")
             // Copy, save, then swap: composer state advances only after the
             // durable write (I2). A stale generation aborts before chunks.
-            if(!persistSwap(JSONObject(stagedRecord!!.toString()).put("upload",upload).put("offset",result.getLong("next_offset")))) return@launch
+            if(!persistSwap {it.put("upload",upload).put("offset",result.getLong("next_offset"))}) return@launch
             var offset=result.getLong("next_offset")
             var aborted=false
             withContext(Dispatchers.IO) {java.io.RandomAccessFile(privateFile,"r").use {input->

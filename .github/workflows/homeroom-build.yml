@@ -126,13 +126,20 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
+      - name: Enable KVM (best effort)
+        # /dev/kvm EXISTS on this image (root:kvm 0660) but the runner user is
+        # not in the group - the canonical udev fix. Without acceleration the
+        # TCG boot takes ~15 minutes and the post-boot adb window flakes
+        # (observed: broken pipe on the action's post-boot keyevent, job dead
+        # before the smoke script ran).
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
       - name: Install and smoke on an emulator
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          # This runner has no KVM; force TCG software emulation (the action's
-          # own error message names this switch). Boot is slower, hence the
-          # longer timeout below.
-          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 34
           target: google_apis
@@ -197,10 +204,20 @@ jobs:
           "$BT/apksigner" verify --print-certs release-ci-debugsigned.apk | tee release-ci-certs.txt
           ! grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' release-ci-certs.txt
 
+      - name: Enable KVM (best effort)
+        # /dev/kvm EXISTS on this image (root:kvm 0660) but the runner user is
+        # not in the group - the canonical udev fix. Without acceleration the
+        # TCG boot takes ~15 minutes and the post-boot adb window flakes
+        # (observed: broken pipe on the action's post-boot keyevent, job dead
+        # before the smoke script ran).
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
       - name: Install and smoke the release artifact on an emulator
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 34
           target: google_apis
@@ -254,10 +271,20 @@ jobs:
           grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' signed-certs.txt
           sha256sum ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee signed-sha256.txt
 
+      - name: Enable KVM (best effort)
+        # /dev/kvm EXISTS on this image (root:kvm 0660) but the runner user is
+        # not in the group - the canonical udev fix. Without acceleration the
+        # TCG boot takes ~15 minutes and the post-boot adb window flakes
+        # (observed: broken pipe on the action's post-boot keyevent, job dead
+        # before the smoke script ran).
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
       - name: Install and smoke the signed artifact on an emulator
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 34
           target: google_apis

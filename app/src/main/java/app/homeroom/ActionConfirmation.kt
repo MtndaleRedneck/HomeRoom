@@ -79,3 +79,26 @@ internal fun verifiedActionConfirmation(card:DecisionCard,response:JSONObject):A
     require(!response.has("confirmation_receipt") || response.isNull("confirmation_receipt"))
     return ActionApproval.parse(card,response)
 }
+
+/** Recomputed on every layout and scroll; reaching the end once is not a permanent bypass. */
+internal class ActionReviewScrollGate(private val scroll:ScrollView,private val confirm:android.widget.Button) {
+    private var busy=false
+    init {
+        confirm.isEnabled=false
+        scroll.setOnScrollChangeListener {_:View, _:Int, _:Int, _:Int, _:Int->refresh()}
+        scroll.addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_->refresh()}
+        scroll.getChildAt(0)?.addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_->refresh()}
+        scroll.post {refresh()}
+    }
+    fun canConfirm():Boolean {
+        val child=scroll.getChildAt(0) ?: return false
+        val viewport=scroll.height-scroll.paddingTop-scroll.paddingBottom
+        return !busy && viewport>0 && child.height>0 && child.bottom<=scroll.scrollY+scroll.height-scroll.paddingBottom
+    }
+    fun refresh() {confirm.isEnabled=canConfirm()}
+    fun setBusy(value:Boolean) {busy=value;refresh()}
+}
+internal fun decisionReviewResumable(saved:JSONObject,now:java.time.Instant=java.time.Instant.now()):Boolean {
+    if(saved.optBoolean("attempted",false))return true // Exact-ID recovery only, never fresh permission.
+    return try {now.isBefore(java.time.Instant.parse(saved.getString("expires")))}catch(_:Exception) {false}
+}
