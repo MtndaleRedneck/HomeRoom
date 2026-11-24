@@ -257,6 +257,11 @@ class ApiClient(
             // new session or destination.
             val entryGen = initiating.generation
             val entryUrl = initiating.serverUrl
+            // Requests wait out an in-flight foreground renewal (bounded ~1s,
+            // binary request-entry k-loop parity) so the authIfUnchanged
+            // re-read below adopts the rotated credentials of the SAME
+            // generation instead of racing the renew commit.
+            awaitForegroundRenewal()
             if (sessionData == null) bootstrap()
             // Fresh credentials (post-bootstrap CSRF) are adopted only for
             // the SAME identity; a moved identity rejects the operation.
@@ -593,10 +598,30 @@ class ApiClient(
     // empty); when the server advertises "session_renew", POST
     // /owner/session/renew commits the rotated cookie+CSRF under the session
     // generation guard before later requests run ("requests wait until fresh
-    // credentials are committed"). LABELED DIVERGENCE: the historical build
-    // serialized ALL requests on the same mutex as this worker; this tree's
-    // request() path is not mutex-covered, so only renew calls serialize here.
-    private val renewMutex = Mutex()
+    // credentials are committed").
+    // RESTORED Nov 24, 2026 (binary parity, K0/J0.java): the historical build
+    // gates request entry on a PROCESS-WIDE static mutex (`public static final
+    // d3.d J0.p`, acquired in the request entry at J0.java:609), waits out an
+    // in-flight foreground renew on the shared k flag with a bounded ~1s
+    // elapsed loop, then adopts the renewed credentials. An earlier revision
+    // of this file kept renewMutex instance-private and left request()
+    // uncovered: a second ApiClient sharing the Session never waited and
+    // could snapshot pre-rotation credentials (RotationHttpTest
+    // .backgroundWaitsForForegroundRenewalAcrossClients failed fast - old
+    // cookie on the wire - whenever its auth read beat the renew commit).
+    // LABELED REMAINING DIVERGENCE: (1) the binary's request entry RUNS the
+    // renew itself when due; this tree renews only from renewOnOpen call
+    // sites, so requests wait but never trigger. (2) The binary gates
+    // low-level response session commits with `if (!this.k)`; this tree's
+    // commit path is the cookie jar, which the renew's own Set-Cookie also
+    // flows through, so the !k commit gate is NOT ported here - a concurrent
+    // in-flight response's Set-Cookie during a renew relies on the session
+    // generation guard alone.
+    // Companion members live in the single companion object at the end of
+    // this file (renewMutex / renewInFlight / awaitForegroundRenewal). The
+    // open-throttle stays instance-scoped: renewing at most once per second
+    // is a per-client UI concern, and sharing it leaks throttle state across
+    // unrelated clients (and tests).
     private var lastForegroundRenew: Long = 0L
 
     suspend fun renewOnOpen() {
@@ -638,6 +663,11 @@ class ApiClient(
                 // same identity, never a rebound one.
                 val renewAuth = session.authIfUnchanged(auth.generation, auth.serverUrl)
                     ?: throw ApiException(0, "stale_operation")
+                // k-flag parity (J0.java): the in-flight marker is set BEFORE
+                // the POST and cleared only AFTER the commit below, so
+                // waiting requests always observe the renewed credentials.
+                renewInFlight = true
+                try {
                 val data = try { raw("/owner/session/renew", "POST", JSONObject(), renewAuth) } catch (e: ApiException) {
                     if (e.status == 401) throw SessionEndedException(e.code, opGen); throw e
                 }
@@ -646,6 +676,9 @@ class ApiClient(
                     session.replaceCredentials(session.cookie, freshCsrf)
                     csrf = freshCsrf
                     sessionData = data
+                }
+                } finally {
+                    renewInFlight = false
                 }
             }
         }
@@ -927,6 +960,23 @@ class ApiClient(
         const val COOKIE_NAME = "__Host-homeroom"
         const val API_PREFIX = "/homeroom/v1"
         private val JSON = "application/json".toMediaType()
+
+        // PROCESS-WIDE renewal coordination (binary parity, K0/J0.java): the
+        // historical build gates request entry on a single static mutex
+        // (`public static final d3.d J0.p`), waits out an in-flight renew on
+        // a shared flag, then adopts renewed credentials.
+        private val renewMutex = Mutex()
+        @Volatile private var renewInFlight = false
+
+        // Bounded wait mirroring the request-entry k loop (~1s elapsed
+        // window). System.nanoTime(): this file also compiles into the
+        // pure-JVM mock harness, where android.os.SystemClock is absent.
+        internal suspend fun awaitForegroundRenewal() {
+            val start = System.nanoTime() / 1_000_000L
+            while (renewInFlight && System.nanoTime() / 1_000_000L - start < 1000L) {
+                kotlinx.coroutines.delay(25L)
+            }
+        }
 
         fun enc(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
 
