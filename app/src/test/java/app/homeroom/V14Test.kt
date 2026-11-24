@@ -48,7 +48,7 @@ class V14Test {
     @Test fun absentCapabilitiesDoNotGuessNewRoutes() {
         val s=Session(org.robolectric.RuntimeEnvironment.getApplication());s.clear()
         val api=ApiClient(s)
-        assertFalse(api.supports("ai_modes"));assertFalse(api.supports("needs_you"))
+        assertFalse(api.hasFeature("ai_modes"));assertFalse(api.hasFeature("needs_you"))
     }
     @Test fun modeAndHealthParser() {
         val ai=OwnerAi.from(JSONObject("""{"actor":"ai_one","mode":"off","mode_version":3,"guide":{"stale":true},"pending_notice_count":2} """))

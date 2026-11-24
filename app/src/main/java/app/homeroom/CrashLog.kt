@@ -15,6 +15,19 @@ object CrashLog {
             previous?.uncaughtException(thread,error)
         }
     }
+    // RECONSTRUCTED Nov 24: exact historical Nov 11 body (operator
+    // model-helper source attachment, parsed as data). Class names + stack
+    // frames only - never exception messages, which can carry private text.
+    internal fun safeDetails(error:Throwable):String {
+        val seen=java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable,Boolean>())
+        val result=StringBuilder();var cause:Throwable?=error;var count=0
+        while(cause!=null && seen.add(cause) && count++<6) {
+            result.append(if(count==1) "" else "Caused by: ").append(cause.javaClass.name).append('\n')
+            cause.stackTrace.take(30).forEach {result.append(it.className).append('.').append(it.methodName).append('(').append(it.fileName).append(':').append(it.lineNumber).append(")\n")}
+            cause=cause.cause
+        }
+        return result.toString().take(12000)
+    }
     fun read(context:Context)=try {context.openFileInput("last-crash.txt").bufferedReader().use {it.readText().take(12000)}} catch(_:Exception) {"No crash recorded on this phone."}
 }
 class HomeRoomApplication:android.app.Application() {

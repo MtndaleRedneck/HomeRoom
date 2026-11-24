@@ -95,6 +95,7 @@ class SessionCommitFaultTest {
             else super.getSharedPreferences(name, mode)
     }
 
+    @org.junit.Before fun resetLatch() { Session.resetStagedStoreUnknownForTests() }
     private var failing = false
     private val overlay = LinkedHashMap<String, Any?>()
     private fun freshSession(): Session {
@@ -110,7 +111,7 @@ class SessionCommitFaultTest {
     @Test fun failedSaveThrowsAndLeavesNoFalseDurableRecord() {
         freshSession().clear(); overlay.clear(); failing = true
         val session = faultSession()
-        try { session.saveStagedUpload(record("a")); fail("failed commit was silent") }
+        try { session.saveStagedUpload("a", record("a")); fail("failed commit was silent") }
         catch (e: IllegalStateException) { /* expected: loud failure */ }
         // Documented boundary: the SAME instance observes the memory-ahead-of-
         // disk state (this is exactly the state the durability gate guards).
@@ -119,22 +120,32 @@ class SessionCommitFaultTest {
         assertTrue(freshSession().stagedUploads().isEmpty())
     }
 
-    @Test fun retryAfterFailedSaveHeals() {
+    @Test fun retryAfterFailedSaveIsBlockedUntilRestart() {
+        // DESIGN CHANGE (Nov 24, I2 latch review): an unconfirmed commit latches
+        // the staged store UNKNOWN and blocks ALL later writes for the life of
+        // the process - the old "retry heals" expectation is superseded,
+        // because a later save could persist the unknown state. A "restart"
+        // (fresh prefs view) re-reads disk and writes work again.
         freshSession().clear(); overlay.clear()
+        Session.resetStagedStoreUnknownForTests()
         val session = faultSession()
         failing = true
-        try { session.saveStagedUpload(record("b")) } catch (_: IllegalStateException) {}
+        try { session.saveStagedUpload("b", record("b")) } catch (_: IllegalStateException) {}
         failing = false
-        session.saveStagedUpload(record("b"))
+        assertTrue(session.stagedUploadsUnknown())
+        try { session.saveStagedUpload("b", record("b")); fail("latched save went through") }
+        catch (_: IllegalStateException) { /* blocked by the latch */ }
+        Session.resetStagedStoreUnknownForTests()
+        session.saveStagedUpload("b", record("b"))
         assertEquals("p-b", freshSession().stagedUploads().single().getString("post_client"))
     }
 
     @Test fun failedRemoveKeepsRecordFailClosed() {
         freshSession().clear(); overlay.clear(); failing = false
         val session = faultSession()
-        session.saveStagedUpload(record("c"))
+        session.saveStagedUpload("c", record("c"))
         failing = true
-        try { session.removeStagedUpload("c"); fail("failed remove was silent") }
+        try { session.saveStagedUpload("c", null); fail("failed remove was silent") }
         catch (e: IllegalStateException) { /* expected */ }
         assertEquals(1, session.stagedUploads().size)
         assertEquals(1, freshSession().stagedUploads().size)

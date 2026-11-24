@@ -241,6 +241,12 @@ class Session(context: Context) {
         }
     }
 
+    // RECONSTRUCTED Nov 24: per-room composer drafts, exact historical Nov 11
+    // shapes (operator model-helper source attachment, parsed as data). Cleared
+    // with the session; per-room keyed.
+    fun composerDraft(roomId: String): String = prefs.getString("composer:" + roomId, "").orEmpty()
+    fun saveComposerDraft(roomId: String, value: String) { prefs.edit().putString("composer:" + roomId, value).apply() }
+
     fun anchor(roomId: String): String? = prefs.getString(KEY_ANCHOR + roomId, null)
 
     fun setAnchor(roomId: String, eventId: String?) {

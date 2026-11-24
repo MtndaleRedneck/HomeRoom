@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class RotationHttpTest {
-    private fun fixture(test:suspend (MockWebServer,Session,()->ApiClient)->Unit)=runBlocking {
+    private fun fixture(test:suspend kotlinx.coroutines.CoroutineScope.(MockWebServer,Session,()->ApiClient)->Unit)=runBlocking {
         val cert=HeldCertificate.Builder().addSubjectAlternativeName("localhost").build()
         val server=MockWebServer()
         server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory(),false)
@@ -25,7 +25,7 @@ class RotationHttpTest {
         val session=Session(org.robolectric.RuntimeEnvironment.getApplication());session.clear()
         session.serverUrl=server.url("/").toString().trimEnd('/');session.cookie="old-secret";session.csrf="old-csrf";session.sessionId="same-session"
         val client={ApiClient(session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(2,TimeUnit.SECONDS)}}
-        try {test(server,session,client)} finally {server.shutdown();session.clear()}
+        try {this.test(server,session,client)} finally {server.shutdown();session.clear()}
     }
     private fun bootstrap()=MockResponse().setBody("""{"csrf":"new-csrf","session_id":"same-session"}""").addHeader("Set-Cookie","__Host-homeroom=new-secret; Path=/; Secure; HttpOnly")
     @Test fun successfulSevenDayRotation()=fixture {server,session,client ->

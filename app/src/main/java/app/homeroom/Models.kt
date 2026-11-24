@@ -349,13 +349,17 @@ data class Rule(
     val decidedBy: String? = null,
     val decidedAt: String? = null,
 ) {
+    // Historical test contract (V3ModelsTest): the property reads as "state";
+    // the reconstructed field name is "status". Unknown is not active.
+    val state: String get() = status
+
     companion object {
         fun from(o: JSONObject): Rule = Rule(
             ruleId = o.optString("rule_id"),
             text = o.optString("text"),
             version = o.optInt("version", 1),
             proposedBy = o.optString("proposed_by"),
-            status = o.optString("status", "active"),
+            status = o.optString("state").ifBlank { o.optString("status") }.ifBlank { "unknown" },
             roomId = o.optString("room_id").ifBlank { null },
             decidedBy = o.nullableString("decided_by"),
             decidedAt = o.nullableString("decided_at"),
