@@ -152,7 +152,8 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell input keyevent 82
             sleep 20
-            adb shell pidof app.homeroom
+            for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 20; done
+            adb shell pidof app.homeroom || { echo 'process not alive after bounded retries - dumping logcat'; adb logcat -d | tail -120; exit 1; }
             adb shell dumpsys activity activities | grep -i 'app.homeroom' | head -20
             adb logcat -d | tail -40
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
@@ -212,7 +213,8 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell input keyevent 82
             sleep 20
-            adb shell pidof app.homeroom
+            for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 20; done
+            adb shell pidof app.homeroom || { echo 'process not alive after bounded retries - dumping logcat'; adb logcat -d | tail -120; exit 1; }
             adb logcat -d | tail -40
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
             adb shell screencap -p /data/local/tmp/release-smoke.png
@@ -266,7 +268,8 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell input keyevent 82
             sleep 20
-            adb shell pidof app.homeroom
+            for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 20; done
+            adb shell pidof app.homeroom || { echo 'process not alive after bounded retries - dumping logcat'; adb logcat -d | tail -120; exit 1; }
             adb logcat -d | tail -60
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
             adb shell screencap -p /data/local/tmp/signed-smoke.png

@@ -4,7 +4,8 @@ import org.junit.Test
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
-@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)\n@org.robolectric.annotation.Config(sdk=[34])
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk=[34])
 class LiveReleaseDiscoveryTest {
  @Test fun publishedReleaseIsDiscoverableAndVerifiable() {
   val r=JSONObject(File("/downloads/release14/live-latest.json").readText())
