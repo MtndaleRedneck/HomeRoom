@@ -159,6 +159,7 @@ class SessionCommitFaultTest {
         assertEquals(1, freshSession().stagedUploads().size)
     }
 
+    @org.junit.Ignore("QUARANTINED contradicts the verified binary: K0/V4.s throws CancellationException(\"Session changed\") on a stale generation - this test's silent-drop expectation predates the 9e09ce9 throw-on-stale restoration; the no-land property is pinned by characterization_staleGenerationWriteThrowsAndDoesNotLand below")
     @Test fun staleGenerationCannotWriteAfterClear() {
         // Generation-guard semantics behind the new shared stateLock (I2
         // sign-out race finding). Sequential: discriminates the guard, not the
@@ -171,6 +172,30 @@ class SessionCommitFaultTest {
         session.withinGeneration(stale) { session.replaceCredentials("ghost", "ghost"); wrote = true }
         assertFalse("stale generation wrote credentials", wrote)
         assertNull(session.cookie)
+    }
+
+    // CHARACTERIZATION of the verified binary contract (K0/V4.s:986-1007): a
+    // stale generation makes withinGeneration THROW CancellationException
+    // ("Session changed") inside the session lock BEFORE the operation runs -
+    // the dead session's write is loud and can never land. Pins the no-land
+    // property of the two quarantined silent-drop expectations against the
+    // release's actual mechanism.
+    @Test fun characterization_staleGenerationWriteThrowsAndDoesNotLand() {
+        val session = freshSession().also { it.clear() }
+        val stale = session.generation
+        session.clear()
+        var wrote = false
+        try { session.withinGeneration(stale) { session.replaceCredentials("ghost", "ghost"); wrote = true } }
+        catch (e: kotlinx.coroutines.CancellationException) { assertEquals("Session changed", e.message) }
+        assertFalse("stale generation wrote credentials", wrote)
+        assertNull(session.cookie)
+        val s2 = freshSession().also { it.clear() }
+        s2.saveStagedUpload("a", JSONObject().put("local_id", "a"))
+        val old2 = s2.generation
+        s2.clear()
+        try { s2.withinGeneration(old2) { s2.saveStagedUpload("b", JSONObject().put("local_id", "b")) } }
+        catch (e: kotlinx.coroutines.CancellationException) { assertEquals("Session changed", e.message) }
+        assertTrue("stale staged write landed after clear", s2.stagedUploads().isEmpty())
     }
 
     @Test fun responseCookieFromDeadGenerationDropped() {

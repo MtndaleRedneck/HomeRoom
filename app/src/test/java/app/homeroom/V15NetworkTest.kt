@@ -64,7 +64,7 @@ class V15NetworkTest {
     // so the held response's Set-Cookie is dropped and dead credentials are
     // not restored.
     @Test fun heldPollRejectsStaleGenerationCookie()=fixture {server,session,api->
-        api.bootstrap()
+        bootstrap(server)
         server.enqueue(MockResponse().setBody("""{"changes":[],"next_cursor":"watermark","has_more":false}""").addHeader("Set-Cookie","__Host-homeroom=stale; Path=/; Secure; HttpOnly"))
         api.preDispatchHook = { session.clear() }
         try { api.heldUpdates(null,0) } catch (_:SessionEndedException) {} finally { api.preDispatchHook = null }

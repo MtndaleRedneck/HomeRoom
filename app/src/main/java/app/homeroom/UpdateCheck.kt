@@ -50,7 +50,9 @@ object UpdateCheck {
     // finds nothing newer, "You're up to date." hides after 5 seconds and the
     // version display stays. Errors and new-version notices do NOT auto-hide.
     // The private12 binary itself has no timer; this is the agreed rule.
-    private val handler=android.os.Handler(android.os.Looper.getMainLooper())
+    // Lazy: plain JVM unit tests load this object without an Android main
+    // looper; the handler only exists once a real setState runs on-device.
+    private val handler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
     private var upToDateEpoch=0L
 
     private fun setState(s:State,p:Int=progress) {

@@ -94,6 +94,7 @@ class SessionStagedUploadTest {
         try {s.saveStagedUpload("b",JSONObject().put("local_id","b"));fail("latched save went through")} catch(e:IllegalStateException) {}
     }
 
+    @org.junit.Ignore("QUARANTINED contradicts the verified binary: K0/V4.s throws CancellationException(\"Session changed\") on a stale generation - this test's silent-drop expectation predates the 9e09ce9 throw-on-stale restoration; the no-land property is pinned by SessionCommitFaultTest.characterization_staleGenerationWriteThrowsAndDoesNotLand")
     @Test fun stagedWriteUnderStaleGenerationDoesNotLandAfterClear() {
         val s=session()
         s.saveStagedUpload("a",JSONObject().put("local_id","a"))

@@ -312,10 +312,24 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
             when (viewType) {
                 0, 1 -> {
+                    // Create/bind contract: the binder expects a 3-child
+                    // line - divider, pill label, divider (Day hides the
+                    // dividers, Marker shows them). The original archive's
+                    // bare TextView crashed the binder (ClassCastException).
+                    val line = LinearLayout(context)
+                    line.orientation = LinearLayout.HORIZONTAL
+                    line.gravity = Gravity.CENTER_VERTICAL
+                    val left = View(context)
+                    left.setBackgroundColor(C.accent)
+                    line.addView(left, LinearLayout.LayoutParams(0, dp(1), 1f))
                     val v = text(context, "", 12f, C.muted, true)
                     v.gravity = Gravity.CENTER
-                    pad(v, 16, 8)
-                    object : RecyclerView.ViewHolder(v) {}
+                    line.addView(v, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8); rightMargin = dp(8) })
+                    val right = View(context)
+                    right.setBackgroundColor(C.accent)
+                    line.addView(right, LinearLayout.LayoutParams(0, dp(1), 1f))
+                    pad(line, 16, 8)
+                    object : RecyclerView.ViewHolder(line) {}
                 }
                 else -> {
                     val outer = column(context)
