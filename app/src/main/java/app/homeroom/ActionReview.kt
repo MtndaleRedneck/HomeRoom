@@ -59,13 +59,15 @@ internal data class ActionReview(val kind:String,val fields:List<Pair<String,Str
                 require(total<=25L*1024*1024)
                 show("Attachment safety","The consumer must inspect these exact bytes and independently verify sharing with all To, CC and BCC recipients. Metadata is not permission.")
             } else {
-                d.exact("merchant","items","delivery","final_total_minor","currency","undo_terms","checkout_reference","payment_identity")
+                // TRUE private12 key set (B/f.java:241): total_components is required.
+                d.exact("merchant","items","delivery","total_components","final_total_minor","currency","undo_terms","checkout_reference","payment_identity")
                 val merchant=d.obj("merchant").apply {exact("name","origin")}
                 show("Merchant",merchant.str("name",1,160))
                 val origin=merchant.str("origin",1,300);val uri=URI(origin)
                 require(uri.scheme=="https" && !uri.host.isNullOrBlank() && uri.rawUserInfo==null && uri.rawQuery==null && uri.rawFragment==null && uri.rawPath.isNullOrEmpty())
                 show("Exact merchant origin",origin)
                 val items=d.array("items");require(items.length() in 1..50)
+                var lineTotalSum=0L
                 for(i in 0 until items.length()) {
                     val item=items.get(i) as? JSONObject ?: error("Item object required")
                     item.exact("merchant_item_id","name","variant","quantity","unit_price_minor","line_total_minor")
@@ -74,10 +76,30 @@ internal data class ActionReview(val kind:String,val fields:List<Pair<String,Str
                     show("Variant "+(i+1),item.str("variant",0,500))
                     show("Quantity "+(i+1),item.integer("quantity",1,1000).toString())
                     show("Unit price "+(i+1),usd(item.integer("unit_price_minor",0,LIMIT)))
-                    show("Merchant line total "+(i+1),usd(item.integer("line_total_minor",0,LIMIT)))
+                    val lineTotal=item.integer("line_total_minor",0,LIMIT)
+                    lineTotalSum+=lineTotal
+                    show("Merchant line total "+(i+1),usd(lineTotal))
                 }
                 require(d.str("currency",3,3)=="USD")
-                show("Exact final total (tax, shipping and fees included)",usd(d.integer("final_total_minor",0,LIMIT)))
+                // TRUE private12 cost honesty (B/f.java:286-302): the component
+                // breakdown is required and must reconcile exactly - summed
+                // line totals equal items_minor, the discount never exceeds
+                // items_minor, and final == items - discount + tax + shipping
+                // + fees. An unverifiable total fails closed.
+                val components=d.obj("total_components").apply {exact("items_minor","discount_minor","tax_minor","shipping_minor","fees_minor")}
+                val itemsMinor=components.integer("items_minor",0,LIMIT)
+                val discountMinor=components.integer("discount_minor",0,LIMIT)
+                val taxMinor=components.integer("tax_minor",0,LIMIT)
+                val shippingMinor=components.integer("shipping_minor",0,LIMIT)
+                val feesMinor=components.integer("fees_minor",0,LIMIT)
+                val finalMinor=d.integer("final_total_minor",0,LIMIT)
+                require(lineTotalSum==itemsMinor && discountMinor<=itemsMinor && finalMinor==itemsMinor-discountMinor+taxMinor+shippingMinor+feesMinor)
+                show("Items after item discounts",usd(itemsMinor))
+                show("Order-level discount",usd(discountMinor))
+                show("Tax",usd(taxMinor))
+                show("Shipping",usd(shippingMinor))
+                show("Fees",usd(feesMinor))
+                show("Exact final total (tax, shipping and fees included)",usd(finalMinor))
                 val delivery=d.obj("delivery").apply {exact("method","recipient_name","address","pickup_location")}
                 val method=delivery.str("method",1,20);require(method in setOf("shipping","pickup"))
                 show("Delivery method",method)
