@@ -35,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var headerTitle: android.widget.TextView
     private lateinit var headerSearch: View
     private var displayedRoom: Room? = null
+    // Explicit pause-block for the backdrop capture (I2 review Nov 24): the
+    // cover/FLAG_SECURE predicate alone cannot block a capture enqueued after
+    // onPause when neither holds, so backgrounding is its own blocked state.
+    private var captureSuspended = false
 
     private val tabScreens = mutableMapOf<Int, Screen>()
     private var currentTab: Int = R.id.nav_chats
@@ -121,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         // first capture on attach already respects the capture-under-lock gate.
         nav = GlassNav(this, column) { id -> showTab(id) }
         nav.captureBlocked = {
-            appLock.coverShowing ||
+            captureSuspended || appLock.coverShowing ||
                 (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
         }
         root.addView(nav, FrameLayout.LayoutParams(dp(256), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
@@ -547,6 +551,7 @@ class MainActivity : AppCompatActivity() {
         // backdrop buffers; AppLock.onPause re-locks so the cover - and the
         // capture block - are up before the next resume. The callback review
         // found this call missing: authenticated stayed true across pauses.
+        captureSuspended = true
         if (::nav.isInitialized) nav.invalidateBackdrop()
         appLock.onPause()
     }
@@ -556,6 +561,7 @@ class MainActivity : AppCompatActivity() {
         // RECOVERED Nov 24, 2026 (operator Nov 15 readback): the release's
         // onResume applied privacy, gated on the app lock, then resumed
         // content; resumeContent renewed features/session when enrolled.
+        captureSuspended = false
         applyPrivacy()
         if (appLock.gate()) return
         refreshNavBackdrop()
