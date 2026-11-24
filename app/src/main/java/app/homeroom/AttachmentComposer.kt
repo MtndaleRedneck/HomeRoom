@@ -44,10 +44,16 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     }
     private fun deleteStagedFiles() {privateFile.delete();File(context.cacheDir,fileName).delete();File(stagedDir,fileName).delete()}
     // In-flight generation barrier (historical persist(): withinGeneration):
-    // captured at construction; a stale generation makes persist a no-op and
-    // ABORTS the operation - no network after a dropped save (I2). Resume
-    // binding to the account/server is a SEPARATE persisted check (I2), since
-    // a resumed composer always belongs to a later generation.
+    // captured at construction; a stale generation makes withinGeneration
+    // THROW CancellationException("Session changed") inside the session lock
+    // BEFORE the write (exact release parity, K0/V4.s:986-1007) - the save
+    // provably never lands and the operation ABORTS, no network after a
+    // dropped save (I2). persistSwap/persistReplace catch the throw, latch
+    // persistenceUnknown (conservative: sends and remote deletion stay
+    // blocked until restart) and rethrow; UI callers convert it to the
+    // honest failed-save path. Resume binding to the account/server is a
+    // SEPARATE persisted check (I2), since a resumed composer always belongs
+    // to a later generation.
     private val initiatingAuth=host.session.authSnapshot()
     private val generation=initiatingAuth.generation
     // Latched persistence uncertainty (I2): a failed commit may leave memory
@@ -108,8 +114,9 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // generation) and SWAP (stagedRecord assignment) are ONE atomic section
     // under the guard. Deriving outside the guard let a stale copy rewind a
     // concurrently committed rotation/marker. A null transform result aborts
-    // without writing. False = terminal, no record, aborted transform, or
-    // stale generation.
+    // without writing. False = terminal, no record, or aborted transform; a
+    // STALE GENERATION does not return false - withinGeneration throws, the
+    // catch below latches persistenceUnknown, and the throw propagates.
     private fun persistSwap(transform:(JSONObject)->JSONObject?):Boolean =
         try {
             guard.persist {
