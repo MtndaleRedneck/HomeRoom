@@ -17,7 +17,7 @@ import org.json.JSONObject
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[34])
+@Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi") // message bubbles cap at 0.75*display width - needs a real display
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NativeLayoutTest {
     private fun field(o:Any,n:String):Any = o.javaClass.getDeclaredField(n).apply { isAccessible=true }.get(o)

@@ -57,7 +57,7 @@ class V3RenderTest {
             // content descriptions kept alongside, per I2's partial review.
             val items=field(nav,"items").get(nav) as LinearLayout
             val chatsCell=items.getChildAt(0) as LinearLayout
-            val rulesCell=items.getChildAt(2) as LinearLayout
+            val rulesCell=items.getChildAt(1) as LinearLayout // tab order: chats, rules, files, settings
             val settingsCell=items.getChildAt(3) as LinearLayout
             val chatsBadge=chatsCell.findViewWithTag<TextView>("badge")!!
             val rulesBadge=rulesCell.findViewWithTag<TextView>("badge")!!

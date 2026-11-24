@@ -65,9 +65,13 @@ class V15NetworkTest {
     // not restored.
     @Test fun heldPollRejectsStaleGenerationCookie()=fixture {server,session,api->
         bootstrap(server)
+        api.bootstrap() // enroll first: the hook must fire on the POLL, not bootstrap
         server.enqueue(MockResponse().setBody("""{"changes":[],"next_cursor":"watermark","has_more":false}""").addHeader("Set-Cookie","__Host-homeroom=stale; Path=/; Secure; HttpOnly"))
         api.preDispatchHook = { session.clear() }
-        try { api.heldUpdates(null,0) } catch (_:SessionEndedException) {} finally { api.preDispatchHook = null }
+        // The stale response's cookie write hits withinGeneration's verified
+        // binary contract (K0/V4.s): CancellationException("Session changed").
+        try { api.heldUpdates(null,0) } catch (_:SessionEndedException) {} catch (_:kotlinx.coroutines.CancellationException) {}
+        finally { api.preDispatchHook = null }
         assertNull(session.cookie)
     }
     @Test fun receiptsNeverBootstrapOrRenew()=fixture {server,_,api->
