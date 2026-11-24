@@ -523,15 +523,6 @@ class ApiClient(
     // these): EVERY request carries Sec-Fetch-Site: same-origin, Sec-Fetch-Mode:
     // cors and Sec-Fetch-Dest: empty; non-GET requests also carry Origin =
     // scheme://host[:port] of the request URL (no path).
-    private fun applyOriginHeaders(builder: Request.Builder, url: String, method: String) {
-        val u = java.net.URI(url)
-        val defaultPort = if (u.scheme == "https") 443 else if (u.scheme == "http") 80 else -1
-        val origin = u.scheme + "://" + u.host + (if (u.port != -1 && u.port != defaultPort) ":" + u.port else "")
-        if (method != "GET") builder.header("Origin", origin)
-        builder.header("Sec-Fetch-Site", "same-origin")
-        builder.header("Sec-Fetch-Mode", "cors")
-        builder.header("Sec-Fetch-Dest", "empty")
-    }
 
     private fun checkSession(opGeneration: Long? = null) {
         if (session.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", opGeneration)
@@ -851,5 +842,17 @@ class ApiClient(
         private val JSON = "application/json".toMediaType()
 
         fun enc(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
+
+        // Stateless header helper; original-lineage tests call it
+        // companion-style (OriginHeadersTest), so it lives here as internal.
+        internal fun applyOriginHeaders(builder: Request.Builder, url: String, method: String) {
+            val u = java.net.URI(url)
+            val defaultPort = if (u.scheme == "https") 443 else if (u.scheme == "http") 80 else -1
+            val origin = u.scheme + "://" + u.host + (if (u.port != -1 && u.port != defaultPort) ":" + u.port else "")
+            if (method != "GET") builder.header("Origin", origin)
+            builder.header("Sec-Fetch-Site", "same-origin")
+            builder.header("Sec-Fetch-Mode", "cors")
+            builder.header("Sec-Fetch-Dest", "empty")
+        }
     }
 }
