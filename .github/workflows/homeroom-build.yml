@@ -129,6 +129,9 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n app.homeroom/.MainActivity
             sleep 45
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent 82
+            sleep 20
             adb shell pidof app.homeroom
             adb shell dumpsys activity activities | grep -i 'app.homeroom' | head -20
             adb logcat -d | tail -40
@@ -143,5 +146,64 @@ jobs:
         with:
           name: smoke-screenshot
           path: smoke.png
+
+  release-runtime-smoke:
+    # Runtime qualification for the RELEASE packaging (R8-minified, shrunk
+    # resources): the unsigned intermediate from unsigned-release-artifact is
+    # signed IN CI with a THROWAWAY debug key (never the release signer, no
+    # vault material anywhere near CI) and installed/launched on an emulator.
+    # This proves the minified release artifact installs and runs. It does
+    # NOT qualify the same-signer artifact: that remains the local apksig
+    # verification (signer cert sha256 0063cd16...) until a real-phone
+    # install of the vault-signed build. FCM-backed features cannot
+    # initialize under a throwaway signature; this is a launch/no-fatal check.
+    needs: unsigned-release-artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-release-apk
+
+      - name: Sign the unsigned release APK with a throwaway CI debug key
+        run: |
+          keytool -genkeypair -v -keystore /tmp/ci-debug.keystore -storepass android -keypass android -alias cidebug -keyalg RSA -keysize 2048 -validity 1 -dname "CN=CI Throwaway Debug, O=NotHomeRoom, C=US"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f -p 4 homeroom-1.5-reconstruction-UNSIGNED.apk release-ci-aligned.apk
+          "$BT/apksigner" sign --ks /tmp/ci-debug.keystore --ks-pass pass:android --key-pass pass:android --out release-ci-debugsigned.apk release-ci-aligned.apk
+          "$BT/apksigner" verify --print-certs release-ci-debugsigned.apk | tee release-ci-certs.txt
+          ! grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' release-ci-certs.txt
+
+      - name: Install and smoke the release artifact on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: "yes"
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          script: |
+            while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+            adb shell settings put global verifier_verify_adb_installs 0
+            adb install -r release-ci-debugsigned.apk
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 45
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent 82
+            sleep 20
+            adb shell pidof app.homeroom
+            adb logcat -d | tail -40
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
+            adb shell screencap -p /data/local/tmp/release-smoke.png
+            adb pull /data/local/tmp/release-smoke.png release-smoke.png
+            echo "ok: release artifact (CI-debug-signed) installs, launches, stays alive, no fatal exception"
+
+      - name: Upload release smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-screenshot
+          path: release-smoke.png
           if-no-files-found: warn
           retention-days: 5
