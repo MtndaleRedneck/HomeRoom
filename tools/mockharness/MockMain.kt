@@ -47,6 +47,7 @@ fun main(args: Array<String>) = runBlocking {
             .name(ApiClient.COOKIE_NAME).value(value)
             .domain("127.0.0.1").path("/").build()
         session.cookie = "test-cookie"
+        api.noteOperationStartForTest() // jar request-start context, which direct pins bypass
         require(!api.acceptSessionCookie("http://example.invalid/x".toHttpUrl(), listOf(cookie("evil")))) { "foreign Set-Cookie accepted" }
         require(session.cookie == "test-cookie") { "foreign Set-Cookie overwrote enrolled session" }
         require(!api.acceptSessionCookie("http://127.0.0.1:9999/x".toHttpUrl(), listOf(cookie("evil")))) { "other-port Set-Cookie accepted" }

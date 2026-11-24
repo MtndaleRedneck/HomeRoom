@@ -58,6 +58,11 @@ class ApiClient(private val session: Session) {
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
+                // Operation identity for EVERY request through this client
+                // (raw, downloads, chunks, avatars, previews - all six call
+                // sites), captured at request start; saveFromResponse re-checks
+                // it at response time via acceptCookieForGeneration.
+                opGenLocal.set(session.generation)
                 val value = sessionCookieFor(url) ?: return emptyList()
                 return listOf(
                     Cookie.Builder()
@@ -95,14 +100,21 @@ class ApiClient(private val session: Session) {
         if (!isEnrolledOrigin(url)) return false
         val cookie = cookies.firstOrNull { it.name == COOKIE_NAME } ?: return false
         // Operation-generation boundary (I2 recheck): the generation captured
-        // by raw() before THIS request; outside a request (harness pins) the
-        // current generation. A response from before sign-out is dropped even
-        // though the CookieJar fires outside the paired credential commit.
-        val opGen = opGenLocal.get() ?: session.generation
+        // by the CookieJar's loadForRequest at THIS request's start. FAIL
+        // CLOSED when no operation context exists - a response without a
+        // request-start identity must not confer current-generation authority
+        // (I2: missing context is not proof of currency).
+        val opGen = opGenLocal.get() ?: return false
         return session.acceptCookieForGeneration(opGen, cookie.value)
     }
 
     private val opGenLocal = ThreadLocal<Long?>()
+
+    // Test-only: direct acceptSessionCookie pin checks run outside any
+    // request, so they establish the operation context the jar would have.
+    internal fun noteOperationStartForTest() {
+        opGenLocal.set(session.generation)
+    }
 
     private fun enrolledOrigin(): Triple<String, String, Int>? = try {
         val u = java.net.URI(session.serverUrl ?: return null)
@@ -115,9 +127,6 @@ class ApiClient(private val session: Session) {
         (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + API_PREFIX
 
     private fun raw(route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
-        // Operation identity captured BEFORE the network (I2 recheck): the
-        // CookieJar consults it via opGenLocal when the response arrives.
-        opGenLocal.set(session.generation)
         val fullUrl = baseUrl() + route
         val builder = Request.Builder()
             .url(fullUrl)
@@ -133,7 +142,6 @@ class ApiClient(private val session: Session) {
             builder.get()
         }
         if (method != "GET") csrf?.let { builder.header("X-CSRF-Token", it) }
-        try {
         client.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
             val data = try {
@@ -146,9 +154,6 @@ class ApiClient(private val session: Session) {
                 throw ApiException(response.code, data.optString("error", "request_failed"), retryAfter)
             }
             return data
-        }
-        } finally {
-            opGenLocal.remove()
         }
     }
 
