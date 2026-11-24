@@ -184,17 +184,23 @@ class SessionCommitFaultTest {
         val session = freshSession().also { it.clear() }
         val stale = session.generation
         session.clear()
+        // The throw is REQUIRED (I2 interim review): asserting only inside
+        // catch would let a silent no-op pass without proving the throw.
         var wrote = false
-        try { session.withinGeneration(stale) { session.replaceCredentials("ghost", "ghost"); wrote = true } }
-        catch (e: kotlinx.coroutines.CancellationException) { assertEquals("Session changed", e.message) }
+        val e1 = assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            session.withinGeneration(stale) { session.replaceCredentials("ghost", "ghost"); wrote = true }
+        }
+        assertEquals("Session changed", e1.message)
         assertFalse("stale generation wrote credentials", wrote)
         assertNull(session.cookie)
         val s2 = freshSession().also { it.clear() }
         s2.saveStagedUpload("a", JSONObject().put("local_id", "a"))
         val old2 = s2.generation
         s2.clear()
-        try { s2.withinGeneration(old2) { s2.saveStagedUpload("b", JSONObject().put("local_id", "b")) } }
-        catch (e: kotlinx.coroutines.CancellationException) { assertEquals("Session changed", e.message) }
+        val e2 = assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            s2.withinGeneration(old2) { s2.saveStagedUpload("b", JSONObject().put("local_id", "b")) }
+        }
+        assertEquals("Session changed", e2.message)
         assertTrue("stale staged write landed after clear", s2.stagedUploads().isEmpty())
     }
 
