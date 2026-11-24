@@ -47,12 +47,12 @@ fun main(args: Array<String>) = runBlocking {
             .name(ApiClient.COOKIE_NAME).value(value)
             .domain("127.0.0.1").path("/").build()
         session.cookie = "test-cookie"
-        api.noteOperationStartForTest() // jar request-start context, which direct pins bypass
-        require(!api.acceptSessionCookie("http://example.invalid/x".toHttpUrl(), listOf(cookie("evil")))) { "foreign Set-Cookie accepted" }
+        val opGen = session.generation // operation context the request path would supply
+        require(!api.acceptSessionCookie("http://example.invalid/x".toHttpUrl(), listOf(cookie("evil")), opGen)) { "foreign Set-Cookie accepted" }
         require(session.cookie == "test-cookie") { "foreign Set-Cookie overwrote enrolled session" }
-        require(!api.acceptSessionCookie("http://127.0.0.1:9999/x".toHttpUrl(), listOf(cookie("evil")))) { "other-port Set-Cookie accepted" }
+        require(!api.acceptSessionCookie("http://127.0.0.1:9999/x".toHttpUrl(), listOf(cookie("evil")), opGen)) { "other-port Set-Cookie accepted" }
         require(session.cookie == "test-cookie") { "other-port Set-Cookie overwrote enrolled session" }
-        require(api.acceptSessionCookie("http://127.0.0.1:8471/x".toHttpUrl(), listOf(cookie("rotated")))) { "enrolled Set-Cookie refused" }
+        require(api.acceptSessionCookie("http://127.0.0.1:8471/x".toHttpUrl(), listOf(cookie("rotated")), opGen)) { "enrolled Set-Cookie refused" }
         require(session.cookie == "rotated") { "enrolled Set-Cookie not stored" }
         session.cookie = "test-cookie"
     }
@@ -208,6 +208,67 @@ fun main(args: Array<String>) = runBlocking {
         }
         // Success here means the retry reached the ORIGINAL mock with the
         // ORIGINAL cookie despite the interleaved rebind attempt.
+    }
+    check("initial-dispatch-snapshot-bound") {
+        // I2 4ff0522 verdict: the FIRST attempt is snapshot-bound too. The
+        // hook interleaves a clear+re-enroll AFTER the operation captured its
+        // immutable snapshot and BEFORE the request hits the network. A
+        // live-bound dispatch would carry rebound-cookie to :9999 (connection
+        // refused); the snapshot-bound attempt must reach THIS mock with the
+        // ORIGINAL cookie, the injected 403 must then be rejected as
+        // stale_operation, and the 403's Set-Cookie (attributed to the dead
+        // generation) must not overwrite the NEW session's cookie.
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.cookie = "test-cookie"
+        api.preDispatchHook = {
+            session.generation += 1
+            session.serverUrl = "http://127.0.0.1:9999" // re-enrolled elsewhere
+            session.cookie = "rebound-cookie"
+            session.csrf = "rebound-csrf"
+        }
+        var staleCode: String? = null
+        var sessionEnded = false
+        try { api.markReadEvents("TRIGGER_CSRF_ONCE:predispatch", listOf("ev5")) }
+        catch (e: ApiException) { staleCode = e.code }
+        catch (e: SessionEndedException) { sessionEnded = true }
+        finally { api.preDispatchHook = null }
+        require(staleCode == "stale_operation" && !sessionEnded) {
+            "initial dispatch after pre-dispatch rebind: got $staleCode, sessionEnded=$sessionEnded" }
+        require(session.cookie == "rebound-cookie") {
+            "stale response Set-Cookie overwrote the new session cookie: ${session.cookie}" }
+        val seenFile = System.getenv("SEEN_FILE") ?: "/tmp/hr_mock_seen.txt"
+        val last = java.io.File(seenFile).readLines().last { it.contains("/read-events") }
+        require(last.contains("test-cookie")) { "initial dispatch did not carry the ORIGINAL cookie: $last" }
+        require(!last.contains("rebound-cookie")) { "initial dispatch carried the REBOUND cookie: $last" }
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.cookie = "test-cookie"
+        session.csrf = null
+        session.generation -= 1
+    }
+    check("direct-op-dispatch-snapshot-bound") {
+        // Same interleave against a DIRECT operation (no request() wrapper):
+        // filePreview must dispatch from its entry snapshot - the request
+        // reaches this mock (404 preview_failed, not a connection error to
+        // :9999) carrying the ORIGINAL cookie.
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.cookie = "test-cookie"
+        api.preDispatchHook = {
+            session.generation += 1
+            session.serverUrl = "http://127.0.0.1:9999"
+            session.cookie = "rebound-cookie"
+        }
+        var code: String? = null
+        try { api.filePreview("some-file") }
+        catch (e: ApiException) { code = e.code }
+        finally { api.preDispatchHook = null }
+        require(code == "preview_failed") { "direct op after pre-dispatch rebind: got $code" }
+        val seenFile = System.getenv("SEEN_FILE") ?: "/tmp/hr_mock_seen.txt"
+        val last = java.io.File(seenFile).readLines().last { it.contains("/owner/files/") }
+        require(last.contains("test-cookie")) { "direct op did not carry the ORIGINAL cookie: $last" }
+        require(!last.contains("rebound-cookie")) { "direct op carried the REBOUND cookie: $last" }
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.cookie = "test-cookie"
+        session.generation -= 1
     }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.

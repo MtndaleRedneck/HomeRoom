@@ -5,11 +5,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
-import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -48,36 +48,17 @@ class ApiClient(private val session: Session) {
     // any legitimate avatar.
     private val AVATAR_MAX_BYTES = 8 * 1024 * 1024
 
+    // ONE jarless client for every app request (I2 4ff0522 coherent
+    // boundary): requests carry Cookie/CSRF explicitly from an immutable
+    // Session.OpAuth snapshot captured at operation entry, and response
+    // cookies are accepted explicitly, attributed to the operation's
+    // generation (acceptResponseCookies). OkHttp's BridgeInterceptor would
+    // replace an explicit Cookie header with live jar state - that mechanism
+    // was the rebinding path, so no CookieJar exists at all.
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .followRedirects(false)
-        .cookieJar(object : CookieJar {
-            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                // load/save pair on the same call thread (OkHttp Bridge
-                // interceptor); clear after use so a reused pool thread never
-                // carries stale operation context into a direct pin call.
-                try { acceptSessionCookie(url, cookies) } finally { opGenLocal.remove() }
-            }
-
-            override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                // Operation identity for EVERY request through this client
-                // (raw, downloads, chunks, avatars, previews - all six call
-                // sites), captured at request start; saveFromResponse re-checks
-                // it at response time via acceptCookieForGeneration.
-                opGenLocal.set(session.generation)
-                val value = sessionCookieFor(url) ?: return emptyList()
-                return listOf(
-                    Cookie.Builder()
-                        .name(COOKIE_NAME)
-                        .value(value)
-                        .domain(url.host)
-                        .path("/")
-                        .secure()
-                        .build()
-                )
-            }
-        })
         .build()
 
     // RECONSTRUCTION-ORIGINAL hardening (not release-evidenced): the session
@@ -99,36 +80,26 @@ class ApiClient(private val session: Session) {
     // cookie is only ACCEPTED from the enrolled server's origin. A foreign
     // host (e.g. an absolute avatar URL) must not overwrite enrolled session
     // state with a same-named cookie. Internal so the mock harness can pin it.
-    internal fun acceptSessionCookie(url: HttpUrl, cookies: List<Cookie>): Boolean {
+    // Every session-cookie acceptance is attributed to the OPERATION's
+    // generation: a response from before sign-out is dropped by
+    // Session.acceptCookieForGeneration under stateLock. Internal so the
+    // mock harness can pin it.
+    internal fun acceptSessionCookie(url: HttpUrl, cookies: List<Cookie>, opGeneration: Long): Boolean {
         if (!isEnrolledOrigin(url)) return false
         val cookie = cookies.firstOrNull { it.name == COOKIE_NAME } ?: return false
-        // Operation-generation boundary (I2 recheck): the generation captured
-        // by the CookieJar's loadForRequest at THIS request's start. FAIL
-        // CLOSED when no operation context exists - a response without a
-        // request-start identity must not confer current-generation authority
-        // (I2: missing context is not proof of currency).
-        val opGen = opGenLocal.get() ?: return false
-        return session.acceptCookieForGeneration(opGen, cookie.value)
+        return session.acceptCookieForGeneration(opGeneration, cookie.value)
     }
 
-    private val opGenLocal = ThreadLocal<Long?>()
-
-    // Jarless client for explicit-snapshot requests (the explicit-recovery
-    // retry). The jarred client would REPLACE an explicitly set Cookie header
-    // with live session state (BridgeInterceptor), which is exactly the
-    // rebinding the retry must avoid; a jarless client also never accepts
-    // response cookies, so a rotated cookie in the retry response is ignored
-    // (the next request self-heals through the normal 403 recovery).
-    private val snapshotClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(false)
-        .build()
-
-    // Test-only: direct acceptSessionCookie pin checks run outside any
-    // request, so they establish the operation context the jar would have.
-    internal fun noteOperationStartForTest() {
-        opGenLocal.set(session.generation)
+    // Explicit response-cookie acceptance for the jarless client: every
+    // response passes here, attributed to the issuing operation's snapshot.
+    private fun acceptResponseCookies(response: Response, auth: Session.OpAuth) {
+        val url = response.request.url
+        for (h in response.headers("Set-Cookie")) {
+            val parsed = Cookie.parse(url, h) ?: continue
+            if (parsed.name == COOKIE_NAME) {
+                acceptSessionCookie(url, listOf(parsed), auth.generation)
+            }
+        }
     }
 
     private fun enrolledOrigin(): Triple<String, String, Int>? = try {
@@ -138,15 +109,21 @@ class ApiClient(private val session: Session) {
         Triple(u.scheme.lowercase(), host, port)
     } catch (e: Exception) { null }
 
-    private fun baseUrl(): String =
-        (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + API_PREFIX
+    private fun baseUrl(auth: Session.OpAuth): String =
+        (auth.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + API_PREFIX
 
-    private fun raw(route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
-        val fullUrl = baseUrl() + route
+    // Every app request is built ENTIRELY from the immutable OpAuth
+    // snapshot captured at operation entry (I2 4ff0522 coherent boundary):
+    // URL, Cookie and CSRF never come from live session state at dispatch
+    // time, so a clear+re-enroll on any thread can only affect NEW
+    // operations, never rebind an in-flight body.
+    private fun raw(route: String, method: String = "GET", body: JSONObject? = null, auth: Session.OpAuth): JSONObject {
+        val fullUrl = baseUrl(auth) + route
         val builder = Request.Builder()
             .url(fullUrl)
             .header("Accept", "application/json")
             .header("Cache-Control", "no-store")
+        auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
         applyOriginHeaders(builder, fullUrl, method)
         if (body != null) {
             builder.header("Content-Type", "application/json")
@@ -156,8 +133,11 @@ class ApiClient(private val session: Session) {
         } else {
             builder.get()
         }
-        if (method != "GET") csrf?.let { builder.header("X-CSRF-Token", it) }
-        client.newCall(builder.build()).execute().use { response ->
+        // Same-origin CSRF header: only ever attached to enrolled-server
+        // requests, and only from the operation's own snapshot.
+        if (method != "GET") auth.csrf?.let { builder.header("X-CSRF-Token", it) }
+        execute(builder).use { response ->
+            acceptResponseCookies(response, auth)
             val text = response.body?.string().orEmpty()
             val data = try {
                 if (text.isEmpty()) JSONObject() else JSONObject(text)
@@ -174,12 +154,15 @@ class ApiClient(private val session: Session) {
 
     /** Streams an owner file through the app's own client. The cookie never leaves the app. Returns the MIME type. */
     suspend fun downloadOwnerFile(id:String, out:java.io.OutputStream): String = withContext(Dispatchers.IO) {
-        val builder=Request.Builder().url(baseUrl()+"/owner/files/"+enc(id)).header("Cache-Control","no-store").get()
-        applyOriginHeaders(builder,baseUrl()+"/owner/files/"+enc(id),"GET")
-        client.newCall(builder.build()).execute().use { response ->
+        val auth = session.authSnapshot()
+        val builder=Request.Builder().url(baseUrl(auth)+"/owner/files/"+enc(id)).header("Cache-Control","no-store").get()
+        auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
+        applyOriginHeaders(builder,baseUrl(auth)+"/owner/files/"+enc(id),"GET")
+        execute(builder).use { response ->
+            acceptResponseCookies(response, auth)
             checkSession()
             if(!response.isSuccessful) {
-                if(response.code==401) throw SessionEndedException("owner_session_required", opGenLocal.get())
+                if(response.code==401) throw SessionEndedException("owner_session_required", auth.generation)
                 throw ApiException(response.code,"download_failed")
             }
             response.body?.byteStream()?.use {it.copyTo(out)} ?: throw ApiException(response.code,"download_failed")
@@ -187,51 +170,19 @@ class ApiClient(private val session: Session) {
         }
     }
 
-    // Same wire shape as raw() but built entirely from an immutable snapshot:
-    // URL, Cookie and CSRF come from authIfUnchanged, never from live session
-    // state. No jar: nothing is re-read and nothing is accepted back.
-    private fun rawSnapshot(route: String, method: String = "GET", body: JSONObject? = null, auth: Triple<String, String, String?>): JSONObject {
-        val fullUrl = auth.first.trimEnd('/') + API_PREFIX + route
-        val builder = Request.Builder()
-            .url(fullUrl)
-            .header("Accept", "application/json")
-            .header("Cache-Control", "no-store")
-            .header("Cookie", COOKIE_NAME + "=" + auth.second)
-        applyOriginHeaders(builder, fullUrl, method)
-        if (body != null) {
-            builder.header("Content-Type", "application/json")
-            builder.method(method, body.toString().toRequestBody(JSON))
-        } else if (method != "GET") {
-            builder.method(method, "{}".toRequestBody(JSON))
-        } else {
-            builder.get()
-        }
-        if (method != "GET") auth.third?.let { builder.header("X-CSRF-Token", it) }
-        snapshotClient.newCall(builder.build()).execute().use { response ->
-            val text = response.body?.string().orEmpty()
-            val data = try {
-                if (text.isEmpty()) JSONObject() else JSONObject(text)
-            } catch (e: Exception) {
-                throw ApiException(response.code, "invalid_response")
-            }
-            if (!response.isSuccessful) {
-                val retryAfter = response.header("Retry-After")?.toIntOrNull() ?: 0
-                throw ApiException(response.code, data.optString("error", "request_failed"), retryAfter)
-            }
-            return data
-        }
-    }
-
     suspend fun bootstrap(): JSONObject = bootMutex.withLock {
         withContext(Dispatchers.IO) {
             // Operation identity captured BEFORE the network (I2 recheck): a
             // sign-out completing mid-bootstrap must not let the dead
-            // session's response write its fields into the new one.
-            val opGen = session.generation
+            // session's response write its fields into the new one. The
+            // session-establishing GET is built from the immutable snapshot.
+            val auth = session.authSnapshot()
+            val opGen = auth.generation
             var data = try {
-                raw("/owner/session")
+                raw("/owner/session", "GET", null, auth)
             } catch (e: ApiException) {
-                if (e.status == 409 && e.code == "session_rotated") raw("/owner/session") else throw e
+                // Same-body GET retry on rotation carries the SAME snapshot.
+                if (e.status == 409 && e.code == "session_rotated") raw("/owner/session", "GET", null, auth) else throw e
             }
             session.withinGeneration(opGen) {
                 csrf = data.optString("csrf").ifBlank { null }
@@ -243,6 +194,17 @@ class ApiClient(private val session: Session) {
             }
             data
         }
+    }
+
+    // Harness-only: fires inside dispatch, AFTER the request was fully built
+    // from the operation's immutable snapshot and BEFORE it hits the network,
+    // so tests can interleave a clear+re-enroll at the last point where a
+    // live-bound implementation could still rebind. Never set in production.
+    internal var preDispatchHook: (() -> Unit)? = null
+
+    private fun execute(builder: Request.Builder): Response {
+        preDispatchHook?.invoke()
+        return client.newCall(builder.build()).execute()
     }
 
     // Harness-only: interleave hooks for the explicit-recovery branch.
@@ -261,11 +223,16 @@ class ApiClient(private val session: Session) {
             // new destination - stale work is rejected, never rebound. This is
             // ApiException("stale_operation"), NOT SessionEndedException: the
             // NEW session is healthy and must not be torn down.
-            val entryGen = session.generation
-            val entryUrl = session.serverUrl
+            // The operation's immutable identity + authorization, captured
+            // atomically AFTER any needed bootstrap and BEFORE the first
+            // attempt: every attempt of this operation is built from this
+            // snapshot (initial AND recovery), never from live session state.
             if (sessionData == null) bootstrap()
+            val auth = session.authSnapshot()
+            val entryGen = auth.generation
+            val entryUrl = auth.serverUrl
             try {
-                raw(route, method, body).also {
+                raw(route, method, body, auth).also {
                     reachable = true
                     lastSuccessfulRefresh = java.time.Instant.now().toString()
                 }
@@ -280,16 +247,15 @@ class ApiClient(private val session: Session) {
                         if (b.status == 401) throw SessionEndedException(b.code, entryGen); throw b
                     }
                     // The retry carries an IMMUTABLE snapshot read atomically
-                    // with the identity check (I2 final). Live session state
-                    // is never consulted again for this retry: a clear or
-                    // re-enroll on any thread after this line cannot rebind
-                    // the original body - it can only go to the ORIGINAL
-                    // destination with the ORIGINAL session's credentials.
+                    // with the identity check (I2 final): it can only go to
+                    // the ORIGINAL destination with credentials valid for the
+                    // operation's generation (authIfUnchanged refreshes the
+                    // snapshot after the recovery bootstrap).
                     val retryAuth = session.authIfUnchanged(entryGen, entryUrl)
                         ?: throw ApiException(0, "stale_operation")
                     preRetryBuildHook?.invoke()
                     try {
-                        rawSnapshot(route, method, body, retryAuth).also {
+                        raw(route, method, body, retryAuth).also {
                             reachable = true
                             lastSuccessfulRefresh = java.time.Instant.now().toString()
                         }
@@ -339,17 +305,20 @@ class ApiClient(private val session: Session) {
     // X-Chunk-SHA256 and X-CSRF-Token.
     suspend fun uploadChunk(uploadId: String, offset: Long, chunk: ByteArray, sha256Hex: String): JSONObject =
         withContext(Dispatchers.IO) {
-            val fullUrl = baseUrl() + "/owner/uploads/" + enc(uploadId) + "/chunks/" + offset
+            val auth = session.authSnapshot()
+            val fullUrl = baseUrl(auth) + "/owner/uploads/" + enc(uploadId) + "/chunks/" + offset
             val builder = Request.Builder()
                 .url(fullUrl)
                 .header("X-Chunk-SHA256", sha256Hex)
                 .put(chunk.toRequestBody("application/octet-stream".toMediaType()))
-            csrf?.let { builder.header("X-CSRF-Token", it) }
+            auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
+            auth.csrf?.let { builder.header("X-CSRF-Token", it) }
             applyOriginHeaders(builder, fullUrl, "PUT")
-            client.newCall(builder.build()).execute().use { response ->
+            execute(builder).use { response ->
+                acceptResponseCookies(response, auth)
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    if (response.code == 401) throw SessionEndedException("owner_session_required", opGenLocal.get())
+                    if (response.code == 401) throw SessionEndedException("owner_session_required", auth.generation)
                     // cp42 crash recovery: a 409 upload_bytes_inconsistent
                     // carries requires_restart/retry_same_upload=false and the
                     // client must abandon this upload, never auto-resume it.
@@ -385,10 +354,12 @@ class ApiClient(private val session: Session) {
 
     // RECONSTRUCTED: avatar bytes through the app's own client (cookie stays in-app).
     suspend fun avatarBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
+        val auth = session.authSnapshot()
         // RECONSTRUCTION-ORIGINAL hardening (release behavior unverified):
         // absolute avatar URLs must be https, and downloads are size-capped.
-        // The cookie jar above additionally scopes the session cookie to the
-        // enrolled server, so a foreign host receives no credentials.
+        // The Cookie header is attached explicitly below only for requests
+        // built from the enrolled-server snapshot; a foreign absolute URL
+        // receives no credentials.
         val full = if (url.startsWith("http")) {
             if (!url.startsWith("https://")) throw ApiException(0, "avatar_url_not_https")
             url
@@ -396,11 +367,13 @@ class ApiClient(private val session: Session) {
             // Production 1.4 sends ROOT-relative avatar URLs
             // (/homeroom/v1/owner/profile/avatar); resolve against the server
             // root, not the API base (would double the /homeroom/v1 prefix).
-            (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + url
-        } else baseUrl() + url
+            (auth.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + url
+        } else baseUrl(auth) + url
         val req = Request.Builder().url(full).get()
+        auth.cookie?.let { req.header("Cookie", COOKIE_NAME + "=" + it) }
         applyOriginHeaders(req, full, "GET")
-        client.newCall(req.build()).execute().use { response ->
+        execute(req).use { response ->
+            acceptResponseCookies(response, auth)
             if (!response.isSuccessful) throw ApiException(response.code, "download_failed")
             val stream = response.body?.byteStream() ?: throw ApiException(response.code, "download_failed")
             stream.use { input ->
@@ -569,18 +542,27 @@ class ApiClient(private val session: Session) {
         // Operation identity captured BEFORE any network (I2 recheck of
         // 93a5b8b): capturing after the response would accept a pre-sign-out
         // response under the NEW generation.
-        val opGen = session.generation
         if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
-            if (e.status == 401) throw SessionEndedException(e.code, opGen); throw e
+            if (e.status == 401) throw SessionEndedException(e.code, session.generation); throw e
         }
+        // Immutable operation snapshot for this lifecycle pass (I2 4ff0522):
+        // the instance GET and the renew POST both run under one identity.
+        val auth = session.authSnapshot()
+        val opGen = auth.generation
         withContext(Dispatchers.IO) {
-            val flags = try { raw("/owner/instance").optJSONObject("features") } catch (e: ApiException) {
+            val flags = try { raw("/owner/instance", "GET", null, auth).optJSONObject("features") } catch (e: ApiException) {
                 if (e.status == 401) throw SessionEndedException(e.code, opGen); null
             }
             features.clear()
             flags?.keys()?.forEach { features[it] = flags.optBoolean(it, false) }
             if (features["session_renew"] == true) {
-                val data = try { raw("/owner/session/renew", "POST", JSONObject()) } catch (e: ApiException) {
+                // Re-snapshot the SAME generation: the instance response may
+                // have rotated the cookie (accepted under this generation),
+                // and the renew must carry the freshest credentials of the
+                // same identity, never a rebound one.
+                val renewAuth = session.authIfUnchanged(auth.generation, auth.serverUrl)
+                    ?: throw ApiException(0, "stale_operation")
+                val data = try { raw("/owner/session/renew", "POST", JSONObject(), renewAuth) } catch (e: ApiException) {
                     if (e.status == 401) throw SessionEndedException(e.code, opGen); throw e
                 }
                 val freshCsrf = data.optString("csrf").ifBlank { csrf }
@@ -598,12 +580,15 @@ class ApiClient(private val session: Session) {
     // integrity check deletes the partial file; the cookie never leaves the app.
     suspend fun verifiedDownload(path: String, local: java.io.File, size: Long, digest: String?, onProgress: (Long, Long) -> Unit): Boolean =
         withContext(Dispatchers.IO) {
-            val builder = Request.Builder().url(baseUrl() + path).header("Cache-Control", "no-store").get()
-            applyOriginHeaders(builder, baseUrl() + path, "GET")
-            client.newCall(builder.build()).execute().use { response ->
+            val auth = session.authSnapshot()
+            val builder = Request.Builder().url(baseUrl(auth) + path).header("Cache-Control", "no-store").get()
+            auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
+            applyOriginHeaders(builder, baseUrl(auth) + path, "GET")
+            execute(builder).use { response ->
+                acceptResponseCookies(response, auth)
                 checkSession()
                 if (!response.isSuccessful) {
-                    if (response.code == 401) throw SessionEndedException("owner_session_required", opGenLocal.get())
+                    if (response.code == 401) throw SessionEndedException("owner_session_required", auth.generation)
                     throw ApiException(response.code, "download_failed")
                 }
                 val sha = java.security.MessageDigest.getInstance("SHA-256")
@@ -634,7 +619,7 @@ class ApiClient(private val session: Session) {
     suspend fun enroll(token: String, deviceLabel: String): Unit = withContext(Dispatchers.IO) {
         raw("/owner/enroll", "POST", JSONObject()
             .put("token", token)
-            .put("device_label", deviceLabel))
+            .put("device_label", deviceLabel), session.authSnapshot())
         bootstrap()
         Unit
     }
@@ -682,15 +667,17 @@ class ApiClient(private val session: Session) {
     /** Returns (bytes, mimeType) for an image preview, or throws. */
     suspend fun filePreview(id: String, maxBytes: Int = 10 * 1024 * 1024): Pair<ByteArray, String> =
         withContext(Dispatchers.IO) {
-            val previewUrl = baseUrl() + "/owner/files/" + enc(id)
-            val request = Request.Builder()
+            val auth = session.authSnapshot()
+            val previewUrl = baseUrl(auth) + "/owner/files/" + enc(id)
+            val builder = Request.Builder()
                 .url(previewUrl)
                 .header("Accept", "*/*")
                 .get()
                 .apply { applyOriginHeaders(this, previewUrl, "GET") }
-                .build()
-            client.newCall(request).execute().use { response ->
-                if (response.code == 401) throw SessionEndedException("unauthorized", opGenLocal.get())
+            auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
+            execute(builder).use { response ->
+                acceptResponseCookies(response, auth)
+                if (response.code == 401) throw SessionEndedException("unauthorized", auth.generation)
                 if (!response.isSuccessful) throw ApiException(response.code, "preview_failed")
                 val type = (response.header("Content-Type") ?: "").split(';')[0]
                 if (type !in setOf("image/png", "image/jpeg", "image/webp", "image/gif")) {

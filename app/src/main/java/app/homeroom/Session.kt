@@ -61,16 +61,21 @@ class Session(context: Context) {
             generation == opGeneration && serverUrl == opServerUrl
         }
 
-    // Immutable retry authorization (I2 final): the explicit-recovery retry
-    // must carry credentials read ATOMICALLY with the identity check, not
-    // re-read live session state after it. Returns (serverUrl, cookie, csrf)
-    // only if the operation's generation AND destination are still current.
-    fun authIfUnchanged(opGeneration: Long, opServerUrl: String?): Triple<String, String, String?>? =
+    // Immutable operation authorization (I2 4ff0522 verdict): EVERY app
+    // request is built from a snapshot captured atomically under stateLock at
+    // operation entry; nothing reads live session state at dispatch time, so
+    // a clear+re-enroll on any thread can never rebind an in-flight body to
+    // a new destination or new credentials.
+    data class OpAuth(val generation: Long, val serverUrl: String?, val cookie: String?, val csrf: String?)
+
+    fun authSnapshot(): OpAuth = synchronized(stateLock) { OpAuth(generation, serverUrl, cookie, csrf) }
+
+    // Same snapshot, but only if the operation's generation AND destination
+    // are still current - the explicit-recovery retry's authorization.
+    fun authIfUnchanged(opGeneration: Long, opServerUrl: String?): OpAuth? =
         synchronized(stateLock) {
             if (generation != opGeneration || serverUrl != opServerUrl) return null
-            val url = serverUrl ?: return null
-            val c = cookie ?: return null
-            Triple(url, c, csrf)
+            OpAuth(generation, serverUrl, cookie, csrf)
         }
 
     // Operation-generation boundary (I2 recheck of 93a5b8b): response cookies

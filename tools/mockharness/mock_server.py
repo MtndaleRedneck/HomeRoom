@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """Fake HomeRoom server for the mock-HTTP contract harness. Validates each
 incoming request against tools/contract_golden.json (method + path pattern +
@@ -108,6 +109,10 @@ class Handler(BaseHTTPRequestHandler):
     def handle_req(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        # Observation channel for the Kotlin checks: one line per request with
+        # the Cookie header it carried (snapshot-identity discrimination).
+        with open(os.environ.get("SEEN_FILE", "/tmp/hr_mock_seen.txt"), "a") as f:
+            f.write("%s %s cookie=%r\n" % (self.command, path, self.headers.get("Cookie")))
         # Header contract, grounded in the production 1.4 server source
         # (owner_room.origin/mutation_origin: 403 bad_origin) and the exact
         # private12 release build (Z1/b.c): every request carries
@@ -133,7 +138,8 @@ class Handler(BaseHTTPRequestHandler):
             if token not in consumed:
                 consumed.add(token)
                 self.server.csrf_fail_consumed = consumed
-                self._reply(403, {"error": "csrf_failed"})
+                extra = [("Set-Cookie", "__Host-homeroom=server-rotated; Path=/")] if token == "predispatch" else None
+                self._reply(403, {"error": "csrf_failed"}, extra)
                 print(f"{self.command} {path} -> INJECTED csrf_failed (token {token})", flush=True)
                 return
         for method, pattern, name in ROUTES:
@@ -160,9 +166,11 @@ class Handler(BaseHTTPRequestHandler):
     do_PUT = handle_req
     do_DELETE = handle_req
 
-    def _reply(self, code, obj):
+    def _reply(self, code, obj, extra_headers=None):
         data = json.dumps(obj).encode()
         self.send_response(code)
+        for k, v in (extra_headers or []):
+            self.send_header(k, v)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -170,4 +178,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8471
+    open(os.environ.get("SEEN_FILE", "/tmp/hr_mock_seen.txt"), "w").close()
     HTTPServer(("127.0.0.1", port), Handler).serve_forever()
