@@ -22,6 +22,16 @@ android {
         buildConfig true
     }
 
+    testOptions {
+        // Robolectric runs against the real binary resource table. Without
+        // this, library theme/style resolution fails (Theme.Material3 does
+        // not resolve its AppCompat ancestry) and appcompat vector drawables
+        // are absent - the unit-test setup failures at 81c4169/4081c7c
+        // (Theme.AppCompat IllegalStateException, ResourceManagerInternal
+        // NotFoundException) were this missing flag, not app defects.
+        unitTests.includeAndroidResources = true
+    }
+
     defaultConfig {
         applicationId 'app.homeroom'
         minSdk 26
