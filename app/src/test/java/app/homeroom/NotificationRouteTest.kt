@@ -24,6 +24,9 @@ class NotificationRouteTest {
         val a=Robolectric.buildActivity(MainActivity::class.java).setup().get()
         (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
         a.session.ownerId="owner";a.session.ownerName="Owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
+        // enrolled requires serverUrl + cookie (Session.enrolled); without the
+        // cookie the ROOM_ID gate drops the extra and no route is exercised.
+        a.session.cookie="test-cookie"
         return a
     }
     private fun content(a:MainActivity)= (field(a,"content").get(a) as FrameLayout).getChildAt(0)
