@@ -95,25 +95,75 @@ class RotationHttpTest {
     // no longer matches. Fails against the in-flight-flag-only gate.
     @Test fun latePreRotationResponseCookieRejected()=fixture {server,session,client,_ ->
         val api=client()
-        server.enqueue(bootstrap())
+        // Deterministic ordering (I2 b48512e): the poison response's HEADERS
+        // are held behind a latch released only after the renew has
+        // committed AND cleared the in-flight marker, so the in-flight gate
+        // cannot do the drop - only the dispatch-epoch fence can. A pure
+        // header delay is non-discriminating whenever the renew outlasts it.
+        // Removing the epoch check fails this test at any renew duration.
+        val poisonGate=java.util.concurrent.CountDownLatch(1)
+        server.dispatcher=object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                val path=request.path ?: ""
+                return when {
+                    path.endsWith("/owner/session") -> bootstrap()
+                    path.endsWith("/owner/instance") -> MockResponse().setBody("""{"features":{"session_renew":true}}""")
+                    path.endsWith("/owner/session/renew") -> MockResponse().setBody("""{"csrf":"renewed-csrf"}""").addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly")
+                    path.contains("/owner/uploads/") -> {
+                        assertTrue("test sequencing: poison request must wait for the commit", poisonGate.await(10,TimeUnit.SECONDS))
+                        MockResponse().setBody("""{"ok":true}""").addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly")
+                    }
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+        }
         api.bootstrap()
         withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // drain the prewarm arrival
-        // Headers (not just the body) must be delayed: acceptResponseCookies
-        // runs when headers arrive, BEFORE the body - a body-only delay lets
-        // the poison land pre-renew and be overwritten by the commit, passing
-        // without the epoch check doing any work (I2 be68ed6 finite). With
-        // headers delayed past the commit, removing the epoch check fails
-        // this test (verified by mutation).
-        server.enqueue(MockResponse().setBody("""{"ok":true}""").setHeadersDelay(800,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
-        server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
-        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
-        val slow=async(Dispatchers.IO) {api.uploadChunk("u",0,byteArrayOf(1),"x")}
-        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
-        api.renewOnOpen()
+        val slow=async(Dispatchers.IO) {api.uploadChunk("u",0,byteArrayOf(1),"x")}  // dispatchEpoch captured pre-renew
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // upload dispatched
+        api.renewOnOpen()  // commits renewed-secret, bumps the epoch, clears in-flight
         assertEquals("renewed-secret",session.cookie)
+        poisonGate.countDown()  // NOW the late pre-rotation response arrives
         slow.await()
         assertEquals("renewed-secret",session.cookie)
         assertEquals("renewed-csrf",session.csrf)
+    }
+
+    // I2 b48512e finite: verifiedDownload bootstrapped WITHOUT the renewal
+    // mutex, so its raw()/generation-only writes could overlap an in-flight
+    // renew's commit. The bootstrap is now taken under the lock; while the
+    // renew is gated server-side, apiB must issue NO request. Without the
+    // lock the bootstrap dispatch makes requestCount 4 during the window.
+    // I2 b48512e finite: verifiedDownload's bootstrap ran UNLOCKED, so its
+    // raw()/generation-only writes could overlap an in-flight renew's commit
+    // window. Bootstrap now runs under the renewal mutex (same as
+    // requestFor/renewOnOpen), so a concurrent verifiedDownload must wait for
+    // the renew COMMIT - pinned deterministically by delaying the renew
+    // response BODY (the commit runs after the body is read) and asserting no
+    // second-client request leaves while the commit is still pending.
+    // Discriminates: without the mutex the bootstrap dispatches immediately
+    // and the mid-window count is 4, not 3. Margins match the sibling
+    // in-flight test (600ms body delay, 300ms assertion point).
+    @Test fun verifiedDownloadBootstrapWaitsForRenewCommit()=fixture {server,session,client,_ ->
+        val apiA=client()
+        val apiB=client()
+        server.enqueue(bootstrap())
+        server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
+        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(600,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
+        server.enqueue(bootstrap())  // apiB's OWN bootstrap (sessionData is a per-ApiClient cache; only the mutex is shared)
+        server.enqueue(MockResponse().setBody("file-bytes"))
+        val renew=async(Dispatchers.IO) {apiA.renewOnOpen()}
+        withContext(Dispatchers.IO) {repeat(3) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}}  // apiA bootstrap, instance, renew POST
+        val tmp=java.io.File.createTempFile("dl-",".bin")
+        val dl=async(Dispatchers.IO) {apiB.verifiedDownload("/owner/files/f",tmp,10,"sha256:13015a3cf02c05dafbefab3b331350db348e70e86f4e43e73f325473957f0a5c",{_,_->})}
+        delay(300)  // renew headers consumed; body (and commit) still delayed
+        assertEquals("no verifiedDownload request may leave before the renew commit",3,server.requestCount)
+        renew.await()
+        assertTrue(dl.await())
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // apiB bootstrap, post-commit
+        val fileReq=withContext(Dispatchers.IO) {server.takeRequest(3,TimeUnit.SECONDS)}!!
+        assertEquals("/homeroom/v1/owner/files/f",fileReq.path)
+        tmp.delete()
     }
 
     // I2 be68ed6 finite: the app constructs SEPARATE Session wrappers over

@@ -728,8 +728,16 @@ class ApiClient(
             val initiating = session.authSnapshot()
             val entryGen = initiating.generation
             val entryUrl = initiating.serverUrl
-            if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
-                if (e.status == 401) throw SessionEndedException(e.code, entryGen); throw e
+            // Bootstrap under the renewal mutex (I2 b48512e finite): an
+            // unlocked bootstrap's raw()/generation-only writes could overlap
+            // an in-flight renew's commit window. requestFor/renewOnOpen
+            // already bootstrap under the same lock. enroll and the
+            // test-alert receipt path are distinct scope (pre-session /
+            // non-renewal), not part of this fix.
+            session.renewal.mutex.withLock {
+                if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
+                    if (e.status == 401) throw SessionEndedException(e.code, entryGen); throw e
+                }
             }
             val (authOrNull, dispatchEpoch) = session.dispatchSnapshot(initiating)
             val auth = authOrNull ?: throw ApiException(0, "stale_operation")
