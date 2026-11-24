@@ -459,6 +459,14 @@ class MainActivity : AppCompatActivity() {
         // would reject anyway; discarding makes the contract structural.
         pageStack.clear()
         currentPage = null
+        // Nav-state reset (I2 be68ed6 Setup-Back trace): entering Setup from
+        // a non-default tab (e.g. sign-out from Settings) otherwise retained
+        // that tab, and an unconsumed Back on SetupScreen fell to the
+        // tab-switch branch and replaced Setup with main UI over a reset
+        // session. Resetting the tab makes Back fall through to the system
+        // default instead. Stale-session NAVIGATION only - no auth/data
+        // access was proved beyond it.
+        currentTab = R.id.nav_chats
         setNavVisible(View.GONE)
         header.visibility = View.GONE
         roomScreen = null

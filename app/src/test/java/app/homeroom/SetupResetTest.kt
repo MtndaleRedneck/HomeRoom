@@ -48,6 +48,25 @@ class SetupResetTest {
         assertTrue(visible is SetupScreen)
     }
 
+    // I2 be68ed6 Setup-Back trace (confirmed): signing out from a non-default
+    // tab retained currentTab, so an unconsumed Back on SetupScreen fell to
+    // the tab-switch branch and replaced Setup with main UI over a reset
+    // session. showSetup now resets nav state; Back falls through to the
+    // system default and the Setup screen stays visible. Fails without the
+    // reset (main UI replaces Setup) - verified by mutation.
+    @Test fun setupEntryFromNonDefaultTabKeepsSetupOnBack() {
+        enrolledPrefs()
+        val a = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        field(a,"polling").setBoolean(a,false)
+        field(a,"currentTab").setInt(a, R.id.nav_settings)  // retained tab, as after a Settings sign-out
+        Session(org.robolectric.RuntimeEnvironment.getApplication()).clear()
+        a.onSignedOut()
+        a.onBackPressedDispatcher.onBackPressed()
+        val visible = (field(a,"content").get(a) as android.widget.FrameLayout).getChildAt(0)
+        assertTrue("Back on Setup from a retained non-default tab must not restore main UI",
+            visible is SetupScreen)
+    }
+
     @Test fun resetDropsQueuedAfterUnlockActions() {
         enrolledPrefs()
         val a = Robolectric.buildActivity(MainActivity::class.java).setup().get()

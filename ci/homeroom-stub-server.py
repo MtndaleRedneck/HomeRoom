@@ -75,6 +75,15 @@ EVENTS = {
     "has_more": False,
 }
 
+# Finite goal response so the interaction pass exercises the pinned-goal
+# page end-to-end against the stub (synthetic flow only). Shape mirrors the
+# app parser in CollaborationScreens.RoomGoalScreen: "current" (with
+# version/text) and "pending_proposals" are both required.
+GOAL = {
+    "current": {"version": 1, "text": "Stub room goal for the debug-interaction job."},
+    "pending_proposals": [],
+}
+
 FEATURES = {
     # SYNTHETIC: all five flags on so every restored gated entry is reachable
     # in the harness. Says nothing about production server flags.
@@ -155,6 +164,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ROOMS)
         if self.command == "GET" and p == "/owner/rooms/stub-room/events":
             return self._send(EVENTS)
+        if self.command == "GET" and p == "/owner/rooms/stub-room/goal":
+            return self._send(GOAL)
         if self.command == "GET" and p == "/owner/decisions/stub-decision":
             return self._send(CARD)
         if self.command == "POST" and p == "/owner/decisions/stub-decision/prepare-answer":

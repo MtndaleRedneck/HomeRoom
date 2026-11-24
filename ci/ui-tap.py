@@ -65,6 +65,15 @@ def main():
             if b is not None:
                 matches.append((node, b))
     if not matches:
+        # Diagnosability (de0a8d7 "Needs you" miss): keep the hierarchy that
+        # produced the failure as a CI artifact - without it a miss is
+        # undiagnosable from the log alone.
+        safe = re.sub(r"[^A-Za-z0-9]+", "-", target).strip("-")[:40] or "target"
+        try:
+            with open("ui-dump-failure-" + safe + ".xml", "w") as f:
+                f.write(xml)
+        except OSError:
+            pass
         sys.exit(1)
 
     # Prefer the nearest clickable ancestor of any match.

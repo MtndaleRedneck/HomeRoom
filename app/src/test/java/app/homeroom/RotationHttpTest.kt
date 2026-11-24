@@ -16,19 +16,22 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class RotationHttpTest {
-    private fun fixture(test:suspend kotlinx.coroutines.CoroutineScope.(MockWebServer,Session,()->ApiClient)->Unit)=runBlocking {
+    private fun fixture(test:suspend kotlinx.coroutines.CoroutineScope.(MockWebServer,Session,()->ApiClient,(Session)->ApiClient)->Unit)=runBlocking {
         val cert=HeldCertificate.Builder().addSubjectAlternativeName("localhost").build()
         val server=MockWebServer()
         server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory(),false)
         server.start()
         val trust=HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
-        val session=Session(org.robolectric.RuntimeEnvironment.getApplication());session.clear()
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        Session.resetRenewalStateForTests(app)  // renewal state is store-scoped; isolate each test
+        val session=Session(app);session.clear()
         session.serverUrl=server.url("/").toString().trimEnd('/');session.cookie="old-secret";session.csrf="old-csrf";session.sessionId="same-session"
         val client={ApiClient(session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(2,TimeUnit.SECONDS)}}
-        try {this.test(server,session,client)} finally {server.shutdown();session.clear()}
+        val clientFor={s:Session -> ApiClient(s) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(2,TimeUnit.SECONDS)}}
+        try {this.test(server,session,client,clientFor)} finally {server.shutdown();session.clear()}
     }
     private fun bootstrap()=MockResponse().setBody("""{"csrf":"new-csrf","session_id":"same-session"}""").addHeader("Set-Cookie","__Host-homeroom=new-secret; Path=/; Secure; HttpOnly")
-    @Test fun successfulSevenDayRotation()=fixture {server,session,client ->
+    @Test fun successfulSevenDayRotation()=fixture {server,session,client,_ ->
         server.enqueue(bootstrap())
         server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
         server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf","session_id":"same-session"}"""))
@@ -38,7 +41,7 @@ class RotationHttpTest {
         val instance=server.takeRequest();assertTrue(instance.getHeader("Cookie")!!.contains("new-secret"))
         val renew=server.takeRequest();assertEquals("new-csrf",renew.getHeader("X-CSRF-Token"));assertEquals("POST",renew.method)
     }
-    @Test fun lostRotationResponseDoesNotInventRecovery()=fixture {server,session,client ->
+    @Test fun lostRotationResponseDoesNotInventRecovery()=fixture {server,session,client,_ ->
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
         server.enqueue(MockResponse().setResponseCode(409).setBody("""{"error":"session_rotated"}"""))
         try {client().renewOnOpen();fail("response lost") } catch(_:Exception) {}
@@ -48,7 +51,7 @@ class RotationHttpTest {
         try {client().eventDirect("e");fail("retired secret") } catch(e:ApiException) {assertEquals(409,e.status)}
         assertEquals(prior+1,server.requestCount)
     }
-    @Test fun backgroundWaitsForForegroundRenewalAcrossClients()=fixture {server,session,client ->
+    @Test fun backgroundWaitsForForegroundRenewalAcrossClients()=fixture {server,session,client,_ ->
         server.enqueue(bootstrap())
         server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
         server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(250,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
@@ -68,7 +71,7 @@ class RotationHttpTest {
     // request-entry lock makes this fail (the request would go out with the
     // pre-renew cookie). Complements the eventDirect pin, which covers the
     // same mutex via the test seam only.
-    @Test fun requestPathWaitsForForegroundRenewal()=fixture {server,session,client ->
+    @Test fun requestPathWaitsForForegroundRenewal()=fixture {server,session,client,_ ->
         val api=client()
         server.enqueue(bootstrap())
         api.bootstrap()
@@ -90,12 +93,18 @@ class RotationHttpTest {
     // the rotation commits and the in-flight window closes. The poison
     // Set-Cookie must still be rejected - the dispatch-time rotation epoch
     // no longer matches. Fails against the in-flight-flag-only gate.
-    @Test fun latePreRotationResponseCookieRejected()=fixture {server,session,client ->
+    @Test fun latePreRotationResponseCookieRejected()=fixture {server,session,client,_ ->
         val api=client()
         server.enqueue(bootstrap())
         api.bootstrap()
         withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // drain the prewarm arrival
-        server.enqueue(MockResponse().setBody("""{"ok":true}""").setBodyDelay(800,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
+        // Headers (not just the body) must be delayed: acceptResponseCookies
+        // runs when headers arrive, BEFORE the body - a body-only delay lets
+        // the poison land pre-renew and be overwritten by the commit, passing
+        // without the epoch check doing any work (I2 be68ed6 finite). With
+        // headers delayed past the commit, removing the epoch check fails
+        // this test (verified by mutation).
+        server.enqueue(MockResponse().setBody("""{"ok":true}""").setHeadersDelay(800,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
         server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
         server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
         val slow=async(Dispatchers.IO) {api.uploadChunk("u",0,byteArrayOf(1),"x")}
@@ -106,6 +115,29 @@ class RotationHttpTest {
         assertEquals("renewed-secret",session.cookie)
         assertEquals("renewed-csrf",session.csrf)
     }
+
+    // I2 be68ed6 finite: the app constructs SEPARATE Session wrappers over
+    // the same prefs (MainActivity, messaging service, notification worker),
+    // so coordination must hold across wrappers, not just ApiClients. This
+    // fails with per-wrapper renewal state: wrapper B's eventDirect takes a
+    // different mutex, never waits, and dispatches with the old cookie.
+    @Test fun renewalCoordinationSharedAcrossSessionWrappers()=fixture {server,session,client,clientFor ->
+        val sessionB=Session(org.robolectric.RuntimeEnvironment.getApplication())
+        val apiB=clientFor(sessionB)
+        server.enqueue(bootstrap())
+        server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
+        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(250,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
+        server.enqueue(MockResponse().setBody("""{"event":{"event_id":"e"}}"""))
+        val foreground=async(Dispatchers.IO) {client().renewOnOpen()}  // wrapper A renews
+        withContext(Dispatchers.IO) {repeat(3) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}}
+        val background=async(Dispatchers.IO) {apiB.eventDirect("e")}  // wrapper B fetches
+        foreground.await();background.await()
+        val request=withContext(Dispatchers.IO) {server.takeRequest(3,TimeUnit.SECONDS)}!!
+        assertEquals("/homeroom/v1/owner/events/e",request.path)
+        assertTrue("request from a separate Session wrapper adopted the rotated cookie",
+            request.getHeader("Cookie")!!.contains("renewed-secret"))
+        assertEquals("renewed-csrf",sessionB.csrf)
+    }
     // Mid-renew commit gate (binary parity: J0.java `if (!this.k)` + s0's
     // explicit renew commit), pinned DETERMINISTICALLY on a non-mutex path
     // (uploadChunk streams outside the request-entry lock): the in-flight
@@ -114,26 +146,34 @@ class RotationHttpTest {
     // bootstrap value), and the renew's own Set-Cookie must land via the
     // explicit captured commit. Margins: upload body 100ms, renew body
     // 600ms, so the poison arrives squarely inside the renew window.
-    @Test fun rotationSurvivesInFlightResponseCookie()=fixture {server,session,client ->
+    @Test fun rotationSurvivesInFlightResponseCookie()=fixture {server,session,client,_ ->
         val api=client()
         server.enqueue(bootstrap())
         api.bootstrap()
         withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // drain the prewarm arrival
+        // Streaming requests now capture auth+epoch under the renewal mutex
+        // (I2 be68ed6), so a mid-renew DISPATCH is impossible; the in-flight
+        // gate's remaining job is responses to requests dispatched BEFORE
+        // the renew acquired the mutex. The upload goes first; its poisoned
+        // Set-Cookie headers arrive mid-renew (300ms into a 600ms renew
+        // body delay) and must be dropped while the epoch still matches -
+        // removing the in-flight gate fails the mid-window assert
+        // (verified by mutation).
+        server.enqueue(MockResponse().setBody("""{"ok":true}""").setHeadersDelay(300,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
         server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
         server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(600,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
-        server.enqueue(MockResponse().setBody("""{"ok":true}""").setBodyDelay(100,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
-        val renew=async(Dispatchers.IO) {api.renewOnOpen()}
-        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
-        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
         val slow=async(Dispatchers.IO) {api.uploadChunk("u",0,byteArrayOf(1),"x")}
-        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}  // upload dispatched pre-renew
+        val renew=async(Dispatchers.IO) {api.renewOnOpen()}
+        withContext(Dispatchers.IO) {repeat(2) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}}  // instance + renew POST
+        delay(450)  // poison evaluated mid-window (300ms), renew commits at ~600ms
+        assertEquals("new-secret",session.cookie)  // poison dropped by the in-flight gate
         slow.await()
-        assertEquals("new-secret",session.cookie)
         renew.await()
         assertEquals("renewed-secret",session.cookie)
         assertEquals("renewed-csrf",session.csrf)
     }
-    @Test fun revokedBackgroundSessionReturnsSessionEnded()=fixture {server,_,client ->
+    @Test fun revokedBackgroundSessionReturnsSessionEnded()=fixture {server,_,client,_ ->
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"session_ended"}"""))
         try {client().eventDirect("e");fail("revoked") } catch(e:SessionEndedException) {assertEquals("session_ended",e.reason)}
         assertEquals(1,server.requestCount)
@@ -145,7 +185,7 @@ class RotationHttpTest {
     // immutable snapshot). withinGeneration skips the body-field commit and
     // acceptCookieForGeneration drops the header cookie, so a dead session's
     // rotation response restores nothing.
-    @Test fun staleGenerationGetSessionResponseDropsCookieAndCsrf()=fixture {server,session,client ->
+    @Test fun staleGenerationGetSessionResponseDropsCookieAndCsrf()=fixture {server,session,client,_ ->
         server.enqueue(MockResponse().setBody("""{"csrf":"stale-csrf","session_id":"same-session"}""").addHeader("Set-Cookie","__Host-homeroom=stale-secret; Path=/; Secure; HttpOnly"))
         val api=client()
         api.preDispatchHook = { session.clear() }

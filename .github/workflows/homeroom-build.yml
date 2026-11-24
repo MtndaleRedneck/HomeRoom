@@ -485,6 +485,7 @@ jobs:
             XY=$(python3 ci/ui-tap.py "Pinned room goal") && adb shell input tap $XY
             sleep 6
             adb exec-out screencap -p > i-goal.png
+            python3 ci/ui-tap.py "Stub room goal for the debug-interaction job." >/dev/null || { echo "goal page did not render the stub goal text"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
@@ -577,5 +578,6 @@ jobs:
             i-*.png
             stub-log.jsonl
             logcat-full.txt
+            ui-dump-*.xml
           if-no-files-found: warn
           retention-days: 7

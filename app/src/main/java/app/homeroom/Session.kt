@@ -1,6 +1,7 @@
 package app.homeroom
 
 import android.content.Context
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -35,14 +36,29 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_COOKIE, null)
         set(v) = prefs.edit().putString(KEY_COOKIE, v).apply()
 
-    // Per-session renewal coordination (binary parity, K0/J0.java): the
-    // release's J0 holder carries the request-entry mutex and the in-flight
-    // renew marker as INSTANCE state, and production effectively keeps one
-    // J0 per session; this tree creates several ApiClient objects per
-    // Session, so the coordination state lives HERE - the scope the binary's
-    // per-instance state effectively had. Process-wide static state would
-    // suppress unrelated sessions' responses (I2 07d27a8 review).
-    internal val renewal = RenewalState()
+    // Renewal coordination, keyed by the BACKING STORE (I2 be68ed6 finite):
+    // MainActivity, the messaging service and the notification worker each
+    // construct their OWN Session wrapper over the same prefs, so a
+    // per-wrapper holder gave no actual cross-object coordination. All
+    // wrappers over one application share one RenewalState below - the
+    // scope the binary's one-J0-per-session state effectively had.
+    // Process-wide static state across UNRELATED stores would suppress
+    // other sessions' responses (I2 07d27a8 review), hence keyed, not
+    // static.
+    internal val renewal: RenewalState = renewalStateFor(context)
+
+    // Dispatch identity (I2 be68ed6 finite): the credential snapshot and the
+    // rotation epoch must be captured under ONE lock acquisition - reading
+    // them separately lets a renew commit between the reads, sending OLD
+    // credentials stamped with the NEW epoch, whose response Set-Cookie
+    // would then pass the rotation fence.
+    internal suspend fun dispatchSnapshot(initiating: OpAuth?): Pair<OpAuth?, Long> =
+        renewal.mutex.withLock {
+            val a = if (initiating != null)
+                authIfUnchanged(initiating.generation, initiating.serverUrl)
+            else authSnapshot()
+            a to renewal.rotationEpoch
+        }
 
     internal class RenewalState {
         val mutex = kotlinx.coroutines.sync.Mutex()
@@ -296,6 +312,20 @@ class Session(context: Context) {
         set(v) = prefs.edit().putString(KEY_SKIPPED_TAG, v).apply()
 
     companion object {
+        // One RenewalState per backing store (application): every Session
+        // wrapper over the same prefs coordinates renewals through the same
+        // mutex/marker/epoch. Weak keys so a discarded application context
+        // (tests) does not pin the state.
+        private val renewalStates = java.util.WeakHashMap<Context, RenewalState>()
+        internal fun renewalStateFor(context: Context): RenewalState {
+            val key = context.applicationContext ?: context
+            return synchronized(renewalStates) { renewalStates.getOrPut(key) { RenewalState() } }
+        }
+        /** Test-only: coordination state is store-scoped; reset between tests. */
+        internal fun resetRenewalStateForTests(context: Context) {
+            val key = context.applicationContext ?: context
+            synchronized(renewalStates) { renewalStates.remove(key) }
+        }
         @Volatile private var stagedStoreUnknown = false
         // I2: the latch flag alone is not the boundary - check, store write and
         // latch-set must serialize ACROSS instances (two Session objects could

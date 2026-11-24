@@ -120,6 +120,9 @@ class ApiClient(
                 // flight OR a rotation completed since this request was
                 // dispatched - a delayed pre-rotation response must not
                 // overwrite the rotated cookie after the in-flight window.
+                // PROVENANCE: the in-flight drop is binary parity (J0 !k
+                // gate); the dispatch-epoch fence is NEW beyond the binary -
+                // only the post-commit out-of-order case retains parity.
                 if (!session.renewal.inFlight && dispatchEpoch == session.renewal.rotationEpoch)
                     acceptSessionCookie(url, listOf(parsed), auth.generation)
             }
@@ -160,6 +163,11 @@ class ApiClient(
         // Same-origin CSRF header: only ever attached to enrolled-server
         // requests, and only from the operation's own snapshot.
         if (method != "GET") auth.csrf?.let { builder.header("X-CSRF-Token", it) }
+        // Epoch read without its own lock: every renewal-path caller of
+        // raw() already holds session.renewal.mutex (requestFor, renewOnOpen,
+        // eventDirect, bootstrap callers), so the auth/epoch pair is already
+        // atomic there. The remaining callers (enroll, test-alert receipts)
+        // run pre-session or outside the renewal window.
         val dispatchEpoch = session.renewal.rotationEpoch
         execute(builder).use { response ->
             acceptResponseCookies(response, auth, captureCookies, dispatchEpoch)
@@ -179,11 +187,11 @@ class ApiClient(
 
     /** Streams an owner file through the app's own client. The cookie never leaves the app. Returns the MIME type. */
     suspend fun downloadOwnerFile(id:String, out:java.io.OutputStream): String = withContext(Dispatchers.IO) {
-        val auth = session.authSnapshot()
+        val (authOrNull, dispatchEpoch) = session.dispatchSnapshot(null)
+        val auth = authOrNull ?: throw ApiException(0, "stale_operation")
         val builder=Request.Builder().url(baseUrl(auth)+"/owner/files/"+enc(id)).header("Cache-Control","no-store").get()
         auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
         applyOriginHeaders(builder,baseUrl(auth)+"/owner/files/"+enc(id),"GET")
-        val dispatchEpoch = session.renewal.rotationEpoch
         execute(builder).use { response ->
             acceptResponseCookies(response, auth, null, dispatchEpoch)
             checkSession(auth.generation)
@@ -363,10 +371,8 @@ class ApiClient(
             // Caller-bound when initiating is supplied (I2 composer identity):
             // the chunk bytes only ever travel under credentials still valid
             // for the operation that staged them.
-            val auth = if (initiating != null)
-                session.authIfUnchanged(initiating.generation, initiating.serverUrl)
-                    ?: throw ApiException(0, "stale_operation")
-            else session.authSnapshot()
+            val (authOrNull, dispatchEpoch) = session.dispatchSnapshot(initiating)
+            val auth = authOrNull ?: throw ApiException(0, "stale_operation")
             val fullUrl = baseUrl(auth) + "/owner/uploads/" + enc(uploadId) + "/chunks/" + offset
             val builder = Request.Builder()
                 .url(fullUrl)
@@ -375,7 +381,6 @@ class ApiClient(
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
             auth.csrf?.let { builder.header("X-CSRF-Token", it) }
             applyOriginHeaders(builder, fullUrl, "PUT")
-            val dispatchEpoch = session.renewal.rotationEpoch
             execute(builder).use { response ->
                 acceptResponseCookies(response, auth, null, dispatchEpoch)
                 val text = response.body?.string().orEmpty()
@@ -419,7 +424,8 @@ class ApiClient(
 
     // RECONSTRUCTED: avatar bytes through the app's own client (cookie stays in-app).
     suspend fun avatarBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
-        val auth = session.authSnapshot()
+        val (authOrNull, dispatchEpoch) = session.dispatchSnapshot(null)
+        val auth = authOrNull ?: throw ApiException(0, "stale_operation")
         // RECONSTRUCTION-ORIGINAL hardening (release behavior unverified):
         // absolute avatar URLs must be https, and downloads are size-capped.
         // The Cookie header is attached explicitly below only for requests
@@ -443,7 +449,6 @@ class ApiClient(
             auth.cookie?.let { req.header("Cookie", COOKIE_NAME + "=" + it) }
         }
         applyOriginHeaders(req, full, "GET")
-        val dispatchEpoch = session.renewal.rotationEpoch
         execute(req).use { response ->
             acceptResponseCookies(response, auth, null, dispatchEpoch)
             if (!response.isSuccessful) throw ApiException(response.code, "download_failed")
@@ -726,12 +731,11 @@ class ApiClient(
             if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
                 if (e.status == 401) throw SessionEndedException(e.code, entryGen); throw e
             }
-            val auth = session.authIfUnchanged(entryGen, entryUrl)
-                ?: throw ApiException(0, "stale_operation")
+            val (authOrNull, dispatchEpoch) = session.dispatchSnapshot(initiating)
+            val auth = authOrNull ?: throw ApiException(0, "stale_operation")
             val builder = Request.Builder().url(baseUrl(auth) + path).header("Cache-Control", "no-store").get()
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
             applyOriginHeaders(builder, baseUrl(auth) + path, "GET")
-            val dispatchEpoch = session.renewal.rotationEpoch
             execute(builder).use { response ->
                 acceptResponseCookies(response, auth, null, dispatchEpoch)
                 checkSession(auth.generation)
@@ -827,7 +831,8 @@ class ApiClient(
     /** Returns (bytes, mimeType) for an image preview, or throws. */
     suspend fun filePreview(id: String, maxBytes: Int = 10 * 1024 * 1024): Pair<ByteArray, String> =
         withContext(Dispatchers.IO) {
-            val auth = session.authSnapshot()
+            val (authOrNull, dispatchEpoch) = session.dispatchSnapshot(null)
+            val auth = authOrNull ?: throw ApiException(0, "stale_operation")
             val previewUrl = baseUrl(auth) + "/owner/files/" + enc(id)
             val builder = Request.Builder()
                 .url(previewUrl)
@@ -835,7 +840,6 @@ class ApiClient(
                 .get()
                 .apply { applyOriginHeaders(this, previewUrl, "GET") }
             auth.cookie?.let { builder.header("Cookie", COOKIE_NAME + "=" + it) }
-            val dispatchEpoch = session.renewal.rotationEpoch
             execute(builder).use { response ->
                 acceptResponseCookies(response, auth, null, dispatchEpoch)
                 if (response.code == 401) throw SessionEndedException("unauthorized", auth.generation)
