@@ -105,12 +105,18 @@ class ApiClient(
 
     // Explicit response-cookie acceptance for the jarless client: every
     // response passes here, attributed to the issuing operation's snapshot.
-    private fun acceptResponseCookies(response: Response, auth: Session.OpAuth) {
+    // Binary parity (J0.java:463 `if (!this.k)`): while a foreground renew is
+    // in flight, response Set-Cookie commits are DROPPED - an in-flight
+    // pre-renew response must not clobber the rotation. The renew's own
+    // response cookie is captured (capture != null) and committed explicitly
+    // by renewOnOpen after body validation, mirroring s0's explicit commit.
+    private fun acceptResponseCookies(response: Response, auth: Session.OpAuth, capture: MutableList<Cookie>? = null) {
         val url = response.request.url
         for (h in response.headers("Set-Cookie")) {
             val parsed = Cookie.parse(url, h) ?: continue
             if (parsed.name == COOKIE_NAME) {
-                acceptSessionCookie(url, listOf(parsed), auth.generation)
+                capture?.add(parsed)
+                if (!renewInFlight) acceptSessionCookie(url, listOf(parsed), auth.generation)
             }
         }
     }
@@ -130,7 +136,7 @@ class ApiClient(
     // URL, Cookie and CSRF never come from live session state at dispatch
     // time, so a clear+re-enroll on any thread can only affect NEW
     // operations, never rebind an in-flight body.
-    private fun raw(route: String, method: String = "GET", body: JSONObject? = null, auth: Session.OpAuth): JSONObject {
+    private fun raw(route: String, method: String = "GET", body: JSONObject? = null, auth: Session.OpAuth, captureCookies: MutableList<Cookie>? = null): JSONObject {
         val fullUrl = baseUrl(auth) + route
         val builder = Request.Builder()
             .url(fullUrl)
@@ -150,7 +156,7 @@ class ApiClient(
         // requests, and only from the operation's own snapshot.
         if (method != "GET") auth.csrf?.let { builder.header("X-CSRF-Token", it) }
         execute(builder).use { response ->
-            acceptResponseCookies(response, auth)
+            acceptResponseCookies(response, auth, captureCookies)
             val text = response.body?.string().orEmpty()
             val data = try {
                 if (text.isEmpty()) JSONObject() else JSONObject(text)
@@ -609,14 +615,13 @@ class ApiClient(
     // could snapshot pre-rotation credentials (RotationHttpTest
     // .backgroundWaitsForForegroundRenewalAcrossClients failed fast - old
     // cookie on the wire - whenever its auth read beat the renew commit).
-    // LABELED REMAINING DIVERGENCE: (1) the binary's request entry RUNS the
+    // The binary's `if (!this.k)` commit gate is ported at
+    // acceptResponseCookies: response Set-Cookie commits drop while a renew
+    // is in flight, and the renew's own cookie lands via an explicit
+    // captured commit (mirroring s0's explicit session-store call).
+    // LABELED REMAINING DIVERGENCE: the binary's request entry RUNS the
     // renew itself when due; this tree renews only from renewOnOpen call
-    // sites, so requests wait but never trigger. (2) The binary gates
-    // low-level response session commits with `if (!this.k)`; this tree's
-    // commit path is the cookie jar, which the renew's own Set-Cookie also
-    // flows through, so the !k commit gate is NOT ported here - a concurrent
-    // in-flight response's Set-Cookie during a renew relies on the session
-    // generation guard alone.
+    // sites, so requests wait but never trigger.
     // Companion members live in the single companion object at the end of
     // this file (renewMutex / renewInFlight / awaitForegroundRenewal). The
     // open-throttle stays instance-scoped: renewing at most once per second
@@ -668,11 +673,17 @@ class ApiClient(
                 // waiting requests always observe the renewed credentials.
                 renewInFlight = true
                 try {
-                val data = try { raw("/owner/session/renew", "POST", JSONObject(), renewAuth) } catch (e: ApiException) {
+                val renewCookies = mutableListOf<Cookie>()
+                val data = try { raw("/owner/session/renew", "POST", JSONObject(), renewAuth, renewCookies) } catch (e: ApiException) {
                     if (e.status == 401) throw SessionEndedException(e.code, opGen); throw e
                 }
                 val freshCsrf = data.optString("csrf").ifBlank { csrf }
                 session.withinGeneration(opGen) {
+                    // Explicit renew commit (s0 parity): the renew response's
+                    // Set-Cookie was captured, not committed by the gated
+                    // response path, so it lands here under the operation's
+                    // generation guard before the CSRF/body state.
+                    renewCookies.forEach { session.acceptCookieForGeneration(opGen, it.value) }
                     session.replaceCredentials(session.cookie, freshCsrf)
                     csrf = freshCsrf
                     sessionData = data

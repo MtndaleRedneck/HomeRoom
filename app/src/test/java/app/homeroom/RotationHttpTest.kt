@@ -62,6 +62,25 @@ class RotationHttpTest {
         assertTrue(request.getHeader("Cookie")!!.contains("renewed-secret"))
         assertEquals("renewed-csrf",session.csrf)
     }
+    // Mid-renew response cookies must not clobber the rotation (binary
+    // parity: J0.java `if (!this.k)` commit gate + s0's explicit renew
+    // commit). A request already in flight when the renew starts gets its
+    // poison Set-Cookie DROPPED; the renew's own Set-Cookie lands via the
+    // explicit captured commit. Outcome invariant: the rotation wins.
+    @Test fun rotationSurvivesInFlightResponseCookie()=fixture {server,session,client ->
+        val api=client()
+        server.enqueue(bootstrap())
+        api.bootstrap()
+        server.enqueue(MockResponse().setBody("""{"entries":[]}""").setBodyDelay(200,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=poison; Path=/; Secure; HttpOnly"))
+        server.enqueue(MockResponse().setBody("""{"features":{"session_renew":true}}"""))
+        server.enqueue(MockResponse().setBody("""{"csrf":"renewed-csrf"}""").setBodyDelay(250,TimeUnit.MILLISECONDS).addHeader("Set-Cookie","__Host-homeroom=renewed-secret; Path=/; Secure; HttpOnly"))
+        val slow=async(Dispatchers.IO) {api.activity(null)}
+        withContext(Dispatchers.IO) {assertNotNull(server.takeRequest(3,TimeUnit.SECONDS))}
+        api.renewOnOpen()
+        slow.await()
+        assertEquals("renewed-secret",session.cookie)
+        assertEquals("renewed-csrf",session.csrf)
+    }
     @Test fun revokedBackgroundSessionReturnsSessionEnded()=fixture {server,_,client ->
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"session_ended"}"""))
         try {client().eventDirect("e");fail("revoked") } catch(e:SessionEndedException) {assertEquals("session_ended",e.reason)}
