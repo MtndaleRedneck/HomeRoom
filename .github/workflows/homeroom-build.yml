@@ -556,11 +556,11 @@ jobs:
 
       - name: Assert the stub saw the expected synthetic flow
         run: |
-          grep -q '"path": "/owner/instance"' stub-log.jsonl
-          grep -q '"path": "/owner/rooms/stub-room/events"' stub-log.jsonl
-          grep -q 'decisions/stub-decision' stub-log.jsonl
-          grep -q 'prepare-answer' stub-log.jsonl
-          grep -q 'confirm-answer' stub-log.jsonl
+          ls -la stub-log.jsonl
+          wc -l stub-log.jsonl
+          for pat in '"path": "/owner/instance"' '"path": "/owner/rooms/stub-room/events"' 'decisions/stub-decision' 'prepare-answer' 'confirm-answer'; do
+            grep -q "$pat" stub-log.jsonl || { echo "STUB LOG MISSING PATTERN: $pat"; tail -20 stub-log.jsonl; exit 1; }
+          done
           echo "ok: stub log shows instance + room events + decision prepare + confirm (SYNTHETIC flow only)"
 
       - name: Upload interaction evidence
