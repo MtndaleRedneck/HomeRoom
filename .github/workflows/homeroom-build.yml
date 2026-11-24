@@ -19,6 +19,9 @@ on:
     # Temporary measure so this branch-only workflow can be triggered without
     # touching the default branch; only the temp CI branch ever pushes match.
     branches: [tmp/homeroom-1.5-ci-1124]
+    # ci-inputs carries the locally-signed APK for the dispatch-only
+    # signed-runtime workflow; committing it must not rerun this pipeline.
+    paths-ignore: ['ci-inputs/**']
 
 jobs:
   verify-build:
