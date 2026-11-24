@@ -13,6 +13,12 @@ import kotlinx.coroutines.launch
 class RoomsScreen(context: Context) : Screen(context) {
 
     private val rows = mutableListOf<Room>()
+    // RoomRoster envelope (K0/u3): the rooms response carries server_time and
+    // global_pending_rules_count alongside the rooms array; the screen keeps
+    // both for rendering (relative ages against the server clock, the
+    // pending-rules state). Wired from the roster fetch; settable in tests.
+    private var serverTime: String? = null
+    private var globalPending: Int = 0
     private val adapter = Adapter()
     private val refresh: SwipeRefreshLayout
     private val empty = text(context, "No rooms yet.", 15f, C.muted)
@@ -51,7 +57,10 @@ class RoomsScreen(context: Context) : Screen(context) {
         if (showSpinner) refresh.isRefreshing = true
         host.scope.launch {
             try {
-                val rooms = host.api.rooms().objects().map { Room.from(it) }
+                val roster = RoomRoster.from(host.api.roomsEnvelope())
+                val rooms = roster.rooms
+                serverTime = roster.serverTime
+                globalPending = roster.globalPendingRulesCount
                 host.cacheRooms(rooms)
                 rows.clear()
                 rows.addAll(rooms)

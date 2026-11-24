@@ -723,6 +723,9 @@ class ApiClient(
     }
 
     suspend fun rooms(): JSONArray = request("/owner/rooms").optJSONArray("rooms") ?: JSONArray()
+    // Full GET /owner/rooms envelope (RoomRoster, K0/u3): rooms array plus
+    // server_time and global_pending_rules_count.
+    suspend fun roomsEnvelope(): JSONObject = request("/owner/rooms")
 
     // RECONSTRUCTED Nov 23, 2026: typed roster (GET /owner/rooms); envelope keys
     // recovered from the exact private12 release build.

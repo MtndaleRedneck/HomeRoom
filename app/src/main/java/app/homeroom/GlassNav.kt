@@ -125,7 +125,14 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         super.onDetachedFromWindow()
     }
     override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int) { super.onSizeChanged(w,h,oldw,oldh); backdropChanged() }
-    override fun onVisibilityChanged(changedView:View,visibility:Int) { super.onVisibilityChanged(changedView,visibility); if(visibility==VISIBLE) post { backdropChanged() } }
+    override fun onVisibilityChanged(changedView:View,visibility:Int) {
+        super.onVisibilityChanged(changedView,visibility)
+        // Direct call, never a deferred post: a posted dirty lands AFTER this
+        // frame's capture already ran and enqueues a SECOND capture - the
+        // coalescing contract is exact-once per frame, and the runnable
+        // itself re-checks isShown/size at execution.
+        if(visibility==VISIBLE) backdropChanged()
+    }
 
     // Historical Nov 10 badge bodies + same-day update-badge patch (operator
     // readbacks, parsed as data): chats = unread, rules = pending, settings =

@@ -19,7 +19,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // After a failed resume the button re-runs status-first recovery instead
     // of an inert post() (I2 UX residual: retry while ready=false no-ops).
     private var retryResume=false
-    private val send=button(context,"Send attachment",true) {if(retryResume)resumeUpload() else post()}
+    private val send=button(context,"Send attachment",true) {
+        // Durable restart marker blocks the send path too (K0/W0:157).
+        if(stagedRecord?.optBoolean("restart_required",false)==true) {restartBlocked();return@button}
+        if(retryResume)resumeUpload() else post()
+    }
     // Historical local_id-keyed scheme (Nov 15 05:04:13 EST source): the record
     // identity is minted BEFORE any server call and names the staged file.
     // A resume record with an invalid local_id/file name FAILS - never mint.
@@ -54,7 +58,12 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     @Volatile private var persistenceUnknown=false
     private var job:Job?=null
     private var draftJob:Job?=null
-    private var upload:String?=null
+    // Upload id restores at CONSTRUCTION (K0/e1:126 reads "upload_id" from the
+    // durable record); the pre-restore scheme wrote "upload" - accept both.
+    // NOTE: the release's record-WRITER is in K0/d1 (CFR decompile failure),
+    // so the written key stays this tree's "upload" (recorded gap).
+    private var upload:String?=resume?.optString("upload_id")?.takeIf {it.isNotEmpty()}
+        ?: resume?.optString("upload")?.takeIf {it.isNotEmpty()}
     private var ready=false
     private var posting=false
     private var ambiguous=false
@@ -185,6 +194,9 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             status.text="This staged upload's saved data is damaged and cannot be resumed safely. Cancel it and attach the file again."
             return
         }
+        // Durable restart marker (K0/e1.d:232): blocked BEFORE any upload job
+        // or network request; job stays null.
+        if(resume?.optBoolean("restart_required",false)==true) {restartBlocked();return}
         if(job==null && !ready) {if(resume!=null)resumeUpload() else prepare()}
     }
     override fun onHide() {job?.cancel();job=null;super.onHide()}
@@ -377,11 +389,21 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             status.text="Attachment sent. Server recorded this post."
         } else markConsumedUnresolved()
     }
-    // Server-side byte inconsistency (cp42): the staged upload is abandoned -
-    // record and staged file removed, Send stays locked, release e1 wording.
+    // Server-side byte inconsistency (cp42) / requires_restart: the release
+    // MARKS the durable record restart_required and KEEPS it (K0/e1.j - the
+    // record is persisted via the session, then m()); resume stays blocked
+    // across process restarts until the owner explicitly cancels. Record and
+    // staged file are NOT deleted here.
     private fun abandonCorruptUpload() {
-        retire();runCatching {removeRecord()}
-        deleteStagedFiles();ready=false;send.isEnabled=false
+        persistSwap {it.put("restart_required",true)}
+        retire()
+        restartBlocked()
+    }
+    // Binary K0/e1.m(): restart-blocked UI - Send off at 45% alpha, exact
+    // release message. Reached from onShow's durable-marker check (K0/e1.d),
+    // the send path (K0/W0) and the server-side requires_restart path.
+    private fun restartBlocked() {
+        ready=false;send.isEnabled=false;send.alpha=0.45f
         status.text="This upload was interrupted and cannot resume. Cancel it, then choose the file again to start a new upload. No message was sent."
     }
     private fun prepare() {job=screenScope.launch {
