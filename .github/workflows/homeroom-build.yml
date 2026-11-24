@@ -70,7 +70,9 @@ jobs:
 
       - name: Mark output UNSIGNED and record its hash
         run: |
-          cp app/build/outputs/apk/release/app-release.apk homeroom-1.5-reconstruction-UNSIGNED.apk
+          ls -la app/build/outputs/apk/release/
+          # AGP names an unsigned release build app-release-unsigned.apk.
+          cp app/build/outputs/apk/release/app-release-unsigned.apk homeroom-1.5-reconstruction-UNSIGNED.apk
           sha256sum homeroom-1.5-reconstruction-UNSIGNED.apk | tee unsigned-sha256.txt
           git rev-parse HEAD | tee source-commit.txt
 
@@ -123,6 +125,7 @@ jobs:
           # even when healthy); poll instead.
           script: |
             while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+            adb shell settings put global verifier_verify_adb_installs 0
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n app.homeroom/.MainActivity
             sleep 45
