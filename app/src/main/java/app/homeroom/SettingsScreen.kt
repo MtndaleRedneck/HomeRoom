@@ -73,10 +73,22 @@ class SettingsScreen(context:Context):Screen(context) {
         val privacy=group("Privacy")
         row(privacy,"▣",C.violet,"App lock and privacy","Fingerprint or PIN, lock screen and recent apps","›") {host.openPage("App lock and privacy",PrivacyScreen(context))}
         val app=group("App")
-        // private12 parity (K0/Y4:215 "Unsent attachments", K0/A3:61 "Outgoing
-        // messages" settings rows): both target screens exist but had no entry.
+        // private12 parity, settings rows verified against the release's own
+        // targets (K0/Y4 handlers): "Activity" -> D1(true), "Needs you" ->
+        // D1(false) [our DashboardScreen(activityLog) carries the same boolean];
+        // "AI team" -> w5 [strings match TeamScreen]; "AI guide" -> T0 mode 1
+        // [GuideScreen]; "Connection and features" -> u5 [strings match
+        // StatusScreen]; "Unsent attachments" -> T0 mode 4 (K0/Y4:215)
+        // [StagedUploadsScreen]; "Outgoing messages" (K0/A3:61) [OutboxScreen].
+        row(app,"=",C.violet,"Needs you","Decisions and requests waiting on you","›") {host.openPage("Needs you",DashboardScreen(context,false))}
+        row(app,"=",C.violet,"Activity","Recent activity across your rooms","›") {host.openPage("Activity",DashboardScreen(context,true))}
+        row(app,"=",C.violet,"AI team","What your AIs are working on","›") {host.openPage("AI team",TeamScreen(context))}
+        row(app,"=",C.violet,"AI guide","The guide your AIs follow","›") {host.openPage("AI guide",GuideScreen(context))}
+        row(app,"=",C.violet,"Connection and features","Server connection, alerts and feature report","›") {host.openPage("Connection and features",StatusScreen(context))}
         row(app,"=",C.violet,"Outgoing messages","Queued sends still waiting to go out","›") {host.openPage("Outgoing messages",OutboxScreen(context))}
         row(app,"=",C.violet,"Unsent attachments","Staged uploads you can resume or remove","›") {host.openPage("Unsent attachments",StagedUploadsScreen(context))}
+        // Release rows "Add room" and "Archived rooms" have no reconstructed
+        // flow and are intentionally not offered (tracked gaps, not wired).
         // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
         row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
         // Locked Updates card, restored to the exact private12 arrangement
