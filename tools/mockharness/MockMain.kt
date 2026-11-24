@@ -159,9 +159,33 @@ fun main(args: Array<String>) = runBlocking {
         // under bootMutex), retry the SAME body, and succeed. Covers the
         // split-credential degradation path (rotated cookie + stale CSRF)
         // degrading into this recovery instead of corrupting.
-        api.markReadEvents("TRIGGER_CSRF_ONCE", listOf("ev1"))
+        api.markReadEvents("TRIGGER_CSRF_ONCE:first", listOf("ev1"))
         // A second call succeeds without any further injection.
         api.markReadEvents("t1", listOf("ev2"))
+    }
+    check("stale-operation-not-rebound-after-reenroll") {
+        // I2 final: the explicit-recovery path must not bootstrap a NEW
+        // session and resend the ORIGINAL body to a NEW destination after
+        // clear+re-enroll. The test hook interleaves exactly that between the
+        // injected 403 and the recovery bootstrap; the operation must be
+        // rejected as stale (never resent, never SessionEnded - the new
+        // session is healthy).
+        session.serverUrl = "http://127.0.0.1:8471"
+        val genBefore = session.generation
+        api.recoveryTestHook = {
+            session.generation += 1
+            session.serverUrl = "http://127.0.0.1:9999" // re-enrolled elsewhere
+        }
+        var staleCode: String? = null
+        var sessionEnded = false
+        try { api.markReadEvents("TRIGGER_CSRF_ONCE:rebind", listOf("ev3")) }
+        catch (e: ApiException) { staleCode = e.code }
+        catch (e: SessionEndedException) { sessionEnded = true }
+        finally { api.recoveryTestHook = null }
+        require(staleCode == "stale_operation" && !sessionEnded) {
+            "stale operation not rejected as stale_operation (got $staleCode, sessionEnded=$sessionEnded)" }
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.generation = genBefore
     }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.

@@ -126,11 +126,15 @@ class Handler(BaseHTTPRequestHandler):
         # carrying the magic trigger text is answered 403 csrf_failed; the
         # client must bootstrap (fresh CSRF) and retry the same body, which
         # then succeeds. One-shot and body-keyed so no other scenario trips it.
-        if self.command == 'POST' and getattr(self.server, 'csrf_fail_armed', True):
-            if b'TRIGGER_CSRF_ONCE' in body:
-                self.server.csrf_fail_armed = False
+        m = re.search(rb'TRIGGER_CSRF_ONCE:([a-z0-9]+)', body) if self.command == 'POST' else None
+        if m:
+            token = m.group(1).decode()
+            consumed = getattr(self.server, 'csrf_fail_consumed', set())
+            if token not in consumed:
+                consumed.add(token)
+                self.server.csrf_fail_consumed = consumed
                 self._reply(403, {"error": "csrf_failed"})
-                print(f"{self.command} {path} -> INJECTED csrf_failed (one-shot)", flush=True)
+                print(f"{self.command} {path} -> INJECTED csrf_failed (token {token})", flush=True)
                 return
         for method, pattern, name in ROUTES:
             if self.command == method and re.match(pattern, path):

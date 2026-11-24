@@ -195,8 +195,21 @@ class ApiClient(private val session: Session) {
         }
     }
 
+    // Harness-only: invoked at the top of the explicit-recovery branch so a
+    // test can interleave clear+re-enroll there. Never set in production.
+    internal var recoveryTestHook: (() -> Unit)? = null
+
     suspend fun request(route: String, method: String = "GET", body: JSONObject? = null): JSONObject =
         withContext(Dispatchers.IO) {
+            // Operation identity captured at ENTRY (I2 final, operation
+            // rebinding): if clear+re-enroll completes while the first attempt
+            // is in flight, the recovery path must NOT bootstrap the new
+            // session and resend the original body with new credentials to a
+            // new destination - stale work is rejected, never rebound. This is
+            // ApiException("stale_operation"), NOT SessionEndedException: the
+            // NEW session is healthy and must not be torn down.
+            val entryGen = session.generation
+            val entryUrl = session.serverUrl
             if (sessionData == null) bootstrap()
             try {
                 raw(route, method, body).also {
@@ -207,8 +220,13 @@ class ApiClient(private val session: Session) {
                 if ((e.status == 409 && e.code == "session_rotated") ||
                     (e.status == 403 && e.code == "csrf_failed")
                 ) {
+                    recoveryTestHook?.invoke()
+                    if (!session.unchangedSince(entryGen, entryUrl)) throw ApiException(0, "stale_operation")
                     sessionData = null
-                    bootstrap()
+                    try { bootstrap() } catch (b: ApiException) {
+                        if (b.status == 401) throw SessionEndedException(b.code); throw b
+                    }
+                    if (!session.unchangedSince(entryGen, entryUrl)) throw ApiException(0, "stale_operation")
                     try {
                         raw(route, method, body).also {
                             reachable = true

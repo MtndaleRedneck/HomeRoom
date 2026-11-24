@@ -39,6 +39,15 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_CSRF, null)
         set(v) = prefs.edit().putString(KEY_CSRF, v).apply()
 
+    // Operation identity check (I2 final, operation rebinding): the explicit
+    // recovery path must prove the session it started in still exists before
+    // resending the original body - generation AND destination together,
+    // under the same lock as clear().
+    fun unchangedSince(opGeneration: Long, opServerUrl: String?): Boolean =
+        synchronized(stateLock) {
+            generation == opGeneration && serverUrl == opServerUrl
+        }
+
     // Operation-generation boundary (I2 recheck of 93a5b8b): response cookies
     // are accepted only when the generation captured BEFORE the request still
     // matches under stateLock - a response from before sign-out cannot restore
