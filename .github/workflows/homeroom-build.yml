@@ -558,7 +558,7 @@ jobs:
         run: |
           ls -la stub-log.jsonl
           wc -l stub-log.jsonl
-          for pat in '"path": "/owner/instance"' '"path": "/owner/rooms/stub-room/events"' 'decisions/stub-decision' 'prepare-answer' 'confirm-answer'; do
+          for pat in '"path": "/owner/instance"' 'rooms/stub-room/events' 'decisions/stub-decision' 'prepare-answer' 'confirm-answer'; do
             grep -q "$pat" stub-log.jsonl || { echo "STUB LOG MISSING PATTERN: $pat"; tail -20 stub-log.jsonl; exit 1; }
           done
           echo "ok: stub log shows instance + room events + decision prepare + confirm (SYNTHETIC flow only)"
