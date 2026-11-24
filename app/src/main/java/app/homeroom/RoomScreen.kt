@@ -172,7 +172,9 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             // the rest of the process lifetime.
             android.app.AlertDialog.Builder(context)
                 .setTitle("Ask not confirmed")
-                .setMessage("Your previous ask was not confirmed. It may still appear in this room.")
+                // Informed override (main 18:54): the user must know the old
+                // ask may already have reached the AIs before choosing this.
+                .setMessage("Your previous ask may already have been sent to the AIs. Sending again could post it twice. Check the room first.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Send anyway") { _, _ ->
                     askAllPending.clear(launch.generation, room.id)

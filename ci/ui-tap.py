@@ -56,14 +56,24 @@ def main():
     root = ET.fromstring(xml)
 
     parent = {child: node for node in root.iter("node") for child in node}
-    matches = []
-    for node in root.iter("node"):
-        text = node.get("text") or ""
-        desc = node.get("content-desc") or ""
-        if target in text or target in desc:
-            b = bounds_of(node)
-            if b is not None:
-                matches.append((node, b))
+    # Two passes (379008b CI failure): an exact case-insensitive text/desc
+    # match wins over substring matches, so tapping "Ask" hits the ASK button
+    # and not the "Ask AIs side by side" dialog title. Substring remains the
+    # fallback for labels only partially known to the harness.
+    def collect(pred):
+        out = []
+        for node in root.iter("node"):
+            text = node.get("text") or ""
+            desc = node.get("content-desc") or ""
+            if pred(text) or pred(desc):
+                b = bounds_of(node)
+                if b is not None:
+                    out.append((node, b))
+        return out
+
+    matches = collect(lambda s: s.lower() == target.lower())
+    if not matches:
+        matches = collect(lambda s: target in s)
     if not matches:
         # Diagnosability (de0a8d7 "Needs you" miss): keep the hierarchy that
         # produced the failure as a CI artifact - without it a miss is
