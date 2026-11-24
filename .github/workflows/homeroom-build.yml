@@ -66,7 +66,7 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build unsigned release APK (explicit opt-in)
-        run: gradle --no-daemon assembleRelease -PhrAllowUnsignedRelease
+        run: gradle --no-daemon assembleRelease -PhrAllowUnsignedRelease=true
 
       - name: Mark output UNSIGNED and record its hash
         run: |
