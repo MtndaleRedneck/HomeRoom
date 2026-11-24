@@ -39,7 +39,7 @@ class PrivateFeaturePreviewTest {
     private fun render(view:View,name:String) {
         view.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));view.layout(0,0,360,780)
         val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);view.draw(Canvas(bitmap))
-        File(System.getProperty("homeroom.previewDir")).resolve("private-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        (System.getProperty("hr.previewDir")?.let {File(it)} ?: File("build/previews").apply {mkdirs()}).resolve("private-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
     }
     @Test fun unavailableFlowsRemainTestOnly() {
         val edit=frame("Edit a rule")

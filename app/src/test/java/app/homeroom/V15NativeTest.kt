@@ -20,7 +20,7 @@ class V15NativeTest {
     private fun render(view:View,name:String) {
         view.measure(View.MeasureSpec.makeMeasureSpec(396,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));view.layout(0,0,396,800)
         val image=Bitmap.createBitmap(396,800,Bitmap.Config.ARGB_8888);val c=Canvas(image);c.drawColor(C.bg);view.draw(c)
-        File(System.getProperty("homeroom.previewDir")).apply {mkdirs()}.resolve("v15-$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)}
+        (System.getProperty("hr.previewDir")?.let {File(it)} ?: File("build/previews").apply {mkdirs()}).resolve("v15-$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)}
     }
     @Test fun setupStatusAndPrivacyScreens() {
         val app=RuntimeEnvironment.getApplication()
