@@ -63,12 +63,18 @@ fun main(args: Array<String>) = runBlocking {
         val reordered = JSONArray().put(JSONObject(legacy.getJSONObject(2).toString())).put(JSONObject(legacy.getJSONObject(0).toString()))
         val n2 = StagedStore.normalize(StagedStore.parse(reordered.toString())!!)
         require(n2[1].optString("local_id") == "up_1" && n2[0].optString("local_id") == n1[2].optString("local_id")) { "identities stable across delete/reorder" }
-        // Collision: a legacy upload id already taken as a local_id.
+        // Collision: a legacy upload id already taken as a local_id. EVERY
+        // claimant is content-suffixed (order-independent: encounter order
+        // never picks the winner, so reorder cannot swap identities).
         val clash = JSONArray()
             .put(JSONObject().put("local_id", "up_1").put("name", "holder"))
             .put(JSONObject().put("upload", "up_1").put("name", "legacy"))
         val n3 = StagedStore.normalize(StagedStore.parse(clash.toString())!!)
-        require(n3[1].optString("local_id") != "up_1" && n3[1].optString("local_id").startsWith("up_1#")) { "collision disambiguated" }
+        require(n3[0].optString("local_id").startsWith("up_1#") && n3[1].optString("local_id").startsWith("up_1#")) { "all claimants suffixed" }
+        require(n3[0].optString("local_id") != n3[1].optString("local_id")) { "distinct contents never merge" }
+        val clashRev = JSONArray().put(clash.getJSONObject(1)).put(clash.getJSONObject(0))
+        val n3r = StagedStore.normalize(StagedStore.parse(clashRev.toString())!!)
+        require(n3r[1].optString("local_id") == n3[0].optString("local_id") && n3r[0].optString("local_id") == n3[1].optString("local_id")) { "identities stable across reorder" }
         // Canonical rewrite carries ALL records: nothing lost on save.
         val raw = StagedStore.applySave(legacy.toString(), "up_1", JSONObject().put("local_id", "up_1").put("name", "one-v2"))
         val all = StagedStore.parse(raw)!!

@@ -5,9 +5,6 @@ import org.json.JSONArray
 import java.util.UUID
 
 internal fun clientId()=UUID.randomUUID().toString()
-data class ReactionCount(val reaction:String,val count:Int,val mine:Boolean) {
-    companion object {fun from(o:JSONObject)=ReactionCount(o.getString("reaction"),o.getInt("count"),o.optBoolean("mine"))}
-}
 internal data class DecisionOption(val id:String,val label:String)
 // RECONSTRUCTED Nov 23, 2026: field set and parser recovered exactly from the
 // exact private12 release build (decision identity, version bounds, conditional
@@ -43,10 +40,13 @@ internal data class OwnerDevice(val id:String,val label:String,val created:Strin
 internal data class UploadStatus(val id:String,val state:String,val offset:Long,val size:Long,val expected:String,val verified:String?) {
     companion object {fun from(o:JSONObject)=UploadStatus(o.getString("upload_id"),o.getString("state"),o.getLong("next_offset"),o.getLong("byte_size"),o.getString("sha256"),o.nullableString("verified_sha256"))}
 }
-internal class V15Api(private val api:ApiClient) {
+// initiating: when supplied (composer flows), every call is bound to that
+// operation identity via ApiClient.requestFor - a session move rejects with
+// stale_operation instead of carrying old work to a new account/server.
+internal class V15Api(private val api:ApiClient,private val initiating:Session.OpAuth?=null) {
     private fun id(value:String)=ApiClient.enc(value)
-    suspend fun get(path:String)=api.request("/owner/"+path)
-    suspend fun mutate(path:String,body:JSONObject,method:String="POST")=api.request("/owner/"+path,method,body)
+    suspend fun get(path:String)=if(initiating!=null) api.requestFor(initiating,"/owner/"+path) else api.request("/owner/"+path)
+    suspend fun mutate(path:String,body:JSONObject,method:String="POST")=if(initiating!=null) api.requestFor(initiating,"/owner/"+path,method,body) else api.request("/owner/"+path,method,body)
     suspend fun decision(key:String)=DecisionCard.from(get("decisions/"+id(key)))
     suspend fun prepare(card:DecisionCard,option:String,client:String)=mutate("decisions/"+id(card.id)+"/prepare-answer",JSONObject().put("client_id",client).put("version",card.version).put("content_sha256",card.hash).put("option_id",option))
     // RECONSTRUCTED: the release confirm-answer body always carries action_sha256

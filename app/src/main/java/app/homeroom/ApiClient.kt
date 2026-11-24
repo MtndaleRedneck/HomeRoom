@@ -232,7 +232,17 @@ class ApiClient(
         // handoff or wait (I2 timing qualification): work that was queued
         // before this call cannot capture a newer session than the caller
         // that initiated this operation intended.
-        val initiating = session.authSnapshot()
+        return requestFor(session.authSnapshot(), route, method, body)
+    }
+
+    // Caller-bound request (I2 composer identity boundary): the CALLER's
+    // initiating identity is threaded to actual dispatch - credentials are
+    // adopted only while the session still matches that identity, so a
+    // re-enroll mid-flow can never carry the caller's old operation (IDs,
+    // bytes, text) to the NEW account/server. A moved identity rejects with
+    // stale_operation, which is NOT SessionEndedException: the new session
+    // is healthy and must not be torn down.
+    suspend fun requestFor(initiating: Session.OpAuth, route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
         return withContext(Dispatchers.IO) {
             // Operation identity captured at ENTRY (I2 final, operation
             // rebinding): if clear+re-enroll completes while the first attempt
@@ -325,9 +335,15 @@ class ApiClient(
 
     // RECONSTRUCTED: exact release chunk route (K0/E0) - PUT octet-stream with
     // X-Chunk-SHA256 and X-CSRF-Token.
-    suspend fun uploadChunk(uploadId: String, offset: Long, chunk: ByteArray, sha256Hex: String): JSONObject =
+    suspend fun uploadChunk(uploadId: String, offset: Long, chunk: ByteArray, sha256Hex: String, initiating: Session.OpAuth? = null): JSONObject =
         withContext(Dispatchers.IO) {
-            val auth = session.authSnapshot()
+            // Caller-bound when initiating is supplied (I2 composer identity):
+            // the chunk bytes only ever travel under credentials still valid
+            // for the operation that staged them.
+            val auth = if (initiating != null)
+                session.authIfUnchanged(initiating.generation, initiating.serverUrl)
+                    ?: throw ApiException(0, "stale_operation")
+            else session.authSnapshot()
             val fullUrl = baseUrl(auth) + "/owner/uploads/" + enc(uploadId) + "/chunks/" + offset
             val builder = Request.Builder()
                 .url(fullUrl)
@@ -365,14 +381,17 @@ class ApiClient(
     // for the ambiguous-send recovery lookup. The retry must keep the whole
     // original body byte-identical (composer locks payload + identities).
     suspend fun postWithUploads(room: String, clientId: String, created: String?, text: String,
-                                threadKey: String?, parentId: String?, mentions: List<String>, uploadIds: List<String>): JSONObject =
-        request("/rooms/" + enc(room) + "/posts", "POST", JSONObject()
+                                threadKey: String?, parentId: String?, mentions: List<String>, uploadIds: List<String>, initiating: Session.OpAuth? = null): JSONObject {
+        val body = JSONObject()
             .put("client_id", clientId)
             .put("client_created_at", created ?: JSONObject.NULL)
             .put("text", text)
             .put("thread_key", threadKey ?: JSONObject.NULL)
             .put("parent_id", parentId ?: JSONObject.NULL)
-            .put("upload_ids", JSONArray(uploadIds)))
+            .put("upload_ids", JSONArray(uploadIds))
+        return if (initiating != null) requestFor(initiating, "/rooms/" + enc(room) + "/posts", "POST", body)
+        else request("/rooms/" + enc(room) + "/posts", "POST", body)
+    }
 
     // RECONSTRUCTED: avatar bytes through the app's own client (cookie stays in-app).
     suspend fun avatarBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
@@ -530,7 +549,8 @@ class ApiClient(
 
     // RECONSTRUCTED: exact release routes - GET /owner/events/<id> and
     // POST /read-events {thread_key, event_ids} (K0/J0).
-    suspend fun event(id: String): JSONObject = request("/owner/events/" + enc(id))
+    suspend fun event(id: String, initiating: Session.OpAuth? = null): JSONObject =
+        if (initiating != null) requestFor(initiating, "/owner/events/" + enc(id)) else request("/owner/events/" + enc(id))
 
     // Direct single-shot event fetch (RotationHttpTest lineage): never
     // bootstraps, renews or retries - a 409 session_rotated propagates so the

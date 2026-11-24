@@ -206,19 +206,31 @@ internal object StagedStore {
     // existing local_id disambiguate by content hash (deterministic across
     // delete/reorder). Content-identical duplicates collapse to one identity -
     // no information loss. Quarantined records are kept verbatim and marked.
+    // Order-independent identity assignment (I2): when one base id is claimed
+    // by multiple DISTINCT contents - a legacy upload id duplicating an
+    // existing local_id, or two different legacy records sharing an upload id -
+    // EVERY claimant is suffixed with its content hash. Encounter order never
+    // decides the winner, so reorder/delete cannot change a record's identity.
+    // Content-identical duplicates share one identity (no information loss).
     fun normalize(records:List<JSONObject>):List<JSONObject> {
-        val taken=records.mapNotNull {it.optString("local_id").takeIf {id->id.isNotEmpty()}}.toMutableSet()
-        return records.map {r->
-            if(r.optString("local_id").isNotEmpty()) r
+        class Meta(val base:String,val hash:String,val quarantined:Boolean,val derived:Boolean)
+        val metas=records.map {r->
+            val existing=r.optString("local_id").takeIf {it.isNotEmpty()}
+            if(existing!=null) Meta(existing,contentHash(r),false,false)
             else {
                 val upload=r.optString("upload")
-                val quarantined=upload.isEmpty()
-                val base=if(quarantined) "quarantined-"+contentHash(r) else upload
-                var id=base
-                if(id in taken) id=base+"#"+contentHash(r)
-                taken.add(id)
+                val q=upload.isEmpty()
+                Meta(if(q) "quarantined-"+contentHash(r) else upload,contentHash(r),q,true)
+            }
+        }
+        val distinctByBase=metas.groupBy {it.base}.mapValues {(_,g)->g.map {it.hash}.distinct().size}
+        return records.mapIndexed {i,r->
+            val m=metas[i]
+            val id=if(distinctByBase.getValue(m.base)>1) m.base+"#"+m.hash else m.base
+            if(!m.derived && id==m.base) r
+            else {
                 val out=JSONObject(r.toString()).put("local_id",id)
-                if(quarantined) out.put("quarantined",true)
+                if(m.quarantined) out.put("quarantined",true)
                 out
             }
         }

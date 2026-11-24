@@ -160,7 +160,8 @@ data class AssistantStatus(val actor: String, val replyEventId: String?, val not
 
 // Original-lineage reaction summary (actual historical source names it
 // ReactionCount; j3 in the release build): reaction (required), count
-// (required), mine (optBoolean, default false).
+// (required), mine (optBoolean, default false). Single home: V15Models.kt's
+// earlier copy was removed after CI flagged the redeclaration.
 data class ReactionCount(val reaction: String, val count: Int, val mine: Boolean) {
     companion object {
         fun from(o: JSONObject): ReactionCount =

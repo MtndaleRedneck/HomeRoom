@@ -20,6 +20,12 @@ class StagedUploadsScreen(context:Context):Screen(context) {
             // shown honestly, but cannot be resumed.
             if(record.optBoolean("quarantined",false)) {
                 body.addView(text(context,"Damaged record · cannot be resumed",15f,C.muted))
+                // Manual removal is the only operation a quarantined record
+                // supports; a blocked removal (damaged store) is said honestly.
+                body.addView(button(context,"Remove damaged record",false) {
+                    val ok=runCatching {host.session.saveStagedUpload(record.getString("local_id"),null)}.isSuccess
+                    if(ok) onShow() else snack(this,"Local staged records are damaged - removal is blocked to protect them. Nothing was deleted.")
+                })
                 return@forEach
             }
             val room=host.cachedRooms().firstOrNull {it.id==record.optString("room")}
