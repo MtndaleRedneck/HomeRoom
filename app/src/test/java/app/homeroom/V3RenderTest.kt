@@ -53,9 +53,22 @@ class V3RenderTest {
             field(nav,"selectedItemId").set(nav,tab)
             nav.setBadges(2,2)
             nav.javaClass.getDeclaredMethod("updateSelection").apply{isAccessible=true}.invoke(nav)
+            // Actual badge VIEW checks (number + visibility), accessibility
+            // content descriptions kept alongside, per I2's partial review.
             val items=field(nav,"items").get(nav) as LinearLayout
-            assertEquals("Chats, 2",(items.getChildAt(0) as View).contentDescription)
-            assertEquals("Rules, 2",(items.getChildAt(2) as View).contentDescription)
+            val chatsCell=items.getChildAt(0) as LinearLayout
+            val rulesCell=items.getChildAt(2) as LinearLayout
+            val settingsCell=items.getChildAt(3) as LinearLayout
+            val chatsBadge=chatsCell.findViewWithTag<TextView>("badge")!!
+            val rulesBadge=rulesCell.findViewWithTag<TextView>("badge")!!
+            val settingsBadge=settingsCell.findViewWithTag<TextView>("badge")!!
+            assertEquals("2",chatsBadge.text.toString())
+            assertEquals(View.VISIBLE,chatsBadge.visibility)
+            assertEquals("2",rulesBadge.text.toString())
+            assertEquals(View.VISIBLE,rulesBadge.visibility)
+            assertEquals("no update dot without an update",View.GONE,settingsBadge.visibility)
+            assertEquals("Chats, 2",chatsCell.contentDescription)
+            assertEquals("Rules, 2",rulesCell.contentDescription)
         }
         frame.setPadding(0,24,0,24)
         frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
