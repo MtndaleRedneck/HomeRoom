@@ -36,6 +36,7 @@ object UpdateCheck {
         private set
     var latestTag:String?=null
     var checkedAt:String?=null
+    var latestNotes:String?=null
         private set
     private var latestApk:String?=null
     private var latestDigest:String?=null
@@ -102,12 +103,12 @@ object UpdateCheck {
     }
 
     private fun apply(r:Release) {
-        latestTag=r.tag;latestApk=r.apk;latestDigest=r.sha256
+        latestTag=r.tag;latestApk=r.apk;latestDigest=r.sha256;latestNotes=r.notes
         checkedAt=java.time.Instant.now().toString()
         setState(if(isNewer(r.tag,BuildConfig.VERSION_NAME)) State.AVAILABLE else State.UP_TO_DATE)
     }
 
-    private data class Release(val tag:String,val apk:String?,val sha256:String?)
+    private data class Release(val tag:String,val apk:String?,val sha256:String?,val notes:String?)
 
     private suspend fun fetch():Release? = withContext(Dispatchers.IO) {
         try {
@@ -118,7 +119,7 @@ object UpdateCheck {
                 val tag=release.optString("tag_name")
                 if(tag.isEmpty()) return@withContext null
                 val asset=release.optJSONArray("assets")?.objects()?.firstOrNull {it.optString("name").endsWith(".apk",true)}
-                Release(tag,asset?.nullableString("browser_download_url"),parseDigest(asset?.nullableString("digest")))
+                Release(tag,asset?.nullableString("browser_download_url"),parseDigest(asset?.nullableString("digest")),release.optString("body").ifBlank {null})
             }
         } catch(e:Exception) {null}
     }

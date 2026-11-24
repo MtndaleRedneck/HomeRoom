@@ -70,13 +70,56 @@ class SettingsScreen(context:Context):Screen(context) {
         val app=group("App")
         // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
         row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
-        // Locked bottom-Updates rule (matches d5.java: Feedback in Help above
-        // the Updates card, version and Sign out below it).
+        // Locked Updates card, restored to the exact private12 arrangement
+        // (d5.java): rounded surface card with a bold "Updates" header, a
+        // state-machine button (#1475B3, rounded 12dp, disabled at 60% alpha
+        // while busy), an optional centered status line with the original
+        // strings, a "What's new" section when an update carries notes, and
+        // the version line, at the bottom above Sign out. private12 has no
+        // 20-second up-to-date revert timer anywhere in the decompile; the
+        // status stays until the next check or rebuild.
         val update=UpdateCheck.hasUpdate()
-        row(app,"↑",C.amber,"HomeRoom "+BuildConfig.VERSION_NAME,if(update) "Update ${UpdateCheck.latestTag} available" else UpdateCheck.checkedAt?.let {"Checked "+formatBubbleTime(it)} ?: "Not checked yet",if(update) "Update" else "Check") {
-            if(update && UpdateCheck.openLatest(host,host.scope)) return@row
-            UpdateCheck.checkManually(host,host.scope,host.session) {message->snack(this,message);rebuild()}
+        val updatesCard=column(context).apply {
+            background=rounded(C.surface,dp(20).toFloat())
+            setPadding(dp(16),dp(16),dp(16),dp(16))
         }
+        updatesCard.addView(text(context,"Updates",17f,C.text,true))
+        val busy=UpdateCheck.state==UpdateCheck.State.CHECKING || UpdateCheck.state==UpdateCheck.State.DOWNLOADING
+        val btnLabel=when {
+            UpdateCheck.state==UpdateCheck.State.CHECKING -> "Checking..."
+            UpdateCheck.state==UpdateCheck.State.DOWNLOADING -> "Downloading... ${UpdateCheck.progress}%"
+            update -> "Update ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""}"
+            else -> "Check for updates"
+        }
+        val checkBtn=text(context,btnLabel,16f,android.graphics.Color.WHITE,true).apply {
+            gravity=Gravity.CENTER
+            background=rounded(android.graphics.Color.parseColor("#1475B3"),dp(12).toFloat())
+            isEnabled=!busy
+            alpha=if(isEnabled) 1.0f else 0.6f
+            setOnClickListener {
+                if(update && UpdateCheck.openLatest(host,host.scope)) return@setOnClickListener
+                UpdateCheck.checkManually(host,host.scope,host.session) {_->rebuild()}
+            }
+        }
+        updatesCard.addView(checkBtn,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(12)})
+        val status=when {
+            update -> "Version ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""} is available."
+            UpdateCheck.state==UpdateCheck.State.UP_TO_DATE -> "You're up to date."
+            UpdateCheck.state==UpdateCheck.State.CHECK_FAILED -> "Couldn't check. Try again."
+            UpdateCheck.state==UpdateCheck.State.DOWNLOAD_FAILED -> "The download didn't finish. Try again."
+            UpdateCheck.state==UpdateCheck.State.NEEDS_PERMISSION -> "Allow installs from HomeRoom in Android's screen, then tap Install again."
+            else -> ""
+        }
+        if(status.isNotEmpty()) {
+            updatesCard.addView(text(context,status,13.5f,C.muted).apply {gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+        }
+        val notes=UpdateCheck.latestNotes
+        if(update && !notes.isNullOrBlank()) {
+            updatesCard.addView(text(context,"What's new in ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""}",14f,C.text,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
+            updatesCard.addView(text(context,notes,13.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+        }
+        updatesCard.addView(text(context,"Version "+BuildConfig.VERSION_NAME,13.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+        col.addView(updatesCard,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(20)})
         val signout=text(context,"Sign out",16f,C.danger,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(20).toFloat());setOnClickListener {confirmSignOut()}}
         col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(24)})
         // NOTE: an earlier reconstruction called a backdrop refresh here; no
