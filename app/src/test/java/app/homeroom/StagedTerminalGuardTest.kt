@@ -67,4 +67,21 @@ class StagedTerminalGuardTest {
         assertNull(guard.persist { store.add("m2") })
         assertTrue(store.isEmpty())
     }
+
+    @Test fun staleReadCannotRewindConcurrentTransform() {
+        // I2 c75: the old pattern (read record, derive a copy, THEN save)
+        // let a stale draft rewind a concurrently committed rotation. With
+        // read+derive+save+swap as one section, the second transform must
+        // derive from the first's committed result, in order.
+        val guard=StagedTerminalGuard()
+        val slot=java.util.concurrent.atomic.AtomicReference("v0")
+        val bIn=CountDownLatch(1); val bGo=CountDownLatch(1)
+        val b=Thread { guard.persist { bIn.countDown(); bGo.await(5,TimeUnit.SECONDS); slot.set(slot.get()+"+draft") } }
+        b.start(); assertTrue(bIn.await(5,TimeUnit.SECONDS))
+        val a=Thread { guard.persist { slot.set(slot.get()+"+rotate") } }
+        a.start(); Thread.sleep(150)
+        assertTrue("second transform interleaved mid-transform",a.isAlive)
+        bGo.countDown(); b.join(5000); a.join(5000)
+        assertEquals("v0+draft+rotate",slot.get())
+    }
 }

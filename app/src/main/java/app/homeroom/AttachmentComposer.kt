@@ -94,16 +94,34 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // advances AFTER the new record value is durably saved. Returns false when
     // the generation is stale (save skipped): the caller must abort with no
     // further network. A commit failure throws (save UNKNOWN, not absent).
-    private fun persistSwap(next:JSONObject):Boolean =
+    // THE record mutation boundary (I2): READ (stagedRecord), DERIVE
+    // (transform on a deep copy), SAVE (durable write within the initiating
+    // generation) and SWAP (stagedRecord assignment) are ONE atomic section
+    // under the guard. Deriving outside the guard let a stale copy rewind a
+    // concurrently committed rotation/marker. A null transform result aborts
+    // without writing. False = terminal, no record, aborted transform, or
+    // stale generation.
+    private fun persistSwap(transform:(JSONObject)->JSONObject?):Boolean =
         try {
-            // The terminal check, the save, and the record swap run as ONE
-            // atomic boundary with retire() (StagedTerminalGuard): a delayed
-            // write can never re-add a record whose composer already retired
-            // and removed it. Null = refused because terminal.
             guard.persist {
-                host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next)}
-                stagedRecord=next; true
-            } ?: false
+                val current=stagedRecord ?: return@persist false
+                val next=transform(JSONObject(current.toString())) ?: return@persist false
+                var saved=false
+                host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next);saved=true}
+                if(saved) stagedRecord=next
+                saved
+            } == true
+        } catch(e:Exception) {persistenceUnknown=true;throw e}
+    // First-save variant: no current record to derive from (pre-create
+    // staging). Same single boundary; replaces stagedRecord wholesale.
+    private fun persistReplace(next:JSONObject):Boolean =
+        try {
+            guard.persist {
+                var saved=false
+                host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next);saved=true}
+                if(saved) stagedRecord=next
+                saved
+            } == true
         } catch(e:Exception) {persistenceUnknown=true;throw e}
     private fun retire() {guard.retire();draftJob?.cancel()}
     // Removal by local_id (historical null-value semantics). False = blocked
@@ -139,9 +157,10 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 draftJob=screenScope.launch {
                     kotlinx.coroutines.delay(750)
                     withContext(Dispatchers.IO) {
-                        if(terminal) return@withContext
-                        val current=stagedRecord ?: return@withContext
-                        val ok=try {persistSwap(JSONObject(current.toString()).put("message",text))} catch(e:Exception) {false}
+                        if(terminal || stagedRecord==null) return@withContext  // fast path; the guard re-checks inside
+                        // Derivation runs INSIDE the boundary (I2): the draft
+                        // applies to the CURRENT record, never a stale copy.
+                        val ok=try {persistSwap {it.put("message",text)}} catch(e:Exception) {false}
                         if(!ok && !terminal) withContext(Dispatchers.Main) {snack(host.window.decorView,"Couldn't save this draft durably - it may not survive an app restart.")}
                     }
                 }
@@ -226,7 +245,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                         throw e
                     }
                 upload=srv.getString("upload_id")
-                if(!persistSwap(JSONObject(record.toString()).put("upload",upload))) return
+                if(!persistSwap {it.put("upload",upload)}) return
             }
             when(srv.optString("state")) {
                 "consumed" -> {
@@ -267,7 +286,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     ensureActive();input.seek(offset);val chunk=ByteArray(minOf(262144L,total-offset).toInt());input.readFully(chunk)
                     val next=host.api.uploadChunk(upload!!,offset,chunk,sha256(chunk),initiatingAuth).getLong("next_offset")
                     require(next==offset+chunk.size);offset=next
-                    if(!persistSwap(JSONObject(stagedRecord!!.toString()).put("offset",offset))) {aborted=true;return@withContext}
+                    if(!persistSwap {it.put("offset",offset)}) {aborted=true;return@withContext}
                     withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+total+" bytes"}
                 }
             }}
@@ -328,23 +347,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     private fun markConsumedUnresolved() {
         ready=false;send.isEnabled=false;consumedUnresolved=true
         stagedRecord?.let {
-            val marked=StagedUpload.markUnresolvedCancellation(JSONObject(it.toString()))!!
-            // Same atomic boundary as every record mutation (I2): a marker
-            // save landing AFTER retire+removal would silently re-add the
-            // record. Null = refused because terminal (correct: a retired
-            // composer has no record to mark).
-            try {
-                // Generation check is inside the actual write (I2): without
-                // it the marker could land after a sign-out erasure (clear()
-                // holds stateLock, this save alone does not) and re-add the
-                // record to the wiped store.
-                guard.persist {
-                    var saved=false
-                    host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,marked);saved=true}
-                    if(saved) stagedRecord=marked
-                    saved
-                }
-            } catch(e:Exception) {persistenceUnknown=true}
+            // Derivation, save and swap are ONE boundary (I2): the marker
+            // builds on the CURRENT record inside the guard - it can neither
+            // rewind a concurrent transform nor land after a sign-out
+            // erasure (the generation check sits inside the actual write).
+            try {persistSwap {StagedUpload.markUnresolvedCancellation(it)}} catch(e:Exception) {persistenceUnknown=true}
         }
         status.text="Upload already used. Check the room before sending again."
     }
@@ -396,7 +403,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // window. A stale generation aborts BEFORE any network (I2).
             val pre=StagedUpload.newRecord(localId,room.id,safeName,mime,voice,metadata.first,metadata.second,privateFile.name,stagedIds,host.session.ownerId,host.session.serverUrl)
                 .put("message",message.text.toString())
-            if(!persistSwap(pre)) {status.text="Session changed before the upload started. Nothing was uploaded.";return@launch}
+            if(!persistReplace(pre)) {status.text="Session changed before the upload started. Nothing was uploaded.";return@launch}
             val api=V15Api(host.api,initiatingAuth)
             val result=api.mutate("rooms/"+ApiClient.enc(room.id)+"/uploads",JSONObject().put("client_id",uploadClient).put("name",safeName).put("mime_type",mime).put("byte_size",metadata.first).put("sha256",metadata.second).put("kind",if(voice)"voice" else if(mime.startsWith("image/"))"image" else "file"))
             upload=result.getString("upload_id")
@@ -412,7 +419,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     require(next==offset+chunk.size);offset=next
                     // The chunk already landed; if this save fails the SERVER
                     // offset governs the resume, never the local record (I2).
-                    if(!persistSwap(JSONObject(stagedRecord!!.toString()).put("offset",offset))) {aborted=true;return@withContext}
+                    if(!persistSwap {it.put("offset",offset)}) {aborted=true;return@withContext}
                     withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+metadata.first+" bytes"}
                 }
             }}
@@ -453,9 +460,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         // the composer state swaps to the attempted record only after a
         // successful durable write (I2 copy/swap boundary).
         if(stagedRecord!=null) {
-            val attempt=StagedUpload.recordAttempt(JSONObject(stagedRecord!!.toString()),text)
-            val saved=try {persistSwap(attempt)} catch(e:Exception) {false}
-            if(!saved || stagedRecord!==attempt) {
+            // Derivation runs INSIDE the boundary (I2): the attempted record
+            // is built from the CURRENT record and saved+swapped atomically;
+            // on success stagedRecord IS the durably attempted record.
+            val saved=try {persistSwap {StagedUpload.recordAttempt(it,text)}} catch(e:Exception) {false}
+            if(!saved) {
                 attemptedText=null
                 status.text="Couldn't durably record this send. Nothing was sent - try again."
                 return
@@ -484,25 +493,17 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     ambiguous=false;attemptedText=null;priorUnresolved=true
                     val fresh=clientId();val now=java.time.Instant.now().toString()
                     postClient=fresh;created=now
-                    val rotated=stagedRecord?.let {StagedUpload.rotateForResend(JSONObject(it.toString()),{fresh},{now})}
-                    // ONE atomic section (I2): the generation check, the durable
-                    // rotation save AND the in-memory swap are a single boundary.
-                    // Separate sections would let a pending draft save interleave
-                    // and overwrite the rotated record; a save without the
-                    // generation check could land after a sign-out erasure and
-                    // re-add the record to the wiped store. Refusal (terminal),
-                    // stale generation, or exception all keep the resend DISABLED
-                    // (a resend now would risk losing the prior identity on
-                    // crash) and fail loudly instead of proceeding.
-                    if(rotated!=null) {
-                        val rotationSaved=try {
-                            guard.persist {
-                                var ok=false
-                                host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,rotated);ok=true}
-                                if(ok) stagedRecord=rotated
-                                ok
-                            } == true
-                        } catch(e:Exception) {persistenceUnknown=true;false}
+                    // Derivation, save and swap are ONE boundary (I2): the
+                    // rotation builds on the CURRENT record inside the guard,
+                    // so a pending draft cannot overwrite the new identity or
+                    // its preserved history; the generation check sits inside
+                    // the actual write so the rotation cannot land after a
+                    // sign-out erasure. Refusal (terminal), stale generation,
+                    // or exception all keep the resend DISABLED (a resend now
+                    // would risk losing the prior identity on crash) and fail
+                    // loudly instead of proceeding.
+                    if(stagedRecord!=null) {
+                        val rotationSaved=try {persistSwap {StagedUpload.rotateForResend(it,{fresh},{now})}} catch(e:Exception) {false}
                         if(!rotationSaved) {
                             message.isEnabled=false;send.isEnabled=false
                             status.text="Couldn't durably record the expired send. Restart the app, then check the room before sending again."

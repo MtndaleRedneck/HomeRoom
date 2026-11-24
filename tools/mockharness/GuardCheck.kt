@@ -39,4 +39,20 @@ fun main() {
     s3.clear()
     check(s3.isEmpty() && g3.persist { s3.add("m2") }==null && s3.isEmpty()) {"a marker/rotation write landed after retire+removal"}
     println("OK guard-marker-rotation-race")
+
+    // D: stale-read preemption (I2 c75): with READ/DERIVE/SAVE/SWAP as one
+    // section, a transform that entered first finishes before a second
+    // transform derives - the second must build on the first's result, never
+    // interleave mid-transform or rewind it.
+    val g4=StagedTerminalGuard()
+    val slot=java.util.concurrent.atomic.AtomicReference("v0")
+    val bIn=CountDownLatch(1); val bGo=CountDownLatch(1)
+    val b=Thread { g4.persist { bIn.countDown(); bGo.await(5,TimeUnit.SECONDS); slot.set(slot.get()+"+draft") } }
+    b.start(); check(bIn.await(5,TimeUnit.SECONDS)) {"draft transform never entered"}
+    val a=Thread { g4.persist { slot.set(slot.get()+"+rotate") } }
+    a.start(); Thread.sleep(150)
+    check(a.isAlive) {"second transform interleaved mid-transform - boundary not atomic"}
+    bGo.countDown(); b.join(5000); a.join(5000)
+    check(slot.get()=="v0+draft+rotate") {"stale read rewound a committed transform: "+slot.get()}
+    println("OK guard-stale-read-preemption")
 }
