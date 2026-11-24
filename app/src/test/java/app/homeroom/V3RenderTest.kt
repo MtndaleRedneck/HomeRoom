@@ -29,7 +29,7 @@ class V3RenderTest {
     }
     private fun activity():Pair<org.robolectric.android.controller.ActivityController<MainActivity>,MainActivity> {
         val controller=Robolectric.buildActivity(MainActivity::class.java).setup()
-        val a=controller.get();(field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+        val a=controller.get();field(a,"polling").setBoolean(a,false)
         a.session.ownerId="owner";a.session.ownerName="Owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
         a.cacheRooms(rooms())
         return controller to a

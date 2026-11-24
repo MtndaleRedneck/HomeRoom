@@ -22,7 +22,7 @@ class NotificationRouteTest {
     private fun room(id:String,name:String)=Room.from(JSONObject("""{"room_id":"$id","display_name":"$name","members":"[]","main_thread_key":"main$id","unread_count":0,"pending_rules_count":0,"waiting_count":0,"muted":false,"waiting":[]}"""))
     private fun activity():MainActivity {
         val a=Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+        field(a,"polling").setBoolean(a,false)
         a.session.ownerId="owner";a.session.ownerName="Owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
         // enrolled requires serverUrl + cookie (Session.enrolled); without the
         // cookie the ROOM_ID gate drops the extra and no route is exercised.

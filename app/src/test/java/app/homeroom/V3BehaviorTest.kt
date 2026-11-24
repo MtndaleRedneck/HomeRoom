@@ -48,7 +48,7 @@ class V3BehaviorTest {
     }
     @Test fun backFromMutedReturnsToSettingsRoute() {
         val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()
-        (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+        field(a,"polling").setBoolean(a,false)
         val settings=SettingsScreen(a)
         val content=field(a,"content").get(a) as android.widget.FrameLayout
         content.removeAllViews();content.addView(settings)

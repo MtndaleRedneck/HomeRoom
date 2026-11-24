@@ -25,7 +25,7 @@ class AppLockRearmTest {
     @Test fun pauseRearmsLockAndPendingAuthSuppresses() {
         val c=Robolectric.buildActivity(MainActivity::class.java).setup()
         val a=c.get()
-        (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+        field(a,"polling").setBoolean(a,false)
         val lock=a.appLock
         PrivacyPrefs.set(a,"lock",true)
         try {
@@ -34,7 +34,7 @@ class AppLockRearmTest {
             assertTrue(lock.coverShowing)
             // Successful auth clears the cover and marks authenticated.
             succeed(lock)
-            (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+            field(a,"polling").setBoolean(a,false)
             assertFalse(lock.coverShowing)
             assertTrue(field(lock,"authenticated").getBoolean(lock))
             // Background: onPause re-arms (authenticated cleared) and the
@@ -46,7 +46,7 @@ class AppLockRearmTest {
             c.resume()
             assertTrue(lock.coverShowing)
             succeed(lock)
-            (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+            field(a,"polling").setBoolean(a,false)
             assertFalse(lock.coverShowing)
             // A pause DURING authentication (result pending) must not re-arm
             // or re-cover; the arriving result then decides.
@@ -56,7 +56,7 @@ class AppLockRearmTest {
             assertFalse("pending auth result shows no new cover",lock.coverShowing)
             field(lock,"authenticating").setBoolean(lock,false)
             succeed(lock)
-            (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+            field(a,"polling").setBoolean(a,false)
             assertFalse(lock.coverShowing)
         } finally {
             PrivacyPrefs.set(a,"lock",false)
@@ -67,7 +67,7 @@ class AppLockRearmTest {
     @Test fun queuedCaptureInvalidatedByPause() {
         val c=Robolectric.buildActivity(MainActivity::class.java).setup()
         val a=c.get()
-        (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+        field(a,"polling").setBoolean(a,false)
         val nav=field(a,"nav").get(a) as GlassNav
         val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         nav.visibility=View.VISIBLE
@@ -86,7 +86,7 @@ class AppLockRearmTest {
         assertEquals("explicit pause-block holds without cover or FLAG_SECURE",1,nav.captureCount)
         // Resume unblocks; the fresh capture proceeds.
         c.resume()
-        (field(a,"pollerJob").get(a) as? kotlinx.coroutines.Job)?.cancel()
+        field(a,"polling").setBoolean(a,false)
         idle()
         assertEquals(2,nav.captureCount)
         c.pause()
