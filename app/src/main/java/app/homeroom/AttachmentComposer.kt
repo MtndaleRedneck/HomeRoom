@@ -77,7 +77,8 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // must be guaranteed (I2). terminal serializes retirement with pending
     // writes: set BEFORE record removal/file delete, checked before any save.
     @Volatile private var stagedRecord:JSONObject?=resume
-    @Volatile private var terminal=false
+    private val guard=StagedTerminalGuard()
+    private val terminal:Boolean get()=guard.terminal
     // Resume keeps the ORIGINAL client identities and timestamp: if the
     // interruption happened during or after complete/post, the retry carries
     // the same idempotency keys, so the server can dedup instead of doubling.
@@ -93,18 +94,18 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // advances AFTER the new record value is durably saved. Returns false when
     // the generation is stale (save skipped): the caller must abort with no
     // further network. A commit failure throws (save UNKNOWN, not absent).
-    private fun persistSwap(next:JSONObject):Boolean {
-        // Terminal retirement serialization (I2): a pending write must never
-        // re-add a record whose composer already retired it.
-        if(terminal) return false
-        var saved=false
+    private fun persistSwap(next:JSONObject):Boolean =
         try {
-            host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next);saved=true}
+            // The terminal check, the save, and the record swap run as ONE
+            // atomic boundary with retire() (StagedTerminalGuard): a delayed
+            // write can never re-add a record whose composer already retired
+            // and removed it. Null = refused because terminal.
+            guard.persist {
+                host.session.withinGeneration(generation) {host.session.saveStagedUpload(localId,next)}
+                stagedRecord=next; true
+            } ?: false
         } catch(e:Exception) {persistenceUnknown=true;throw e}
-        if(saved) stagedRecord=next
-        return saved
-    }
-    private fun retire() {terminal=true;draftJob?.cancel()}
+    private fun retire() {guard.retire();draftJob?.cancel()}
     // Removal by local_id (historical null-value semantics). False = blocked
     // (damaged store or unconfirmed commit); user-facing paths say so honestly.
     private fun removeRecord():Boolean {

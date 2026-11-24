@@ -217,7 +217,7 @@ class Session(context: Context) {
     // Test seam: forces the commit outcome in fault tests (null = real commit).
     internal var stagedCommitHook: ((String) -> Boolean)? = null
 
-    fun saveStagedUpload(id: String, value: JSONObject?) = synchronized(stateLock) {
+    fun saveStagedUpload(id: String, value: JSONObject?) = synchronized(stagedStoreLock) {
         if (stagedStoreUnknown) {
             throw IllegalStateException("Staged upload persistence is latched unknown from an earlier unconfirmed commit - writes are blocked until the app restarts.")
         }
@@ -226,8 +226,15 @@ class Session(context: Context) {
         } catch (e: StagedStore.Malformed) {
             throw IllegalStateException("Staged upload store is damaged; writes (including removals) are blocked to preserve the existing records.")
         }
-        val committed = stagedCommitHook?.invoke(next)
-            ?: prefs.edit().putString(KEY_STAGED, next).commit()
+        // Commit failure (false) AND a throwing commit are the same UNKNOWN
+        // outcome: persistence is unconfirmed, so latch either way.
+        val committed = try {
+            stagedCommitHook?.invoke(next)
+                ?: prefs.edit().putString(KEY_STAGED, next).commit()
+        } catch (e: Exception) {
+            stagedStoreUnknown = true
+            throw IllegalStateException("Staged upload persistence unconfirmed (commit threw) - abort the operation and treat remote state as unknown.", e)
+        }
         if (!committed) {
             stagedStoreUnknown = true
             throw IllegalStateException("Staged upload persistence unconfirmed (in-memory state may differ) - abort the operation and treat remote state as unknown.")
@@ -257,8 +264,14 @@ class Session(context: Context) {
 
     companion object {
         @Volatile private var stagedStoreUnknown = false
+        // I2: the latch flag alone is not the boundary - check, store write and
+        // latch-set must serialize ACROSS instances (two Session objects could
+        // otherwise both pass the check; one fails/latches, the other still
+        // commits onto unknown state). The lock is companion-level, matching
+        // the single underlying store file.
+        private val stagedStoreLock = Any()
         /** Test-only: the latch is process-scoped state, reset between tests. */
-        internal fun resetStagedStoreUnknownForTests() { stagedStoreUnknown = false }
+        internal fun resetStagedStoreUnknownForTests() { synchronized(stagedStoreLock) { stagedStoreUnknown = false } }
         private const val PREFS = "homeroom_session"
         private const val LEGACY_PREFS = "homeroom"
         private const val LEGACY_KEY_START_URL = "start_url"

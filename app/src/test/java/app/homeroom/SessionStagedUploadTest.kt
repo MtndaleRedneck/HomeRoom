@@ -71,4 +71,26 @@ class SessionStagedUploadTest {
         // Reads keep working (the composer surfaces uncertainty, not a crash).
         s.stagedUploads()
     }
+
+    @Test fun latchIsSharedAcrossSessionInstances() {
+        val s1=session(); val s2=session()
+        s1.saveStagedUpload("a",JSONObject().put("local_id","a"))
+        s1.stagedCommitHook={false}
+        try {s1.saveStagedUpload("a",JSONObject().put("local_id","a"));fail("unconfirmed commit accepted")} catch(e:IllegalStateException) {}
+        // A DIFFERENT Session instance over the same store must also be
+        // blocked: the boundary is process-scoped, not instance-scoped.
+        assertTrue(s2.stagedUploadsUnknown())
+        try {s2.saveStagedUpload("b",JSONObject().put("local_id","b"));fail("second instance committed over unknown state")} catch(e:IllegalStateException) {}
+        try {s2.saveStagedUpload("a",null);fail("second instance removed over unknown state")} catch(e:IllegalStateException) {}
+    }
+
+    @Test fun throwingCommitAlsoLatchesUnknown() {
+        val s=session()
+        s.saveStagedUpload("a",JSONObject().put("local_id","a"))
+        s.stagedCommitHook={throw java.io.IOException("simulated commit io error")}
+        try {s.saveStagedUpload("a",JSONObject().put("local_id","a"));fail("throwing commit accepted")} catch(e:IllegalStateException) {}
+        assertTrue(s.stagedUploadsUnknown())
+        s.stagedCommitHook=null
+        try {s.saveStagedUpload("b",JSONObject().put("local_id","b"));fail("latched save went through")} catch(e:IllegalStateException) {}
+    }
 }
