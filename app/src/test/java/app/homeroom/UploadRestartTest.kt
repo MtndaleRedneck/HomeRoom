@@ -38,4 +38,22 @@ class UploadRestartTest {
         assertEquals("old_upload",screen.javaClass.getDeclaredField("upload").apply {isAccessible=true}.get(screen))
         controller.pause().stop().destroy()
     }
+
+    // Dual-key compat (binary reader K0/e1:126 uses "upload_id"; this tree's
+    // writer used "upload" before the restore): a resume record in EITHER
+    // scheme restores the upload id at construction. The release's writer is
+    // unrecovered (K0/d1 CFR failure), so both stay accepted.
+    @Test fun resumeRestoresUploadIdFromBinaryAndLegacyKeys() {
+        val app=RuntimeEnvironment.getApplication();Session(app).clear();PrivacyPrefs.set(app,"lock",false)
+        val controller=Robolectric.buildActivity(MainActivity::class.java).setup();val host=controller.get()
+        val room=Room.from(JSONObject("""{"room_id":"fixture_room","display_name":"Fixture","main_thread_key":"t","members":[]}"""))
+        fun record(key:String)=JSONObject().put("local_id","dual_"+key).put(key,"id_"+key)
+            .put("name","f.txt").put("mime","text/plain").put("voice",false)
+            .put("message","").put("room","fixture_room")
+        for(key in listOf("upload_id","upload")) {
+            val screen=AttachmentComposer(host,room,Uri.EMPTY,"f.txt",false,record(key))
+            assertEquals("id_"+key,screen.javaClass.getDeclaredField("upload").apply {isAccessible=true}.get(screen))
+        }
+        controller.pause().stop().destroy()
+    }
 }
