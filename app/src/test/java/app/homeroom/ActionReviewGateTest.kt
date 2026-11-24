@@ -10,8 +10,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
+// NATIVE graphics: the gate asserts real child/viewport geometry, and legacy
+// shadow mode reports 0 heights (every true-expecting assertion failed while
+// every false-expecting one passed) - same mode as the other geometry tests.
 @RunWith(RobolectricTestRunner::class) @Config(sdk=[34])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ActionReviewGateTest {
     private fun gate(contentHeight:Int):Triple<ScrollView,Button,ActionReviewScrollGate> {
         val app=RuntimeEnvironment.getApplication()
