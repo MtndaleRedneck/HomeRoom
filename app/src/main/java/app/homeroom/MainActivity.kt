@@ -275,6 +275,20 @@ class MainActivity : AppCompatActivity() {
         screen.onShow()
     }
 
+    // RECONSTRUCTED Nov 24: historical Nov 11 entry points (operator readback,
+    // parsed as data), adapted to the current BottomNavigationView layout.
+    // openWaiting rides the current page-stack navigation, which already
+    // carries the same contract (pushed route, full-content screen, back
+    // shown, nav hidden, onShow) as the historical body.
+    fun openWaiting(room: String?) { openPage("Waiting", WaitingScreen(this, room)) }
+    // Historical updateBadges forwarded to the current nav's badge API
+    // (chats = unread, rules = pending). The GlassNav lineage's settings
+    // update-dot has no BottomNavigationView wiring here - tracked as a gap.
+    fun updateBadges(unread: Int, pending: Int) {
+        nav.getOrCreateBadge(R.id.nav_chats).apply { isVisible = unread > 0; if (unread > 0) number = unread }
+        nav.getOrCreateBadge(R.id.nav_rules).apply { isVisible = pending > 0; if (pending > 0) number = pending }
+    }
+
     private fun closePage(): Boolean {
         val state = pageStack.pollLast() ?: return false
         (content.getChildAt(0) as? Screen)?.onHide()

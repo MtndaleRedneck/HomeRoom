@@ -106,7 +106,7 @@ class SessionCommitFaultTest {
     }
     private fun faultSession(): Session =
         Session(FaultContext(RuntimeEnvironment.getApplication(), overlay) { failing })
-    private fun record(id: String) = JSONObject().put("upload", id).put("upload_client", "u-$id").put("post_client", "p-$id")
+    private fun record(id: String) = JSONObject().put("local_id", id).put("upload", id).put("upload_client", "u-$id").put("post_client", "p-$id")
 
     @Test fun failedSaveThrowsAndLeavesNoFalseDurableRecord() {
         freshSession().clear(); overlay.clear(); failing = true

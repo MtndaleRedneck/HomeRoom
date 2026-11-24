@@ -13,7 +13,19 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
     private val tabs = listOf(Triple(R.id.nav_chats,"Chats",R.drawable.ic_chats), Triple(R.id.nav_files,"Files",R.drawable.ic_files), Triple(R.id.nav_rules,"Rules",R.drawable.ic_rules), Triple(R.id.nav_settings,"Settings",R.drawable.ic_settings))
     var selectedItemId: Int = R.id.nav_chats
         set(value) { field = value; updateSelection(); choose(value) }
-    private var lastCapture = 0L
+    private var buffers: Array<Bitmap>? = null
+    private var nextBuffer = 0
+    private var dirty = true
+    private var queued = false
+    private val scrollListener = ViewTreeObserver.OnScrollChangedListener { backdropChanged() }
+    private val layoutListener = View.OnLayoutChangeListener { _, l,t,r,b,ol,ot,or,ob ->
+        if(l!=ol || t!=ot || r!=or || b!=ob) backdropChanged()
+    }
+    internal var captureCount = 0
+        private set
+    private var unreadBadge=0
+    private var pendingBadge=0
+    private var updateAvailable=false
     init {
         background = rounded(Color.TRANSPARENT, dp(32).toFloat())
         clipToOutline = true
@@ -34,10 +46,60 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             items.addView(cell, LinearLayout.LayoutParams(0,-1,1f))
         }
         updateSelection()
-        viewTreeObserver.addOnPreDrawListener {
-            val now=android.os.SystemClock.uptimeMillis()
-            if (isShown && now-lastCapture>180 && width>0 && height>0) { lastCapture=now; capture() }
-            true
+        if(android.os.Build.VERSION.SDK_INT<31) backdrop.setBackgroundColor(0xeb2b2a2d.toInt())
+    }
+
+    // Historical Nov 10 bodies (operator readback, parsed as data): dirtied
+    // captures coalesce on the animation frame; scroll/layout/size/visibility
+    // of the content behind all dirty the backdrop.
+    fun backdropChanged() {
+        dirty=true
+        if(android.os.Build.VERSION.SDK_INT<31 || queued || !isAttachedToWindow || !isShown) return
+        queued=true
+        postOnAnimation { queued=false; if(dirty && isShown && width>0 && height>0) { dirty=false; capture() } }
+    }
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        behind.viewTreeObserver.addOnScrollChangedListener(scrollListener)
+        behind.addOnLayoutChangeListener(layoutListener)
+        backdropChanged()
+    }
+    override fun onDetachedFromWindow() {
+        if(behind.viewTreeObserver.isAlive) behind.viewTreeObserver.removeOnScrollChangedListener(scrollListener)
+        behind.removeOnLayoutChangeListener(layoutListener)
+        backdrop.setImageDrawable(null)
+        buffers=null
+        super.onDetachedFromWindow()
+    }
+    override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int) { super.onSizeChanged(w,h,oldw,oldh); backdropChanged() }
+    override fun onVisibilityChanged(changedView:View,visibility:Int) { super.onVisibilityChanged(changedView,visibility); if(visibility==VISIBLE) post { backdropChanged() } }
+
+    // Historical Nov 10 badge bodies + same-day update-badge patch (operator
+    // readbacks, parsed as data): chats = unread, rules = pending, settings =
+    // an update-available dot (empty badge, 8dp). The badge wraps the tab icon
+    // in a FrameLayout; updateSelection handles both wrapped and unwrapped
+    // icons (selection-dependency readback).
+    fun setUpdateAvailable(available:Boolean) {updateAvailable=available;setBadges(unreadBadge,pendingBadge)}
+    fun setBadges(unread:Int,pending:Int) {
+        unreadBadge=unread;pendingBadge=pending
+        tabs.forEachIndexed { index,(id,label,_) ->
+            val count=when(id) { R.id.nav_chats -> unread; R.id.nav_rules -> pending; R.id.nav_settings -> if(updateAvailable)1 else 0; else -> 0 }
+            val cell=items.getChildAt(index) as LinearLayout
+            cell.contentDescription=if(count>0) "$label, $count" else label
+            val badge=cell.findViewWithTag<TextView>("badge") ?: text(context,"",10.5f,Color.WHITE,true).apply {
+                tag="badge";gravity=Gravity.CENTER;background=rounded(C.accent,dp(8).toFloat());minWidth=dp(16)
+                (cell.getChildAt(0) as ImageView).let { image ->
+                    cell.removeView(image)
+                    val frame=FrameLayout(context)
+                    frame.addView(image,LayoutParams(dp(24),dp(24),Gravity.CENTER))
+                    frame.addView(this,LayoutParams(-2,dp(16),Gravity.TOP or Gravity.RIGHT))
+                    cell.addView(frame,0,LinearLayout.LayoutParams(dp(40),dp(27)))
+                }
+            }
+            badge.text=if(id==R.id.nav_settings) "" else if(count>99) "99+" else count.toString()
+            badge.minWidth=dp(if(id==R.id.nav_settings)8 else 16)
+            badge.layoutParams=(badge.layoutParams as LayoutParams).apply {height=dp(if(id==R.id.nav_settings)8 else 16);width=if(id==R.id.nav_settings)dp(8) else -2}
+            badge.visibility=if(count>0) VISIBLE else GONE
         }
     }
     private fun updateSelection() {
@@ -45,14 +107,22 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             val cell=items.getChildAt(i) as LinearLayout
             val selected=cell.tag==selectedItemId
             cell.background=if(selected) rounded(0x42fc8613,dp(26).toFloat(),0x73fc8613,dp(1).toFloat()) else null
-            (cell.getChildAt(0) as ImageView).setColorFilter(if(selected) C.accent else 0xffd7d6db.toInt())
-            (cell.getChildAt(1) as TextView).setTextColor(if(selected) C.accent else 0xffd7d6db.toInt())
+            val icon=cell.getChildAt(0)
+            (if(icon is ImageView) icon else (icon as FrameLayout).getChildAt(0) as ImageView).setColorFilter(if(selected) C.accent else C.muted)
+            (cell.getChildAt(1) as TextView).setTextColor(if(selected) C.accent else C.muted)
         }
     }
     private fun capture() {
         val loc=IntArray(2); val source=IntArray(2)
         getLocationInWindow(loc); behind.getLocationInWindow(source)
-        val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
+        var pair=buffers
+        if(pair==null || pair[0].width!=width || pair[0].height!=height) {
+            pair=Array(2) { Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888) }
+            buffers=pair
+        }
+        val bitmap=pair[nextBuffer]
+        nextBuffer=1-nextBuffer
+        captureCount++
         val canvas=Canvas(bitmap)
         canvas.drawColor(C.bg)
         canvas.translate(-(loc[0]-source[0]).toFloat(),-(loc[1]-source[1]).toFloat())
