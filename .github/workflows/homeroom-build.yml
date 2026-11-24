@@ -210,3 +210,54 @@ jobs:
           path: release-smoke.png
           if-no-files-found: warn
           retention-days: 5
+
+  signed-release-runtime:
+    # Same-signer emulator runtime: installs the ACTUAL locally-signed
+    # artifact (vault keystore, mandatory signer cert 0063cd16...) from
+    # ci-inputs/ on an emulator. No key material in CI: the APK arrives
+    # already signed. REVIEW-ONLY evidence, not a distributable release.
+    # With the real signature the app can reach production (1.4) services
+    # at launch; this smoke only launches MainActivity.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify the artifact carries the mandatory signer cert
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee signed-certs.txt
+          grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' signed-certs.txt
+          sha256sum ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee signed-sha256.txt
+
+      - name: Install and smoke the signed artifact on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: "yes"
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          script: |
+            while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+            adb shell settings put global verifier_verify_adb_installs 0
+            adb install -r ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 45
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent 82
+            sleep 20
+            adb shell pidof app.homeroom
+            adb logcat -d | tail -60
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
+            adb shell screencap -p /data/local/tmp/signed-smoke.png
+            adb pull /data/local/tmp/signed-smoke.png signed-smoke.png
+            echo "ok: signed artifact (cert 0063cd16...) installs, launches, stays alive, no fatal exception"
+
+      - name: Upload signed smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-smoke-screenshot
+          path: signed-smoke.png
