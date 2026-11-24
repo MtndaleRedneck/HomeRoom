@@ -270,6 +270,34 @@ fun main(args: Array<String>) = runBlocking {
         session.cookie = "test-cookie"
         session.generation -= 1
     }
+    check("request-entry-identity-before-bootstrap-wait") {
+        // I2 final entry trace: identity is captured BEFORE the bootstrap
+        // wait. A clear+re-enroll completing DURING the bootstrap must reject
+        // the operation as stale - the original body must never acquire the
+        // new session/destination. api2 has no sessionData, so its request
+        // bootstraps first; the hook fires inside the bootstrap's dispatch.
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.cookie = "test-cookie"
+        val api2 = ApiClient(session)
+        api2.preDispatchHook = {
+            session.generation += 1
+            session.serverUrl = "http://127.0.0.1:9999" // re-enrolled elsewhere
+            session.cookie = "rebound-cookie"
+        }
+        var code: String? = null
+        var sessionEnded = false
+        try { api2.rooms() }
+        catch (e: ApiException) { code = e.code }
+        catch (e: SessionEndedException) { sessionEnded = true }
+        finally { api2.preDispatchHook = null }
+        require(code == "stale_operation" && !sessionEnded) {
+            "operation after mid-bootstrap re-enroll: got $code, sessionEnded=$sessionEnded" }
+        require(session.cookie == "rebound-cookie") {
+            "stale operation disturbed the new session cookie: ${session.cookie}" }
+        session.serverUrl = "http://127.0.0.1:8471"
+        session.cookie = "test-cookie"
+        session.generation -= 1
+    }
     check("avatar-outbound-credential-scope") {
         // I2 01d1f60 finding: the snapshot cookie may only be attached when
         // the RESOLVED destination matches the operation's enrolled origin

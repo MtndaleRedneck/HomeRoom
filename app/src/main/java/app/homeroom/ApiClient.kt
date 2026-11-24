@@ -229,14 +229,17 @@ class ApiClient(private val session: Session) {
             // new destination - stale work is rejected, never rebound. This is
             // ApiException("stale_operation"), NOT SessionEndedException: the
             // NEW session is healthy and must not be torn down.
-            // The operation's immutable identity + authorization, captured
-            // atomically AFTER any needed bootstrap and BEFORE the first
-            // attempt: every attempt of this operation is built from this
-            // snapshot (initial AND recovery), never from live session state.
+            // Initiating identity captured BEFORE any fallible/suspending
+            // wait (I2 final entry trace): a clear+re-enroll completing
+            // during the bootstrap wait must not let this operation's body
+            // acquire a new session or destination.
+            val entryGen = session.generation
+            val entryUrl = session.serverUrl
             if (sessionData == null) bootstrap()
-            val auth = session.authSnapshot()
-            val entryGen = auth.generation
-            val entryUrl = auth.serverUrl
+            // Fresh credentials (post-bootstrap CSRF) are adopted only for
+            // the SAME identity; a moved identity rejects the operation.
+            val auth = session.authIfUnchanged(entryGen, entryUrl)
+                ?: throw ApiException(0, "stale_operation")
             try {
                 raw(route, method, body, auth).also {
                     reachable = true
@@ -554,13 +557,16 @@ class ApiClient(private val session: Session) {
         // Operation identity captured BEFORE any network (I2 recheck of
         // 93a5b8b): capturing after the response would accept a pre-sign-out
         // response under the NEW generation.
-        val preBootstrapGen = session.generation
+        // Initiating identity captured BEFORE the bootstrap wait (I2 final
+        // entry trace); fresh credentials are adopted only for the SAME
+        // identity, and the bootstrap 401 is attributed to it.
+        val entryGen = session.generation
+        val entryUrl = session.serverUrl
         if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
-            if (e.status == 401) throw SessionEndedException(e.code, preBootstrapGen); throw e
+            if (e.status == 401) throw SessionEndedException(e.code, entryGen); throw e
         }
-        // Immutable operation snapshot for this lifecycle pass (I2 4ff0522):
-        // the instance GET and the renew POST both run under one identity.
-        val auth = session.authSnapshot()
+        val auth = session.authIfUnchanged(entryGen, entryUrl)
+            ?: throw ApiException(0, "stale_operation")
         val opGen = auth.generation
         withContext(Dispatchers.IO) {
             val flags = try { raw("/owner/instance", "GET", null, auth).optJSONObject("features") } catch (e: ApiException) {
