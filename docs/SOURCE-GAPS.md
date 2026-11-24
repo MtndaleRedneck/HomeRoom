@@ -97,3 +97,13 @@ Grounded against the production source and FIXED in the reconstruction:
    live-updates/server-bar helpers are not in this tree (startLiveUpdates /
    updateServerBar unrecovered - the poller covers polling). Manual refresh
    (StatusScreen) now runs the same renewOnOpen worker.
+
+5. Same-body retry safety (I2 recheck qualification): request() retries the
+   EXACT same body only on explicit 403 csrf_failed / 409 session_rotated,
+   never on IO errors. For non-idempotent POSTs (room posts, feedback), that
+   retry's safety rests on server-side dedup by client_id - mock evidence
+   (csrf-failure-recovers-and-retries) demonstrates reject-before-routing
+   then success, not the server's effect-before-rejection ordering or dedup
+   behavior. NEEDS: the owning server's dedup/ordering contract for the
+   retried routes. The explicit JSONObject.NULL body identity on retry is
+   preserved (item 3).

@@ -21,4 +21,9 @@ class Session {
     fun replaceCredentials(newCookie: String?, newCsrf: String?) {
         cookie = newCookie; csrf = newCsrf
     }
+    fun acceptCookieForGeneration(opGeneration: Long, value: String): Boolean {
+        if (generation != opGeneration) return false
+        cookie = value
+        return true
+    }
 }

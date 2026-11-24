@@ -93,9 +93,16 @@ class ApiClient(private val session: Session) {
     // state with a same-named cookie. Internal so the mock harness can pin it.
     internal fun acceptSessionCookie(url: HttpUrl, cookies: List<Cookie>): Boolean {
         if (!isEnrolledOrigin(url)) return false
-        cookies.firstOrNull { it.name == COOKIE_NAME }?.let { session.cookie = it.value } ?: return false
-        return true
+        val cookie = cookies.firstOrNull { it.name == COOKIE_NAME } ?: return false
+        // Operation-generation boundary (I2 recheck): the generation captured
+        // by raw() before THIS request; outside a request (harness pins) the
+        // current generation. A response from before sign-out is dropped even
+        // though the CookieJar fires outside the paired credential commit.
+        val opGen = opGenLocal.get() ?: session.generation
+        return session.acceptCookieForGeneration(opGen, cookie.value)
     }
+
+    private val opGenLocal = ThreadLocal<Long?>()
 
     private fun enrolledOrigin(): Triple<String, String, Int>? = try {
         val u = java.net.URI(session.serverUrl ?: return null)
@@ -108,6 +115,9 @@ class ApiClient(private val session: Session) {
         (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + API_PREFIX
 
     private fun raw(route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
+        // Operation identity captured BEFORE the network (I2 recheck): the
+        // CookieJar consults it via opGenLocal when the response arrives.
+        opGenLocal.set(session.generation)
         val fullUrl = baseUrl() + route
         val builder = Request.Builder()
             .url(fullUrl)
@@ -123,6 +133,7 @@ class ApiClient(private val session: Session) {
             builder.get()
         }
         if (method != "GET") csrf?.let { builder.header("X-CSRF-Token", it) }
+        try {
         client.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
             val data = try {
@@ -135,6 +146,9 @@ class ApiClient(private val session: Session) {
                 throw ApiException(response.code, data.optString("error", "request_failed"), retryAfter)
             }
             return data
+        }
+        } finally {
+            opGenLocal.remove()
         }
     }
 
@@ -155,17 +169,23 @@ class ApiClient(private val session: Session) {
 
     suspend fun bootstrap(): JSONObject = bootMutex.withLock {
         withContext(Dispatchers.IO) {
+            // Operation identity captured BEFORE the network (I2 recheck): a
+            // sign-out completing mid-bootstrap must not let the dead
+            // session's response write its fields into the new one.
+            val opGen = session.generation
             var data = try {
                 raw("/owner/session")
             } catch (e: ApiException) {
                 if (e.status == 409 && e.code == "session_rotated") raw("/owner/session") else throw e
             }
-            csrf = data.optString("csrf").ifBlank { null }
-            session.csrf = csrf
-            sessionData = data
-            session.ownerId = data.optString("owner_id").ifBlank { session.ownerId }
-            session.ownerName = data.optString("owner_display_name").ifBlank { session.ownerName }
-            session.sessionId = data.optString("session_id").ifBlank { session.sessionId }
+            session.withinGeneration(opGen) {
+                csrf = data.optString("csrf").ifBlank { null }
+                session.csrf = csrf
+                sessionData = data
+                session.ownerId = data.optString("owner_id").ifBlank { session.ownerId }
+                session.ownerName = data.optString("owner_display_name").ifBlank { session.ownerName }
+                session.sessionId = data.optString("session_id").ifBlank { session.sessionId }
+            }
             data
         }
     }
@@ -462,6 +482,10 @@ class ApiClient(private val session: Session) {
         val now = System.nanoTime() / 1_000_000L
         if (lastForegroundRenew != 0L && now - lastForegroundRenew < 1000L) return@withLock
         lastForegroundRenew = now
+        // Operation identity captured BEFORE any network (I2 recheck of
+        // 93a5b8b): capturing after the response would accept a pre-sign-out
+        // response under the NEW generation.
+        val opGen = session.generation
         if (sessionData == null) try { bootstrap() } catch (e: ApiException) {
             if (e.status == 401) throw SessionEndedException(e.code); throw e
         }
@@ -476,7 +500,7 @@ class ApiClient(private val session: Session) {
                     if (e.status == 401) throw SessionEndedException(e.code); throw e
                 }
                 val freshCsrf = data.optString("csrf").ifBlank { csrf }
-                session.withinGeneration(session.generation) {
+                session.withinGeneration(opGen) {
                     session.replaceCredentials(session.cookie, freshCsrf)
                     csrf = freshCsrf
                     sessionData = data

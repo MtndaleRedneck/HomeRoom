@@ -154,6 +154,18 @@ class SessionCommitFaultTest {
         assertNull(session.cookie)
     }
 
+    @Test fun responseCookieFromDeadGenerationDropped() {
+        // Operation-generation boundary (I2 recheck): a response whose request
+        // started before sign-out must not persist its cookie afterwards.
+        val session = freshSession().also { it.clear() }
+        val opGen = session.generation
+        assertTrue(session.acceptCookieForGeneration(opGen, "live-cookie"))
+        assertEquals("live-cookie", session.cookie)
+        session.clear()
+        assertFalse(session.acceptCookieForGeneration(opGen, "ghost-cookie"))
+        assertNull(session.cookie)
+    }
+
     @Test fun failedCredentialCommitThrowsBeforeInMemoryUse() {
         freshSession().clear(); overlay.clear(); failing = true
         val session = faultSession()

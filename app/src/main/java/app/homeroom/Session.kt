@@ -39,6 +39,18 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_CSRF, null)
         set(v) = prefs.edit().putString(KEY_CSRF, v).apply()
 
+    // Operation-generation boundary (I2 recheck of 93a5b8b): response cookies
+    // are accepted only when the generation captured BEFORE the request still
+    // matches under stateLock - a response from before sign-out cannot restore
+    // dead credentials through the CookieJar, which writes outside the paired
+    // credential commit.
+    fun acceptCookieForGeneration(opGeneration: Long, value: String): Boolean =
+        synchronized(stateLock) {
+            if (generation != opGeneration) return false
+            cookie = value
+            true
+        }
+
     // RECOVERED Nov 24, 2026 (operator Nov 15 readback): the foreground renew
     // worker committed rotated credentials durably before later requests ran.
     // A failed commit is loud (IllegalStateException) - same durability rule as
