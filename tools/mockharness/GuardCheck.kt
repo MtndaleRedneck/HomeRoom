@@ -25,4 +25,18 @@ fun main() {
     check(!store.contains("rec")) {"delayed write re-added a retired record"}
     check(g2.persist { store.add("rec2") }==null && !store.contains("rec2")) {"post-retire write admitted"}
     println("OK guard-retire-serialization")
+
+    // C: marker/rotation-style writes (the c69 bypass paths) reduce to the
+    // same boundary: a continuous writer racing retirement must never land a
+    // write after retire returns and removal runs.
+    val g3=StagedTerminalGuard()
+    val s3=java.util.concurrent.CopyOnWriteArrayList<String>()
+    val stop=java.util.concurrent.atomic.AtomicBoolean(false)
+    val w3=Thread { while(!stop.get()) g3.persist { s3.add("m") } }
+    w3.start(); Thread.sleep(50)
+    g3.retire(); stop.set(true); w3.join(5000)
+    check(!w3.isAlive) {"writer stuck after retire"}
+    s3.clear()
+    check(s3.isEmpty() && g3.persist { s3.add("m2") }==null && s3.isEmpty()) {"a marker/rotation write landed after retire+removal"}
+    println("OK guard-marker-rotation-race")
 }

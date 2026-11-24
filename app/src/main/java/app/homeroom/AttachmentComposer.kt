@@ -329,7 +329,13 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         ready=false;send.isEnabled=false;consumedUnresolved=true
         stagedRecord?.let {
             val marked=StagedUpload.markUnresolvedCancellation(JSONObject(it.toString()))!!
-            host.session.saveStagedUpload(localId,marked);stagedRecord=marked
+            // Same atomic boundary as every record mutation (I2): a marker
+            // save landing AFTER retire+removal would silently re-add the
+            // record. Null = refused because terminal (correct: a retired
+            // composer has no record to mark).
+            try {
+                guard.persist {host.session.saveStagedUpload(localId,marked);stagedRecord=marked; true}
+            } catch(e:Exception) {persistenceUnknown=true}
         }
         status.text="Upload already used. Check the room before sending again."
     }
@@ -470,7 +476,9 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     val fresh=clientId();val now=java.time.Instant.now().toString()
                     postClient=fresh;created=now
                     val rotated=stagedRecord?.let {StagedUpload.rotateForResend(JSONObject(it.toString()),{fresh},{now})}
-                    if(rotated!=null && runCatching {host.session.saveStagedUpload(localId,rotated)}.isFailure) {
+                    // Same atomic boundary as every record mutation (I2): the
+                    // rotation save must not land after retire+removal.
+                    if(rotated!=null && (try {guard.persist {host.session.saveStagedUpload(localId,rotated); true} != true} catch(e:Exception) {true})) {
                         // The expired identity could not be durably rotated: keep the
                         // resend DISABLED (a resend now would risk losing the prior
                         // identity on crash) and fail loudly instead of proceeding.
@@ -482,7 +490,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     // otherwise a later resend would persist the PRE-rotation record
                     // (same upload ID) and silently undo prior_posts before a POST
                     // under the new identity. Only assign AFTER the durable save.
-                    if(rotated!=null)stagedRecord=rotated
+                    if(rotated!=null)guard.persist {stagedRecord=rotated; true}
                     message.isEnabled=true;send.text="Send attachment";send.isEnabled=true
                     status.text="This send wasn't confirmed and has expired. Check the room, then review and send again."
                 } else if(e.code=="upload_not_ready") {

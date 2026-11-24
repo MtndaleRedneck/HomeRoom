@@ -50,4 +50,21 @@ class StagedTerminalGuardTest {
         assertNull(guard.persist { store.add("record2") })
         assertFalse(store.contains("record2"))
     }
+
+    @Test fun continuousMarkerWritesNeverLandAfterRetire() {
+        // The c69 bypass paths (markConsumedUnresolved marker save, resend
+        // rotation save) reduce to this: any number of writes racing
+        // retirement must stop being admitted the moment retire returns.
+        val guard=StagedTerminalGuard()
+        val store=java.util.concurrent.CopyOnWriteArrayList<String>()
+        val stop=java.util.concurrent.atomic.AtomicBoolean(false)
+        val writer=Thread { while(!stop.get()) guard.persist { store.add("m") } }
+        writer.start()
+        Thread.sleep(50)
+        guard.retire(); stop.set(true); writer.join(5000)
+        assertFalse(writer.isAlive)
+        store.clear()
+        assertNull(guard.persist { store.add("m2") })
+        assertTrue(store.isEmpty())
+    }
 }
