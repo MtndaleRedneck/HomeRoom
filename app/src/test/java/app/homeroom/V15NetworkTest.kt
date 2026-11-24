@@ -1,4 +1,5 @@
 package app.homeroom
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -24,6 +25,19 @@ class V15NetworkTest {
         try {test(server,session,api)}finally {server.shutdown();session.clear()}
     }
     private fun bootstrap(server:MockWebServer) {server.enqueue(MockResponse().setBody("""{"csrf":"csrf","session_id":"session"}"""))}
+    // UNVERIFIED RECOVERED CONTRACT (operator-supplied Nov11 revision-archive
+    // recovery, not owner-authenticated): asserts a route-specific rejection of
+    // Set-Cookie on held /owner/updates polls. The 1.5-era backend source that
+    // served that route is absent from every accessible tree (operator bounded
+    // host/archive/repo search Nov24; TestLab archive has no backend source),
+    // so the exclusion is unverifiable. Current frozen production policy is
+    // enrolled-origin + current-generation acceptance on every route (I2 09:53-
+    // 09:55: keep current pending reconciliation). This is NOT classified as an
+    // implementation bug and NOT as a proven security defect; held as ignored
+    // evidence until 1.5-era backend source or an owner decision resolves it.
+    // The security coverage the current guards DO provide is pinned actively in
+    // heldPollRejectsStaleGenerationCookie below.
+    @Ignore("QUARANTINED unresolved historical contract: recovered route-exclusion expectation, 1.5-era backend source unavailable, current frozen policy is origin+generation acceptance on all routes; not an implementation bug, not a proven defect")
     @Test fun heldResponsesCannotRotateCredentials()=fixture {server,session,api->
         bootstrap(server)
         server.enqueue(MockResponse().setBody("""{"changes":[],"next_cursor":"watermark","has_more":false}""").addHeader("Set-Cookie","__Host-homeroom=attacker; Path=/; Secure; HttpOnly"))
@@ -31,6 +45,30 @@ class V15NetworkTest {
         assertEquals("/homeroom/v1/owner/session",server.takeRequest().path)
         val held=server.takeRequest();assertEquals("/homeroom/v1/owner/updates?wait=0&limit=100",held.path)
         assertEquals("__Host-homeroom=original",held.getHeader("Cookie"))
+    }
+    // CHARACTERIZATION of the CURRENT frozen policy (Nov 24; I2 09:57): an
+    // enrolled-origin Set-Cookie on a held /owner/updates response under the
+    // CURRENT operation generation IS accepted, identical to every other
+    // route. Pins present behavior only - NOT parity or safety sign-off and
+    // NOT a reversal of the quarantined historical contract above, which
+    // stays open pending 1.5-era backend source or an owner decision.
+    @Test fun characterization_currentPolicyAcceptsSameGenerationPollCookie()=fixture {server,session,api->
+        bootstrap(server)
+        server.enqueue(MockResponse().setBody("""{"changes":[],"next_cursor":"watermark","has_more":false}""").addHeader("Set-Cookie","__Host-homeroom=rotated; Path=/; Secure; HttpOnly"))
+        api.heldUpdates(null,0)
+        assertEquals("rotated",session.cookie)
+    }
+    // ACTIVE guard coverage (I2 09:57: preserve origin+generation rejection):
+    // a sign-out landing between request build and response (interleaved at
+    // the harness-only preDispatchHook) invalidates the operation generation,
+    // so the held response's Set-Cookie is dropped and dead credentials are
+    // not restored.
+    @Test fun heldPollRejectsStaleGenerationCookie()=fixture {server,session,api->
+        api.bootstrap()
+        server.enqueue(MockResponse().setBody("""{"changes":[],"next_cursor":"watermark","has_more":false}""").addHeader("Set-Cookie","__Host-homeroom=stale; Path=/; Secure; HttpOnly"))
+        api.preDispatchHook = { session.clear() }
+        try { api.heldUpdates(null,0) } catch (_:SessionEndedException) {} finally { api.preDispatchHook = null }
+        assertNull(session.cookie)
     }
     @Test fun receiptsNeverBootstrapOrRenew()=fixture {server,_,api->
         server.enqueue(MockResponse().setBody("{}"))

@@ -67,4 +67,18 @@ class RotationHttpTest {
         try {client().eventDirect("e");fail("revoked") } catch(e:SessionEndedException) {assertEquals("session_ended",e.reason)}
         assertEquals(1,server.requestCount)
     }
+    // Missing-case fill (I2 09:57): the GET /owner/session rotation path must
+    // drop BOTH the Set-Cookie header and the body CSRF when the operation's
+    // generation went stale mid-flight (sign-out interleaved at the
+    // harness-only preDispatchHook, after the request was built from the
+    // immutable snapshot). withinGeneration skips the body-field commit and
+    // acceptCookieForGeneration drops the header cookie, so a dead session's
+    // rotation response restores nothing.
+    @Test fun staleGenerationGetSessionResponseDropsCookieAndCsrf()=fixture {server,session,client ->
+        server.enqueue(MockResponse().setBody("""{"csrf":"stale-csrf","session_id":"same-session"}""").addHeader("Set-Cookie","__Host-homeroom=stale-secret; Path=/; Secure; HttpOnly"))
+        val api=client()
+        api.preDispatchHook = { session.clear() }
+        try { api.bootstrap() } catch (_:Exception) {} finally { api.preDispatchHook = null }
+        assertNull(session.cookie);assertNull(session.csrf)
+    }
 }
