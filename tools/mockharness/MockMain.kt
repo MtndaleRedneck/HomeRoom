@@ -187,6 +187,28 @@ fun main(args: Array<String>) = runBlocking {
         session.serverUrl = "http://127.0.0.1:8471"
         session.generation = genBefore
     }
+    check("retry-bound-to-original-destination-after-late-reenroll") {
+        // The re-enroll interleaves AFTER the final identity check, before
+        // the retry is built. The immutable snapshot must still send the
+        // original body to the ORIGINAL destination with the ORIGINAL
+        // credentials - the mock at 8471 receiving the retry proves it (a
+        // rebound retry would leave this server and fail).
+        session.serverUrl = "http://127.0.0.1:8471"
+        api.preRetryBuildHook = {
+            session.generation += 1
+            session.serverUrl = "http://127.0.0.1:9999"
+            session.cookie = "rebound-cookie"
+        }
+        try { api.markReadEvents("TRIGGER_CSRF_ONCE:late", listOf("ev4")) }
+        finally {
+            api.preRetryBuildHook = null
+            session.serverUrl = "http://127.0.0.1:8471"
+            session.generation -= 1
+            session.cookie = "test-cookie"
+        }
+        // Success here means the retry reached the ORIGINAL mock with the
+        // ORIGINAL cookie despite the interleaved rebind attempt.
+    }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.
         val e = try { api.avatarBytes("http://example.invalid/a.png"); null } catch (x: ApiException) { x }

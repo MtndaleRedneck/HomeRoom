@@ -166,6 +166,19 @@ class SessionCommitFaultTest {
         assertNull(session.cookie)
     }
 
+    @Test fun authIfUnchangedReturnsAtomicSnapshotOrNothing() {
+        val session = freshSession().also { it.clear() }
+        session.serverUrl = "https://a.example"
+        session.replaceCredentials("c1", "t1")
+        val gen = session.generation
+        val snap = session.authIfUnchanged(gen, "https://a.example")
+        assertEquals(Triple("https://a.example", "c1", "t1"), snap)
+        assertNull(session.authIfUnchanged(gen + 1, "https://a.example"))
+        assertNull(session.authIfUnchanged(gen, "https://b.example"))
+        session.clear()
+        assertNull(session.authIfUnchanged(gen, "https://a.example"))
+    }
+
     @Test fun failedCredentialCommitThrowsBeforeInMemoryUse() {
         freshSession().clear(); overlay.clear(); failing = true
         val session = faultSession()

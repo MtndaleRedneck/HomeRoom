@@ -110,6 +110,18 @@ class ApiClient(private val session: Session) {
 
     private val opGenLocal = ThreadLocal<Long?>()
 
+    // Jarless client for explicit-snapshot requests (the explicit-recovery
+    // retry). The jarred client would REPLACE an explicitly set Cookie header
+    // with live session state (BridgeInterceptor), which is exactly the
+    // rebinding the retry must avoid; a jarless client also never accepts
+    // response cookies, so a rotated cookie in the retry response is ignored
+    // (the next request self-heals through the normal 403 recovery).
+    private val snapshotClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .build()
+
     // Test-only: direct acceptSessionCookie pin checks run outside any
     // request, so they establish the operation context the jar would have.
     internal fun noteOperationStartForTest() {
@@ -172,6 +184,41 @@ class ApiClient(private val session: Session) {
         }
     }
 
+    // Same wire shape as raw() but built entirely from an immutable snapshot:
+    // URL, Cookie and CSRF come from authIfUnchanged, never from live session
+    // state. No jar: nothing is re-read and nothing is accepted back.
+    private fun rawSnapshot(route: String, method: String = "GET", body: JSONObject? = null, auth: Triple<String, String, String?>): JSONObject {
+        val fullUrl = auth.first.trimEnd('/') + API_PREFIX + route
+        val builder = Request.Builder()
+            .url(fullUrl)
+            .header("Accept", "application/json")
+            .header("Cache-Control", "no-store")
+            .header("Cookie", COOKIE_NAME + "=" + auth.second)
+        applyOriginHeaders(builder, fullUrl, method)
+        if (body != null) {
+            builder.header("Content-Type", "application/json")
+            builder.method(method, body.toString().toRequestBody(JSON))
+        } else if (method != "GET") {
+            builder.method(method, "{}".toRequestBody(JSON))
+        } else {
+            builder.get()
+        }
+        if (method != "GET") auth.third?.let { builder.header("X-CSRF-Token", it) }
+        snapshotClient.newCall(builder.build()).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            val data = try {
+                if (text.isEmpty()) JSONObject() else JSONObject(text)
+            } catch (e: Exception) {
+                throw ApiException(response.code, "invalid_response")
+            }
+            if (!response.isSuccessful) {
+                val retryAfter = response.header("Retry-After")?.toIntOrNull() ?: 0
+                throw ApiException(response.code, data.optString("error", "request_failed"), retryAfter)
+            }
+            return data
+        }
+    }
+
     suspend fun bootstrap(): JSONObject = bootMutex.withLock {
         withContext(Dispatchers.IO) {
             // Operation identity captured BEFORE the network (I2 recheck): a
@@ -195,9 +242,12 @@ class ApiClient(private val session: Session) {
         }
     }
 
-    // Harness-only: invoked at the top of the explicit-recovery branch so a
-    // test can interleave clear+re-enroll there. Never set in production.
+    // Harness-only: interleave hooks for the explicit-recovery branch.
+    // recoveryTestHook fires before the recovery bootstrap; preRetryBuildHook
+    // fires after the final identity check, immediately before the retry is
+    // built and sent from its immutable snapshot. Never set in production.
     internal var recoveryTestHook: (() -> Unit)? = null
+    internal var preRetryBuildHook: (() -> Unit)? = null
 
     suspend fun request(route: String, method: String = "GET", body: JSONObject? = null): JSONObject =
         withContext(Dispatchers.IO) {
@@ -226,9 +276,17 @@ class ApiClient(private val session: Session) {
                     try { bootstrap() } catch (b: ApiException) {
                         if (b.status == 401) throw SessionEndedException(b.code); throw b
                     }
-                    if (!session.unchangedSince(entryGen, entryUrl)) throw ApiException(0, "stale_operation")
+                    // The retry carries an IMMUTABLE snapshot read atomically
+                    // with the identity check (I2 final). Live session state
+                    // is never consulted again for this retry: a clear or
+                    // re-enroll on any thread after this line cannot rebind
+                    // the original body - it can only go to the ORIGINAL
+                    // destination with the ORIGINAL session's credentials.
+                    val retryAuth = session.authIfUnchanged(entryGen, entryUrl)
+                        ?: throw ApiException(0, "stale_operation")
+                    preRetryBuildHook?.invoke()
                     try {
-                        raw(route, method, body).also {
+                        rawSnapshot(route, method, body, retryAuth).also {
                             reachable = true
                             lastSuccessfulRefresh = java.time.Instant.now().toString()
                         }

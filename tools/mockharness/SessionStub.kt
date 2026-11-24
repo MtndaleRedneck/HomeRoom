@@ -21,6 +21,12 @@ class Session {
     fun replaceCredentials(newCookie: String?, newCsrf: String?) {
         cookie = newCookie; csrf = newCsrf
     }
+    fun authIfUnchanged(opGeneration: Long, opServerUrl: String?): Triple<String, String, String?>? {
+        if (generation != opGeneration || serverUrl != opServerUrl) return null
+        val url = serverUrl ?: return null
+        val c = cookie ?: return null
+        return Triple(url, c, csrf)
+    }
     fun unchangedSince(opGeneration: Long, opServerUrl: String?): Boolean =
         generation == opGeneration && serverUrl == opServerUrl
     fun acceptCookieForGeneration(opGeneration: Long, value: String): Boolean {
