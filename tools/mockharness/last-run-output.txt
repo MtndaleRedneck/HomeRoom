@@ -1,0 +1,39 @@
+# mock-HTTP harness run 2026-11-24T05:04:59Z (kotlinc 2.0.21, JDK 11, localhost only)
+OK   bootstrap/profile-get (3 declared fields)
+OK   profile-set-name (1 declared fields)
+OK   ai-guide (8 declared fields)
+OK   rooms-roster (21 declared fields)
+OK   activity (1 declared fields)
+OK   needs-you (1 declared fields)
+OK   search (7 declared fields)
+OK   files-page (12 declared fields)
+OK   held-updates (2 declared fields)
+OK   event-get (9 declared fields)
+OK   read-events (0 declared fields)
+OK   join-code-create (6 declared fields)
+OK   join-code-revoke (0 declared fields)
+OK   join-code-report-used (0 declared fields)
+OK   feedback (0 declared fields)
+OK   push-register (0 declared fields)
+OK   session-renew (0 declared fields)
+OK   room-preferences-get (4 declared fields)
+response_check: PASS
+OK   profile-get
+OK   profile-set-name
+OK   ai-guide
+OK   rooms-roster
+OK   activity
+OK   needs-you
+OK   search
+OK   files-page
+OK   held-updates
+OK   event-get
+OK   read-events
+OK   join-code-create
+OK   join-code-revoke
+OK   join-code-report-used
+OK   rule-create-gate
+OK   feedback
+OK   push-register
+OK   session-renew
+OK   room-preferences-get

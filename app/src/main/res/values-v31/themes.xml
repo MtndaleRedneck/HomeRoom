@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ draws its own launch splash no matter what; make it an
+         instant, empty cut to the app instead of a branded screen. -->
+    <style name="Theme.HomeRoom" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#fc8613</item>
+        <item name="colorOnPrimary">#1a1206</item>
+        <item name="android:statusBarColor">#1e1d20</item>
+        <item name="android:navigationBarColor">#1e1d20</item>
+        <item name="android:windowBackground">#1e1d20</item>
+        <item name="android:windowSplashScreenBackground">#1e1d20</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

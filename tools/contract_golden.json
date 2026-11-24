@@ -1,0 +1,408 @@
+{
+  "_comment": "Golden route contract for HomeRoom 1.5 private12, extracted from the exact release APK decompile (sha256 f6b7e589...). Each entry: method, path fragment that must appear in source, required JSON body keys (for writes), evidence class. UNVERIFIED entries are reconstructed approximations that must stay labeled and must not run against live accounts.",
+  "verified": [
+    {
+      "name": "enroll",
+      "method": "POST",
+      "fragment": "/owner/enroll",
+      "body": [
+        "token",
+        "device_label"
+      ],
+      "evidence": "K0/J0"
+    },
+    {
+      "name": "bootstrap/profile-get",
+      "method": "GET",
+      "fragment": "/owner/profile",
+      "evidence": "K0/J0.java:328"
+    },
+    {
+      "name": "profile-set-name",
+      "method": "POST",
+      "fragment": "/owner/profile",
+      "body": [
+        "display_name"
+      ],
+      "evidence": "K0/J0.java:1092"
+    },
+    {
+      "name": "profile-set-avatar",
+      "method": "POST",
+      "fragment": "/owner/profile/avatar",
+      "body": [
+        "image",
+        "mime_type",
+        "base64"
+      ],
+      "evidence": "K0/J0 + K0/f1"
+    },
+    {
+      "name": "session-renew",
+      "method": "POST",
+      "fragment": "/owner/session/renew",
+      "evidence": "K0/J0"
+    },
+    {
+      "name": "rooms-roster",
+      "method": "GET",
+      "fragment": "/owner/rooms",
+      "evidence": "K0/i3"
+    },
+    {
+      "name": "room-create",
+      "method": "POST",
+      "fragment": "/owner/rooms",
+      "body": [
+        "name",
+        "members"
+      ],
+      "evidence": "K0/J0 (p)"
+    },
+    {
+      "name": "room-members-set",
+      "method": "POST",
+      "fragment": "/members",
+      "body": [
+        "members"
+      ],
+      "evidence": "K0/J0.java:1053"
+    },
+    {
+      "name": "room-preferences-get",
+      "method": "GET",
+      "fragment": "/preferences",
+      "evidence": "K0/t3"
+    },
+    {
+      "name": "room-preferences-put",
+      "method": "PUT",
+      "fragment": "/preferences",
+      "body": [
+        "client_id"
+      ],
+      "evidence": "K0/s3 + K0/r3"
+    },
+    {
+      "name": "room-export",
+      "method": "GET",
+      "fragment": "/export?format=json&after=",
+      "evidence": "K0/J0.java:2150"
+    },
+    {
+      "name": "room-events",
+      "method": "GET",
+      "fragment": "/events?limit=",
+      "evidence": "K0/J0 (Q)"
+    },
+    {
+      "name": "event-get",
+      "method": "GET",
+      "fragment": "/owner/events/",
+      "evidence": "K0/J0, K0/h0"
+    },
+    {
+      "name": "post-create",
+      "method": "POST",
+      "fragment": "/posts",
+      "body": [
+        "client_id",
+        "text",
+        "thread_key",
+        "parent_id"
+      ],
+      "evidence": "K0/J0 (D)"
+    },
+    {
+      "name": "read-events",
+      "method": "POST",
+      "fragment": "/read-events",
+      "body": [
+        "thread_key",
+        "event_ids"
+      ],
+      "evidence": "K0/J0.java:2444"
+    },
+    {
+      "name": "search",
+      "method": "GET",
+      "fragment": "/owner/search?q=",
+      "evidence": "K0/J0.java:196"
+    },
+    {
+      "name": "files-page",
+      "method": "GET",
+      "fragment": "/files?limit=",
+      "evidence": "K0/J0.java:2205"
+    },
+    {
+      "name": "held-updates",
+      "method": "GET",
+      "fragment": "/owner/updates?wait=",
+      "evidence": "K0/J0.java:2351"
+    },
+    {
+      "name": "activity",
+      "method": "GET",
+      "fragment": "/owner/activity?limit=",
+      "evidence": "K0/J0"
+    },
+    {
+      "name": "needs-you",
+      "method": "GET",
+      "fragment": "/owner/needs-you?limit=",
+      "evidence": "K0/J0"
+    },
+    {
+      "name": "ai-guide",
+      "method": "GET",
+      "fragment": "/owner/docs/ai-guide",
+      "evidence": "K0/J0.java:250"
+    },
+    {
+      "name": "ai-list",
+      "method": "GET",
+      "fragment": "/owner/ais",
+      "evidence": "K0/J0"
+    },
+    {
+      "name": "ai-avatar",
+      "method": "POST",
+      "fragment": "/avatar",
+      "body": [
+        "image"
+      ],
+      "evidence": "K0/J0.java:970"
+    },
+    {
+      "name": "ai-unlink",
+      "method": "POST",
+      "fragment": "/unlink",
+      "evidence": "K0/J0.java:1418"
+    },
+    {
+      "name": "ai-rename",
+      "method": "POST",
+      "fragment": "/rename",
+      "body": [
+        "display_name"
+      ],
+      "evidence": "K0/J0.java:532"
+    },
+    {
+      "name": "join-code-create",
+      "method": "POST",
+      "fragment": "/join-codes",
+      "body": [
+        "rooms"
+      ],
+      "evidence": "K0/J0.java:1978"
+    },
+    {
+      "name": "join-code-revoke",
+      "method": "POST",
+      "fragment": "/revoke",
+      "evidence": "K0/J0 (P)"
+    },
+    {
+      "name": "join-code-report-used",
+      "method": "POST",
+      "fragment": "/report-used",
+      "evidence": "K0/J0 (L)"
+    },
+    {
+      "name": "rules-reread",
+      "method": "POST",
+      "fragment": "/rules/reread",
+      "body": [
+        "room",
+        "at"
+      ],
+      "evidence": "K0/J0.java:490"
+    },
+    {
+      "name": "rule-create",
+      "method": "POST",
+      "fragment": "/owner/rules",
+      "body": [
+        "room_id",
+        "text",
+        "client_id"
+      ],
+      "evidence": "K0/J0 (o)"
+    },
+    {
+      "name": "feedback",
+      "method": "POST",
+      "fragment": "/owner/feedback",
+      "body": [
+        "client_id",
+        "text"
+      ],
+      "evidence": "K0/J0 (u)"
+    },
+    {
+      "name": "push-register",
+      "method": "POST",
+      "fragment": "/push/register",
+      "body": [
+        "token",
+        "platform",
+        "device_label",
+        "app_version"
+      ],
+      "evidence": "K0/J0.java:494"
+    },
+    {
+      "name": "push-unregister",
+      "method": "POST",
+      "fragment": "/push/unregister",
+      "evidence": "K0/J0"
+    },
+    {
+      "name": "upload-chunk",
+      "method": "PUT",
+      "fragment": "/chunks/",
+      "headers": [
+        "X-Chunk-SHA256",
+        "X-CSRF-Token"
+      ],
+      "evidence": "K0/E0.java:104"
+    },
+    {
+      "name": "upload-cancel",
+      "method": "DELETE",
+      "fragment": "/owner/uploads/",
+      "evidence": "K0/X0.java:57"
+    }
+  ],
+  "unverified_labeled": [
+    {
+      "name": "upload-create",
+      "method": "POST",
+      "fragment": "/uploads",
+      "note": "V15Api-derived; exact create route string not visible in decompile"
+    },
+    {
+      "name": "room-rename-via-preferences",
+      "method": "PUT",
+      "fragment": "/preferences",
+      "note": "No room rename endpoint in decompile; approximation only"
+    }
+  ],
+  "responses": {
+    "_comment": "Response shapes the app's parse paths read (Models.kt / ApiClient.kt), declared for tools/response_check.py. [] marks array descent. These are parser-side expectations reconstructed from the release decompile, NOT observed live-server traffic.",
+    "bootstrap/profile-get": [
+      "display_name",
+      "avatar.url",
+      "avatar.sha256"
+    ],
+    "profile-set-name": [
+      "display_name"
+    ],
+    "session": [
+      "csrf",
+      "owner_id",
+      "owner_display_name",
+      "session_id",
+      "features"
+    ],
+    "ai-guide": [
+      "version",
+      "sha256",
+      "source",
+      "updated_at",
+      "text",
+      "acks[].actor",
+      "acks[].version",
+      "acks[].at"
+    ],
+    "rooms-roster": [
+      "rooms[].room_id",
+      "rooms[].display_name",
+      "rooms[].main_thread_key",
+      "rooms[].unread_count",
+      "rooms[].waiting_count",
+      "rooms[].pending_rules_count",
+      "rooms[].members[].actor",
+      "rooms[].members[].display_name",
+      "rooms[].waiting[].waiting_on",
+      "rooms[].waiting[].event_id",
+      "rooms[].waiting[].since",
+      "rooms[].waiting[].excerpt",
+      "rooms[].last_post.excerpt",
+      "rooms[].last_post.created_at",
+      "rooms[].last_post.seq",
+      "rooms[].icon",
+      "rooms[].metadata_version",
+      "rooms[].archived",
+      "rooms[].pinned",
+      "server_time",
+      "global_pending_rules_count"
+    ],
+    "activity": [
+      "items[]"
+    ],
+    "needs-you": [
+      "items[]"
+    ],
+    "search": [
+      "results[].event_id",
+      "results[].room_id",
+      "results[].room_name",
+      "results[].excerpt",
+      "results[].created_at",
+      "results[].match_start",
+      "results[].match_length"
+    ],
+    "files-page": [
+      "files[].file_id",
+      "files[].name",
+      "files[].title",
+      "files[].mime_type",
+      "files[].byte_size",
+      "files[].uploader",
+      "files[].created_at",
+      "files[].kind",
+      "files[].url",
+      "files[].event_id",
+      "has_more",
+      "cursor"
+    ],
+    "held-updates": [
+      "changes[]",
+      "next_cursor"
+    ],
+    "event-get": [
+      "event.event_id",
+      "event.seq",
+      "event.thread_key",
+      "event.actor.actor",
+      "event.actor.display_name",
+      "event.text",
+      "event.created_at",
+      "event.version",
+      "event.room_id"
+    ],
+    "join-code-create": [
+      "join_id",
+      "actor",
+      "display_name",
+      "expires_at",
+      "server_time",
+      "join_message"
+    ],
+    "room-preferences-get": [
+      "version",
+      "pinned",
+      "mute_mode",
+      "archived"
+    ],
+    "read-events": [],
+    "join-code-revoke": [],
+    "join-code-report-used": [],
+    "feedback": [],
+    "push-register": [],
+    "session-renew": []
+  }
+}

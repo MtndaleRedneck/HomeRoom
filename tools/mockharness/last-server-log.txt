@@ -1,0 +1,20 @@
+# mock_server log 2026-11-24T05:04:59Z
+GET /homeroom/v1/owner/session -> session ok
+GET /homeroom/v1/owner/profile -> bootstrap/profile-get ok
+POST /homeroom/v1/owner/profile -> profile-set-name ok
+GET /homeroom/v1/owner/docs/ai-guide -> ai-guide ok
+GET /homeroom/v1/owner/rooms -> rooms-roster ok
+GET /homeroom/v1/owner/activity -> activity ok
+GET /homeroom/v1/owner/needs-you -> needs-you ok
+GET /homeroom/v1/owner/search -> search ok
+GET /homeroom/v1/owner/rooms/room1/files -> files-page ok
+GET /homeroom/v1/owner/updates -> held-updates ok
+GET /homeroom/v1/owner/events/ev1 -> event-get ok
+POST /homeroom/v1/read-events -> read-events ok
+POST /homeroom/v1/owner/ais/ai_1/join-codes -> join-code-create ok
+POST /homeroom/v1/owner/ais/ai_1/join-codes/j1/revoke -> join-code-revoke ok
+POST /homeroom/v1/owner/ais/ai_1/join-codes/j1/report-used -> join-code-report-used ok
+POST /homeroom/v1/owner/feedback -> feedback ok
+POST /homeroom/v1/push/register -> push-register ok
+POST /homeroom/v1/owner/session/renew -> session-renew ok
+GET /homeroom/v1/owner/rooms/room1/preferences -> room-preferences-get ok

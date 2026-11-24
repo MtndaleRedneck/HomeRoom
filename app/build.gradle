@@ -1,0 +1,93 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
+}
+
+def keystorePath = System.getenv('HOMEROOM_KEYSTORE') ?: (System.getProperty('user.home') + '/build/homeroom.keystore')
+def passFile = System.getenv('HOMEROOM_KEYSTORE_PASS_FILE') ?: (System.getProperty('user.home') + '/build/keystore.pass')
+def keystoreFileObj = new File(keystorePath)
+def passFileObj = new File(passFile)
+// Signing is configured only when the keystore material is actually present
+// (CI runners never have it). An unsigned release APK is never a deliverable:
+// packaging tasks are hard-blocked below when signing is unavailable, so a CI
+// build can only ever prove compile/resource correctness, never a shippable APK.
+def signingReady = keystoreFileObj.exists() && passFileObj.exists()
+
+android {
+    namespace 'app.homeroom'
+    compileSdk 34
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        applicationId 'app.homeroom'
+        minSdk 26
+        targetSdk 34
+        // RECONSTRUCTED: matches the exact private12 release build (badging: versionCode 10, versionName 1.5).
+        versionCode 10
+        versionName '1.5'
+    }
+
+    signingConfigs {
+        if (signingReady) {
+            release {
+                storeFile keystoreFileObj
+                keyAlias 'homeroom'
+                storePassword passFileObj.text.trim()
+                keyPassword passFileObj.text.trim()
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // RECONSTRUCTED: the exact private12 release build is R8-processed.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signingReady) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            // No applicationIdSuffix: google-services.json only registers
+            // 'app.homeroom', and a suffix would fail the gms client match.
+        }
+    }
+
+    // Hard-stop: without the keystore, packaging a release would produce an
+    // unsigned APK, which is never a valid HomeRoom artifact (same-signer rule).
+    // compileReleaseKotlin / processReleaseResources remain available unsigned.
+    tasks.matching { it.name in ['packageRelease', 'assembleRelease', 'bundleRelease'] }.configureEach {
+        doFirst {
+            if (!signingReady) {
+                throw new GradleException('HomeRoom release signing unavailable (keystore files not found). ' +
+                    'Unsigned release artifacts are never deliverables. Use compileReleaseKotlin and ' +
+                    'processReleaseResources for unsigned build verification.')
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // RECONSTRUCTED: required by recovered sources (workers, FCM); version pins are
+    // reconstruction choices, the original pins are unknown.
+    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+}

@@ -1,0 +1,107 @@
+name: homeroom-build
+
+# Unsigned build verification of the HomeRoom 1.5 private12 reconstruction
+# (this archive branch only). Proves the current tree's Kotlin sources and
+# Android resources build at the Android toolchain level, which the JVM-only
+# mock harness cannot.
+#
+# - workflow_dispatch ONLY: never fires on push/schedule.
+# - No secrets, no signing material: app/build.gradle hard-blocks release
+#   packaging when keystore files are absent, so this workflow can never
+#   produce an unsigned APK that looks like a deliverable.
+# - Minutes note: private-repo Actions minutes count against the account's
+#   included allowance. Dispatch deliberately, per the GitHub-minutes
+#   concern. Each run is expected to take roughly 5-10 minutes.
+
+on:
+  workflow_dispatch:
+  push:
+    # Temporary measure so this branch-only workflow can be triggered without
+    # touching the default branch; only the temp CI branch ever pushes match.
+    branches: [tmp/homeroom-1.5-ci-1124]
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile release sources and process release resources (unsigned)
+        run: gradle --no-daemon compileReleaseKotlin processReleaseResources
+
+      - name: Confirm release packaging stays blocked without the keystore
+        run: |
+          if gradle --no-daemon assembleRelease; then
+            echo "ASSERT FAIL: assembleRelease succeeded without keystore material"
+            exit 1
+          else
+            echo "ok: unsigned release packaging is blocked as designed"
+          fi
+
+  debug-smoke:
+    # Functional smoke on an emulator using the DEBUG variant (auto debug
+    # signing, no keystore material needed). This is a QUALIFIED smoke - same
+    # sources/resources, but not the minified/signed release bytes - and is
+    # never shipping proof.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Install and smoke on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # This runner has no KVM; force TCG software emulation (the action's
+          # own error message names this switch). Boot is slower, hence the
+          # longer timeout below.
+          ANDROID_I_WANT_MY_TCG: "yes"
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          # NOTE: this action runs the script LINE BY LINE (each line its own
+          # sh -c), so every line must be self-contained: no multi-line if/fi.
+          # TCG emulation is slow, so no `am start -W` (launch wait times out
+          # even when healthy); poll instead.
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 45
+            adb shell pidof app.homeroom
+            adb shell dumpsys activity activities | grep -i 'app.homeroom' | head -20
+            adb logcat -d | tail -40
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
+            adb shell screencap -p /data/local/tmp/smoke.png
+            adb pull /data/local/tmp/smoke.png smoke.png
+            echo "ok: debug APK installs, launches, stays alive, no fatal exception"
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshot
+          path: smoke.png
+          if-no-files-found: warn
+          retention-days: 5

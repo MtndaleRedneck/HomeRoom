@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RECONSTRUCTED Nov 23, 2026: not original source. The release build shares
+     only cache-directory files through the app.homeroom.files FileProvider. -->
+<paths>
+    <cache-path name="shared" path="." />
+</paths>
