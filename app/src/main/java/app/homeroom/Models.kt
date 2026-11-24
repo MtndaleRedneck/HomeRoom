@@ -122,7 +122,13 @@ data class RoomRoster(
 // RECONSTRUCTED Nov 24, 2026: assistant status entry (V0 in the release
 // build), carried on ChatEvent.assistant_statuses: actor, reply_event_id,
 // notified_at.
-data class AssistantStatus(val actor: String, val replyEventId: String?, val notifiedAt: String?)
+data class AssistantStatus(val actor: String, val replyEventId: String?, val notifiedAt: String?) {
+    // INFERRED FROM ORIGINAL-LINEAGE TEST USE (V3ModelsTest): convenience
+    // flags derived from the release fields; the release model itself carries
+    // only the three constructor fields above.
+    val replied: Boolean get() = replyEventId != null
+    val notified: Boolean get() = notifiedAt != null
+}
 
 // RECONSTRUCTED Nov 24, 2026: reaction summary (j3 in the release build):
 // reaction (required), count (required), mine (optBoolean, default false).
