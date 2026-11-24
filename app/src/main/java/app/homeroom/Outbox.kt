@@ -12,7 +12,11 @@ import org.json.JSONArray
 /** Immutable wire bodies are committed before any network send. */
 internal class Outbox(private val session:Session) {
     fun entries():List<JSONObject> = session.outboxData()?.let {JSONArray(it).objects()} ?: emptyList()
-    private fun save(items:List<JSONObject>) {session.saveOutboxData(JSONArray(items).toString())}
+    // Exact release (private12 K0/P2.d -> V4.s): every queue write runs inside
+    // the session generation captured at outbox creation; a dead generation's
+    // write throws CancellationException("Session changed"), never lands.
+    private val generation=session.generation
+    private fun save(items:List<JSONObject>) {session.withinGeneration(generation) {session.saveOutboxData(JSONArray(items).toString())}}
     fun enqueue(room:String,body:JSONObject):String=synchronized(lock) {
         require(body.getString("client_id").isNotBlank())
         val id=body.getString("client_id");val items=entries()
