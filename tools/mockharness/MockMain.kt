@@ -1,5 +1,7 @@
 package app.homeroom
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
+
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
@@ -28,15 +30,45 @@ fun main(args: Array<String>) = runBlocking {
         require(avatar?.url == "https://example.invalid/a.png") { "avatar sentinel lost" }
     }
     check("cookie-origin-scoping") {
-        // Same-origin gets the cookie; foreign and suffix-trick hosts never do.
-        require(api.cookieValueForHost("127.0.0.1") == "test-cookie") { "same-origin cookie lost" }
-        require(api.cookieValueForHost("example.invalid") == null) { "foreign host received session cookie" }
-        require(api.cookieValueForHost("127.0.0.1.evil.example") == null) { "suffix-trick host received session cookie" }
+        // The session cookie goes only to the enrolled origin: scheme, host
+        // AND effective port must match. Foreign, suffix-trick, other-port
+        // and other-scheme endpoints never receive it.
+        require(api.sessionCookieFor("http://127.0.0.1:8471/x".toHttpUrl()) == "test-cookie") { "same-origin cookie lost" }
+        require(api.sessionCookieFor("http://127.0.0.1:9999/x".toHttpUrl()) == null) { "other-port endpoint received session cookie" }
+        require(api.sessionCookieFor("https://127.0.0.1:8471/x".toHttpUrl()) == null) { "other-scheme endpoint received session cookie" }
+        require(api.sessionCookieFor("http://example.invalid/x".toHttpUrl()) == null) { "foreign host received session cookie" }
+        require(api.sessionCookieFor("http://127.0.0.1.evil.example/x".toHttpUrl()) == null) { "suffix-trick host received session cookie" }
     }
     check("avatar-https-only") {
         // Cleartext absolute avatar URLs are refused before any network call.
         val e = try { api.avatarBytes("http://example.invalid/a.png"); null } catch (x: ApiException) { x }
         require(e?.code == "avatar_url_not_https") { "cleartext absolute avatar URL accepted" }
+    }
+    check("staged-upload-identity") {
+        // Interrupted-upload restart keeps the ORIGINAL identities: a retried
+        // create/complete/post carries the same idempotency keys.
+        var n = 0
+        val ids = StagedUpload.idsFor(null, { "fresh-" + (++n) }, { "t0" })
+        require(ids.uploadClient == "fresh-1" && ids.completeClient == "fresh-2" && ids.postClient == "fresh-3" && ids.created == "t0") { "fresh identity minting wrong: $ids" }
+        val rec = StagedUpload.newRecord("u1", "room1", "a.txt", false, 12, "abc", "attachment-x", 0, ids)
+        val restored = StagedUpload.idsFor(rec, { "WRONG" }, { "WRONG" })
+        require(restored == ids) { "resume minted new identities" }
+        require(StagedUpload.resumable(rec)) { "fresh record not resumable" }
+        val legacy = org.json.JSONObject().put("upload", "u1").put("size", 12).put("file", "attachment-x")
+        require(!StagedUpload.resumable(legacy)) { "legacy record (no hash/IDs) accepted as resumable" }
+    }
+    check("staged-upload-complete-gate") {
+        // The gate every resume must pass before Send enables; mirrors the
+        // fresh path. Accepts only a fully verified ready completion.
+        StagedUpload.requireComplete("abc", 12, "abc", "ready", "abc", 12)
+        val e1 = try { StagedUpload.requireComplete("abc", 12, "abc", "processing", null, 12); null } catch (x: IllegalArgumentException) { x }
+        require(e1 != null) { "gate accepted unfinished upload" }
+        val e2 = try { StagedUpload.requireComplete("abc", 12, "abc", "ready", "WRONGHASH", 12); null } catch (x: IllegalArgumentException) { x }
+        require(e2 != null) { "gate accepted wrong verified hash" }
+        val e3 = try { StagedUpload.requireComplete("abc", 12, "abc", "ready", "abc", 11); null } catch (x: IllegalArgumentException) { x }
+        require(e3 != null) { "gate accepted wrong size" }
+        val e4 = try { StagedUpload.requireComplete("abc", 12, "CHANGED", "ready", "abc", 12); null } catch (x: IllegalArgumentException) { x }
+        require(e4 != null) { "gate accepted changed staged file" }
     }
     check("profile-set-name") { require(api.setOwnerName("Owner") == "Owner") { "set-name echo lost" } }
     check("ai-guide") {

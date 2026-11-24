@@ -26,10 +26,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // Resume keeps the ORIGINAL client identities and timestamp: if the
     // interruption happened during or after complete/post, the retry carries
     // the same idempotency keys, so the server can dedup instead of doubling.
-    private val uploadClient=resume?.optString("upload_client")?.takeIf {it.isNotEmpty()} ?: clientId()
-    private val completeClient=resume?.optString("complete_client")?.takeIf {it.isNotEmpty()} ?: clientId()
-    private val postClient=resume?.optString("post_client")?.takeIf {it.isNotEmpty()} ?: clientId()
-    private val created=resume?.optString("created")?.takeIf {it.isNotEmpty()} ?: java.time.Instant.now().toString()
+    private val stagedIds=StagedUpload.idsFor(resume,{clientId()},{java.time.Instant.now().toString()})
+    private val uploadClient=stagedIds.uploadClient
+    private val completeClient=stagedIds.completeClient
+    private val postClient=stagedIds.postClient
+    private val created=stagedIds.created
     init {
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
         body.addView(text(context,if(voice)"Voice note" else "Attach a file",22f,C.text,true));body.addView(status);body.addView(message);body.addView(send)
@@ -42,6 +43,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     private fun resumeUpload() {job=screenScope.launch {
         try {
             val record=resume ?: return@launch
+            require(StagedUpload.resumable(record)) {"staged record lacks hash or original identities"}
             upload=record.getString("upload")
             val total=record.getLong("size")
             if(!privateFile.exists() || privateFile.length()!=total) throw ApiException(0,"staged_file_missing")
@@ -60,9 +62,8 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // Send is enabled. complete carries the original completeClient id.
             val recordHash=record.getString("sha256")
             val actualHash=withContext(Dispatchers.IO) {java.io.File(privateFile.absolutePath).readBytes().let {sha256(it)}}
-            require(actualHash==recordHash) {"staged file hash changed since staging"}
             val complete=UploadStatus.from(V15Api(host.api).mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient)))
-            require(complete.state=="ready" && complete.verified==recordHash && complete.size==total)
+            StagedUpload.requireComplete(recordHash,total,actualHash,complete.state,complete.verified,complete.size)
             ready=true;status.text="Ready to send. Upload completed and checksum verified.";send.isEnabled=true
         }catch(e:CancellationException) {throw e}
         catch(e:SessionEndedException) {host.onSessionEnded(e.reason)}
@@ -84,7 +85,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             val api=V15Api(host.api)
             val result=api.mutate("rooms/"+ApiClient.enc(room.id)+"/uploads",JSONObject().put("client_id",uploadClient).put("name",safeName).put("mime_type",mime).put("byte_size",metadata.first).put("sha256",metadata.second).put("kind",if(voice)"voice" else if(mime.startsWith("image/"))"image" else "file"))
             upload=result.getString("upload_id")
-            val record=JSONObject().put("upload",upload).put("room",room.id).put("name",safeName).put("voice",voice).put("size",metadata.first).put("sha256",metadata.second).put("file",privateFile.name).put("offset",result.getLong("next_offset")).put("upload_client",uploadClient).put("complete_client",completeClient).put("post_client",postClient).put("created",created)
+            val record=StagedUpload.newRecord(upload!!,room.id,safeName,voice,metadata.first,metadata.second,privateFile.name,result.getLong("next_offset"),stagedIds)
             host.session.saveStagedUpload(record)
             var offset=result.getLong("next_offset")
             withContext(Dispatchers.IO) {java.io.RandomAccessFile(privateFile,"r").use {input->
@@ -97,7 +98,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                 }
             }}
             val complete=UploadStatus.from(api.mutate("uploads/"+ApiClient.enc(upload!!)+"/complete",JSONObject().put("client_id",completeClient)))
-            require(complete.state=="ready" && complete.verified==metadata.second && complete.size==metadata.first)
+            StagedUpload.requireComplete(metadata.second,metadata.first,metadata.second,complete.state,complete.verified,complete.size)
             ready=true;send.isEnabled=true
             status.text=safeName+" · uploaded and checksum verified. Not sent yet."+(if(voice)" Voice transcription may be unavailable." else "")
         }catch(e:CancellationException) {throw e}

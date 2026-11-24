@@ -58,7 +58,7 @@ class ApiClient(private val session: Session) {
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                val value = cookieValueForHost(url.host) ?: return emptyList()
+                val value = sessionCookieFor(url) ?: return emptyList()
                 return listOf(
                     Cookie.Builder()
                         .name(COOKIE_NAME)
@@ -73,26 +73,33 @@ class ApiClient(private val session: Session) {
         .build()
 
     // RECONSTRUCTION-ORIGINAL hardening (not release-evidenced): the session
-    // cookie only ever goes to the enrolled server's host. Server-supplied
-    // absolute URLs (e.g. avatar URLs) could otherwise carry the session to a
-    // foreign host. Internal so the mock harness can pin the boundary.
-    internal fun cookieValueForHost(host: String): String? {
+    // cookie only ever goes to the enrolled server's ORIGIN - scheme, host and
+    // effective port all must match. Server-supplied absolute URLs (e.g.
+    // avatar URLs) could otherwise carry the session to a foreign endpoint.
+    // Internal so the mock harness can pin the boundary.
+    internal fun sessionCookieFor(url: HttpUrl): String? {
         val value = session.cookie ?: return null
-        return if (host == serverHost()) value else null
+        val origin = enrolledOrigin() ?: return null
+        return if (url.scheme == origin.first && url.host == origin.second && url.port == origin.third) value else null
     }
 
-    private fun serverHost(): String? = try {
-        session.serverUrl?.let { java.net.URI(it).host?.lowercase() }
+    private fun enrolledOrigin(): Triple<String, String, Int>? = try {
+        val u = java.net.URI(session.serverUrl ?: return null)
+        val host = u.host?.lowercase() ?: return null
+        val port = if (u.port == -1) (if (u.scheme == "https") 443 else 80) else u.port
+        Triple(u.scheme.lowercase(), host, port)
     } catch (e: Exception) { null }
 
     private fun baseUrl(): String =
         (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + API_PREFIX
 
     private fun raw(route: String, method: String = "GET", body: JSONObject? = null): JSONObject {
+        val fullUrl = baseUrl() + route
         val builder = Request.Builder()
-            .url(baseUrl() + route)
+            .url(fullUrl)
             .header("Accept", "application/json")
             .header("Cache-Control", "no-store")
+        applyOriginHeaders(builder, fullUrl, method)
         if (body != null) {
             builder.header("Content-Type", "application/json")
             builder.method(method, body.toString().toRequestBody(JSON))
@@ -120,7 +127,7 @@ class ApiClient(private val session: Session) {
     /** Streams an owner file through the app's own client. The cookie never leaves the app. Returns the MIME type. */
     suspend fun downloadOwnerFile(id:String, out:java.io.OutputStream): String = withContext(Dispatchers.IO) {
         val builder=Request.Builder().url(baseUrl()+"/owner/files/"+enc(id)).header("Cache-Control","no-store").get()
-        applyOriginHeaders(builder,baseUrl(),"GET")
+        applyOriginHeaders(builder,baseUrl()+"/owner/files/"+enc(id),"GET")
         client.newCall(builder.build()).execute().use { response ->
             checkSession()
             if(!response.isSuccessful) {
@@ -214,11 +221,13 @@ class ApiClient(private val session: Session) {
     // X-Chunk-SHA256 and X-CSRF-Token.
     suspend fun uploadChunk(uploadId: String, offset: Long, chunk: ByteArray, sha256Hex: String): JSONObject =
         withContext(Dispatchers.IO) {
+            val fullUrl = baseUrl() + "/owner/uploads/" + enc(uploadId) + "/chunks/" + offset
             val builder = Request.Builder()
-                .url(baseUrl() + "/owner/uploads/" + enc(uploadId) + "/chunks/" + offset)
+                .url(fullUrl)
                 .header("X-Chunk-SHA256", sha256Hex)
                 .put(chunk.toRequestBody("application/octet-stream".toMediaType()))
             csrf?.let { builder.header("X-CSRF-Token", it) }
+            applyOriginHeaders(builder, fullUrl, "PUT")
             client.newCall(builder.build()).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
@@ -248,8 +257,15 @@ class ApiClient(private val session: Session) {
         val full = if (url.startsWith("http")) {
             if (!url.startsWith("https://")) throw ApiException(0, "avatar_url_not_https")
             url
+        } else if (url.startsWith("/")) {
+            // Production 1.4 sends ROOT-relative avatar URLs
+            // (/homeroom/v1/owner/profile/avatar); resolve against the server
+            // root, not the API base (would double the /homeroom/v1 prefix).
+            (session.serverUrl ?: throw ApiException(0, "no_server")).trimEnd('/') + url
         } else baseUrl() + url
-        client.newCall(Request.Builder().url(full).get().build()).execute().use { response ->
+        val req = Request.Builder().url(full).get()
+        applyOriginHeaders(req, full, "GET")
+        client.newCall(req.build()).execute().use { response ->
             if (!response.isSuccessful) throw ApiException(response.code, "download_failed")
             val stream = response.body?.byteStream() ?: throw ApiException(response.code, "download_failed")
             stream.use { input ->
@@ -334,6 +350,19 @@ class ApiClient(private val session: Session) {
     // archived changes). The rename action shares this route in the reconstruction;
     // the release's exact rename write path is not yet located (registered gap).
     suspend fun roomMutation(room: String, action: String, body: JSONObject): JSONObject {
+        // Grounded in the production 1.4 server source (owner_room manage
+        // route): rename and archive are DEDICATED POST routes whose exact
+        // bodies are {display_name, metadata_version} and {archived,
+        // metadata_version}, CAS-checked server-side. The preferences PUT
+        // below remains the held-1.5 path for mute/pin (decompile-grounded,
+        // absent from the 1.4 router).
+        if (action == "rename" || action == "archive") {
+            val exact = JSONObject()
+            if (action == "rename") exact.put("display_name", body.getString("display_name"))
+            else exact.put("archived", body.getBoolean("archived"))
+            exact.put("metadata_version", body.getInt("metadata_version"))
+            return request("/owner/rooms/" + enc(room) + "/" + action, "POST", exact)
+        }
         val prefs = roomPreferences(room)
         val merged = JSONObject(prefs.toString())
         val keys = body.keys()
@@ -342,12 +371,19 @@ class ApiClient(private val session: Session) {
         return request("/owner/rooms/" + enc(room) + "/preferences", "PUT", merged)
     }
 
-    // RECONSTRUCTED: header helpers for direct (non-JSON-wrapper) owner requests.
-    // The release's exact header set here is not verified (registered gap).
-    private fun applyOriginHeaders(builder: Request.Builder, base: String, method: String) {
-        builder.header("Accept", "application/json")
-        builder.header("Origin", base)
-        if (method != "GET") csrf?.let { builder.header("X-CSRF-Token", it) }
+    // RECONSTRUCTED from the exact private12 release build (Z1/b.c, verified
+    // against the production 1.4 server source, which 403s bad_origin without
+    // these): EVERY request carries Sec-Fetch-Site: same-origin, Sec-Fetch-Mode:
+    // cors and Sec-Fetch-Dest: empty; non-GET requests also carry Origin =
+    // scheme://host[:port] of the request URL (no path).
+    private fun applyOriginHeaders(builder: Request.Builder, url: String, method: String) {
+        val u = java.net.URI(url)
+        val defaultPort = if (u.scheme == "https") 443 else if (u.scheme == "http") 80 else -1
+        val origin = u.scheme + "://" + u.host + (if (u.port != -1 && u.port != defaultPort) ":" + u.port else "")
+        if (method != "GET") builder.header("Origin", origin)
+        builder.header("Sec-Fetch-Site", "same-origin")
+        builder.header("Sec-Fetch-Mode", "cors")
+        builder.header("Sec-Fetch-Dest", "empty")
     }
 
     private fun checkSession() {
@@ -371,7 +407,7 @@ class ApiClient(private val session: Session) {
     suspend fun verifiedDownload(path: String, local: java.io.File, size: Long, digest: String?, onProgress: (Long, Long) -> Unit): Boolean =
         withContext(Dispatchers.IO) {
             val builder = Request.Builder().url(baseUrl() + path).header("Cache-Control", "no-store").get()
-            applyOriginHeaders(builder, baseUrl(), "GET")
+            applyOriginHeaders(builder, baseUrl() + path, "GET")
             client.newCall(builder.build()).execute().use { response ->
                 checkSession()
                 if (!response.isSuccessful) {

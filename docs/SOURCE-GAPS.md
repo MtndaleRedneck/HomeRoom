@@ -12,20 +12,44 @@ Routes, bodies and models cited per file from the dex2jar/CFR decompile
 K0/S2, K0/p3/q3/r3, K0/f4, K0/h4). See code comments marked
 "RECONSTRUCTED Nov 23, 2026" with the class reference.
 
+## Production 1.4 server contract (operator read-only excerpts, 2026-11-24)
+
+The DEPLOYED server (example.invalid -> loopback 8844, pinned 1.4 runtime)
+advertises `file_upload=false` and its exhaustive router has NO upload
+create/chunk/complete/delete routes and no /owner/rooms/<id>/preferences
+route. Those reconstruction surfaces are decompile-grounded from private12,
+i.e. they target the HELD 1.5 server contract, which has not been recovered.
+They must not be presented as working against the production server, and
+they stay in the tree only as approved-1.5 features awaiting that contract.
+
+Grounded against the production source and FIXED in the reconstruction:
+- Origin/Sec-Fetch headers: every request now sends Sec-Fetch-Site:
+  same-origin (+ Sec-Fetch-Mode/Dest), non-GET also Origin =
+  scheme://host[:port] (no path). Matches both the production 1.4
+  owner_room.origin/mutation_origin checks (403 bad_origin) and the exact
+  private12 helper (Z1/b.c). The mock server enforces the same contract.
+- Room rename/archive: routed to the production-evidenced dedicated POST
+  routes with exact CAS bodies ({display_name|archived, metadata_version}).
+- Avatar URLs: production sends ROOT-relative urls
+  (/homeroom/v1/owner/...); the client now resolves them against the server
+  root (previously doubled the /homeroom/v1 prefix).
+
 ## Unverified - do not execute against a live server as if tested
 
-1. Room rename: no /owner/rooms rename endpoint exists in the decompile (only
-   /owner/ais/<id>/rename). OwnerToolsScreens routes rename through the
-   preferences PUT as a labeled approximation. The release has a "Rename room"
-   UI (f4); its write path is unlocated. NEEDS: reviewer to locate the exact
-   call in the DEX or confirm the release behavior.
-2. Upload creation: POST /owner/rooms/<id>/uploads body
+1. Upload creation: POST /owner/rooms/<id>/uploads body
    {client_id, name, mime_type, byte_size, sha256, kind} comes from the V15Api
    layer; the exact create route string is not visible in the decompile
    (chunk PUT /owner/uploads/<id>/chunks/<offset> and DELETE
-   /owner/uploads/<id> ARE string-verified). NEEDS: evidence for create route.
-3. applyOriginHeaders: header set on the verified-download path is a
-   reconstruction (Accept/Origin/CSRF). Release header set unverified.
+   /owner/uploads/<id> ARE string-verified). ABSENT from production 1.4
+   (file_upload=false). NEEDS: held-1.5 server contract.
+2. /owner/rooms/<id>/preferences GET/PUT (mute/pin): decompile-grounded,
+   ABSENT from the production 1.4 router. NEEDS: held-1.5 contract.
+3. postWithUploads body keys (client_created_at, upload_ids): held-1.5;
+   production 1.4 /rooms/<id>/posts accepts exactly {client_id, text,
+   thread_key, parent_id, mentions, asks_owner}. Also unresolved whether
+   null-valued optional keys may be sent (1.4 rejects unknown keys;
+   the reconstruction always includes thread_key/parent_id, JSONObject.NULL
+   when unset). NEEDS: held-1.5 contract + release post-builder evidence.
 4. Rule.decidedBy / decidedAt: fields exist in the release Rule model (v4
    toString); JSON key names (decided_by / decided_at) are inferred snake_case.
 5. Avatar fetch path handling: relative vs absolute avatar URLs assumed both

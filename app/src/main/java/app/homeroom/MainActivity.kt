@@ -113,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         startPoller()
         registerConnectivity()
         onConnectIntent(intent)
+        onShareIntent(intent)
     }
 
     // RECONSTRUCTED from the exact private12 release build (MainActivity.K /
@@ -125,6 +126,49 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         onConnectIntent(intent)
+        onShareIntent(intent)
+    }
+
+    // RECONSTRUCTED from the exact private12 release build (MainActivity.J):
+    // ACTION_SEND with a content:// stream opens a "Review shared file in
+    // room" picker over the non-archived rooms and hands the pick to the
+    // attachment composer (which stages a private copy immediately, so the
+    // transient read grant is enough). Guards mirror the release: unenrolled
+    // or no rooms loaded -> toast; unreadable share -> toast. The intent is
+    // consumed after reading so rotation does not retrigger it. The release's
+    // busy-deferral copy and the homeroom_test_alert / approval_page extras
+    // in J are NOT reconstructed (noted in docs/SOURCE-GAPS.md).
+    private fun onShareIntent(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_SEND ||
+            !intent.hasExtra(android.content.Intent.EXTRA_STREAM)) return
+        val uri: android.net.Uri? = try {
+            if (android.os.Build.VERSION.SDK_INT >= 33)
+                intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri::class.java)
+            else @Suppress("DEPRECATION") intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM)
+        } catch (e: Exception) { null }
+        intent.action = null
+        intent.removeExtra(android.content.Intent.EXTRA_STREAM)
+        if (!session.enrolled) {
+            android.widget.Toast.makeText(this, "Connect HomeRoom before sharing a file.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (uri != null && uri.scheme == "content") {
+            val rooms = roomCache.filter { !it.archived }
+            if (rooms.isEmpty()) {
+                android.widget.Toast.makeText(this, "Open your room list before sharing a file.", android.widget.Toast.LENGTH_LONG).show()
+                return
+            }
+            val names = rooms.map { it.name }.toTypedArray()
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Review shared file in room")
+                .setItems(names) { _, which ->
+                    openPage("Review shared file in room", AttachmentComposer(this, rooms[which], uri))
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            android.widget.Toast.makeText(this, "This shared file couldn't be read.", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun onConnectIntent(intent: android.content.Intent?) {

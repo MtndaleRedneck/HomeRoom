@@ -108,6 +108,18 @@ class Handler(BaseHTTPRequestHandler):
     def handle_req(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        # Header contract, grounded in the production 1.4 server source
+        # (owner_room.origin/mutation_origin: 403 bad_origin) and the exact
+        # private12 release build (Z1/b.c): every request carries
+        # Sec-Fetch-Site: same-origin; non-GET also carries
+        # Origin = scheme://host[:port] of the server (no path).
+        sfs = self.headers.get('Sec-Fetch-Site')
+        origin = self.headers.get('Origin')
+        expected_origin = "http://127.0.0.1:%d" % self.server.server_port
+        if sfs != 'same-origin' or (self.command != 'GET' and origin != expected_origin):
+            self._reply(403, {"error": "bad_origin"})
+            print("%s %s -> BAD-ORIGIN sfs=%r origin=%r" % (self.command, path, sfs, origin), flush=True)
+            return
         length = int(self.headers.get('Content-Length') or 0)
         body = self.rfile.read(length) if length else b""
         for method, pattern, name in ROUTES:

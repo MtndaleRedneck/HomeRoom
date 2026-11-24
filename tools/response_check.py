@@ -88,9 +88,17 @@ def main():
         fails = 0
         for method, path, name in ROUTES:
             body = dummy_body(name) if method != "GET" else None
+            # Header contract per production 1.4 (owner_room.origin /
+            # mutation_origin) and the private12 build (Z1/b.c):
+            # Sec-Fetch-Site on every request, Origin on non-GET.
+            headers = {"Content-Type": "application/json",
+                       "Sec-Fetch-Site": "same-origin"}
+            if method != "GET":
+                # Origin is scheme://host[:port] only - never the API prefix.
+                headers["Origin"] = f"http://127.0.0.1:{PORT}"
             req = urllib.request.Request(BASE + path, method=method,
                                          data=json.dumps(body).encode() if body is not None else None,
-                                         headers={"Content-Type": "application/json"})
+                                         headers=headers)
             try:
                 with urllib.request.urlopen(req) as resp:
                     data = json.loads(resp.read())
