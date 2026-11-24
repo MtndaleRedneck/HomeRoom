@@ -532,6 +532,26 @@ class ApiClient(
     // POST /read-events {thread_key, event_ids} (K0/J0).
     suspend fun event(id: String): JSONObject = request("/owner/events/" + enc(id))
 
+    // Direct single-shot event fetch (RotationHttpTest lineage): never
+    // bootstraps, renews or retries - a 409 session_rotated propagates so the
+    // caller cannot invent recovery with a retired secret. Serialized behind
+    // an in-flight renewOnOpen via renewMutex so a concurrent rotation lands
+    // first and this fetch adopts the renewed credentials; 401 ends the
+    // session. Currently a test seam - prod callers use the recovering
+    // event(); coverage kept honest (no prod caller claimed).
+    suspend fun eventDirect(id: String): JSONObject = renewMutex.withLock {
+        val auth = session.authSnapshot()
+        if (auth.cookie.isNullOrBlank()) throw SessionEndedException("owner_session_required", auth.generation)
+        withContext(Dispatchers.IO) {
+            try {
+                raw("/owner/events/" + enc(id), auth = auth)
+            } catch (e: ApiException) {
+                if (e.status == 401) throw SessionEndedException(e.code, auth.generation)
+                throw e
+            }
+        }
+    }
+
     suspend fun markReadEvents(threadKey: String, eventIds: List<String>): JSONObject =
         request("/read-events", "POST", JSONObject()
             .put("thread_key", threadKey)
