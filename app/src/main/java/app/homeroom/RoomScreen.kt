@@ -271,8 +271,16 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     pendingAnswers = requestId to launch
                     if (dialog.isShowing) {
                         dialog.dismiss()
-                        pendingAnswers = null
-                        host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
+                        // openPage is outside the POST catch: a failure here is
+                        // NOT an uncertain ask (the server accepted). Keep the
+                        // preserved request_id so onShow can recover the page.
+                        try {
+                            host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
+                            pendingAnswers = null
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                        } catch (_: Exception) {
+                            snack(this@RoomScreen, "Ask accepted. Reopen this room to see the answers.")
+                        }
                     }
                 }
             }
