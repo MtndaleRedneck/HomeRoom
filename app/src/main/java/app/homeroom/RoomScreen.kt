@@ -39,8 +39,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     private var replyTarget: ChatEvent? = null
 
     private var newestCursor: String? = null
-    // Release chat screen keeps the events-envelope server_time (K0/W3:152;
-    // a missing value keeps the previous one) and labels days against it.
+    // Release chat screen keeps the events-envelope server_time (K0/W3:152
+    // into e4.N; a missing value keeps the previous one). The binary's only
+    // observed read is the waiting row's relative "no reply Xm" text
+    // (e4:1684 via n1.a.R) - day labels stay on device time.
     private var serverTime: String? = null
     private var oldestCursor: String? = null
     private var hasMore = false
@@ -247,10 +249,6 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         if (rows.isNotEmpty()) list.scrollToPosition(rows.size - 1)
     }
 
-    private fun serverNow(): java.time.LocalDate =
-        serverTime?.let { runCatching { java.time.Instant.parse(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate() }.getOrNull() }
-            ?: java.time.LocalDate.now()
-
     private fun rebuild() {
         rows.clear()
         val own = host.session.ownerId
@@ -258,7 +256,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         var anchorPlaced = false
         var lastDay = ""
         for (event in events.sortedWith(compareBy({ it.createdAt }, { it.seq }))) {
-            val day = dayLabel(event.createdAt, serverNow())
+            val day = dayLabel(event.createdAt)
             if (day != lastDay) {
                 rows.add(Row.Day(day))
                 lastDay = day
