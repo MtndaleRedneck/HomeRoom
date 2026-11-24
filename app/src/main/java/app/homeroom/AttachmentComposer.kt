@@ -55,6 +55,11 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         StagedUpload.attemptedText(resume)?.let {
             attemptedText=it;message.setText(it);message.isEnabled=false
         }
+        // Uncertainty initializes from the DURABLE record BEFORE any fallible
+        // work (I2 early-resume hole): a persisted attempted payload means a
+        // post may already exist even if the status-first resume below never
+        // completes, so cancellation must start safe, not become safe later.
+        if(StagedUpload.unconfirmedAttempt(resume)) ambiguous=true
         priorUnresolved=StagedUpload.hasUnresolvedPrior(resume)
         consumedUnresolved=StagedUpload.unresolvedCancellationMarked(resume)
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
@@ -133,10 +138,19 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             // cp42 crash recovery (owning source): upload_bytes_inconsistent
             // means requires_restart - never auto-resume the same upload.
             if(e.code=="upload_bytes_inconsistent")abandonCorruptUpload()
-            else status.text="This staged upload can no longer be resumed. Cancel it and attach again."
+            else resumeFailed()
         }
-        catch(_:Exception) {status.text="This staged upload can no longer be resumed. Cancel it and attach again."}
+        catch(_:Exception) {resumeFailed()}
     }}
+    // Status-first resume failed BEFORE any ready/complete recovery (I2
+    // early-resume hole): when the durable record carries ANY uncertainty
+    // marker the upload may already be posted - come back ambiguous
+    // (check-room, retry-same-post, two-tap local-only cancel). Only a
+    // marker-free record gets the plain cannot-resume message.
+    private fun resumeFailed() {
+        if(stagedRecord?.let {StagedUpload.hasUnresolvedCancellation(it)}==true) {setAmbiguous();return}
+        status.text="This staged upload can no longer be resumed. Cancel it and attach again."
+    }
     // Same-ID complete replay can return CONSUMED with linkage + replayed
     // (uploads15.status exact source): the earlier complete AND its post both
     // landed. Reconcile as sent from the server's own record - never repost,
@@ -311,9 +325,10 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
     // longer trap the owner, without inventing a no-post status (I2).
     private var cancelWarned=false
     // Centralized cancellation safety (I2): remote DELETE only when no
-    // uncertainty marker is set - ambiguous in-session, durable prior, or
-    // known-consumed without positive linkage.
-    private fun cancelUnsafe()=ambiguous || priorUnresolved || consumedUnresolved
+    // uncertainty marker is set. Consults the DURABLE record predicate, not
+    // just in-session flags, so a flag not yet restored (early-resume
+    // failure before ready/complete) cannot reopen plain remote DELETE.
+    private fun cancelUnsafe()=ambiguous || priorUnresolved || consumedUnresolved || StagedUpload.hasUnresolvedCancellation(stagedRecord)
     private fun cancelUpload() {
         if(posting)return
         if(cancelUnsafe() && !cancelWarned) {cancelWarned=true;status.text="A post may already exist. Check the room before cancelling or sending again.";return}

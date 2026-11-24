@@ -129,6 +129,16 @@ fun main(args: Array<String>) = runBlocking {
         require(StagedUpload.hasUnresolvedCancellation(rec2)) { "predicate misses unconfirmed attempt" }
         require(StagedUpload.hasUnresolvedCancellation(priorOnly)) { "predicate misses prior-only uncertainty" }
         require(!StagedUpload.unconfirmedAttempt(plainRec)) { "consumed-only record claims current attempt" }
+        // Early-resume regression (I2): a restored record carrying an
+        // attempted payload must read unsafe-to-remote-DELETE via the durable
+        // predicate BEFORE any status fetch completes - the resume-failure
+        // path and cancelUnsafe consult the record, not in-memory flags.
+        val earlyResume = StagedUpload.newRecord("u5", "room1", "e.txt", false, 3, "mno", "attachment-v", 0, ids)
+        require(!StagedUpload.hasUnresolvedCancellation(earlyResume)) { "never-attempted record unsafe before status fetch" }
+        StagedUpload.recordAttempt(earlyResume, "draft")
+        val restoredRec = JSONObject(earlyResume.toString())
+        require(StagedUpload.unconfirmedAttempt(restoredRec)) { "restored attempt not durable" }
+        require(StagedUpload.hasUnresolvedCancellation(restoredRec)) { "early-resume: durable predicate false before status fetch" }
     }
     check("namespaced-post-id") {
         // The consumed-linkage check compares the event's client_id against
