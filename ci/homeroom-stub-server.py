@@ -143,6 +143,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _route(self, body=None):
         p = self.path.split("?")[0]
+        # The app prefixes API paths with /homeroom/v1 (observed in the first
+        # interaction run's stub log); normalize before routing.
+        if p.startswith("/homeroom/v1"):
+            p = p[len("/homeroom/v1"):]
         if self.command == "GET" and p == "/owner/session":
             return self._send({"csrf": "stub-csrf", "session_id": "stub-session"}, cookie=True)
         if self.command == "GET" and p == "/owner/instance":
