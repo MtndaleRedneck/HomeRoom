@@ -263,9 +263,15 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 }
                 val askButton = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
                 askButton.isEnabled = false
-                // Mark before the POST: a dismiss during the flight leaves the
-                // same possibly-accepted state as an explicit failure.
-                askAllPending.mark(launch.generation, room.id, askClientId)
+                // Atomic room claim BEFORE dispatch (GPT/Gem f409 #3): two
+                // overlapping flows (a second screen, or dialogs racing a
+                // roster await) can both pass the beginAskAll check - only the
+                // first claim wins. A dismiss during the flight then leaves
+                // the same possibly-accepted state as an explicit failure.
+                if (!askAllPending.claim(launch.generation, room.id, askClientId)) {
+                    snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
+                    return@setOnClickListener
+                }
                 screenScope.launch {
                     // Stage 1: POST acceptance. An exception here means the ask
                     // may or may not be held by the server; the release (K0/x1)

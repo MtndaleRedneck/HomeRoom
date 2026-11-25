@@ -30,9 +30,17 @@ class AskAllPendingStore {
 
     private fun key(generation: Long, roomId: String) = "$generation:$roomId"
 
-    /** Set BEFORE dispatch: an in-flight ask is as unresolved as a failed one. */
-    fun mark(generation: Long, roomId: String, clientId: String) {
-        pending[key(generation, roomId)] = clientId
+    /**
+     * Atomic room claim, made BEFORE dispatch (GPT/Gem f409 #3): two
+     * overlapping flows (a second RoomScreen instance, or two dialogs racing
+     * a roster await) can both pass the beginAskAll check; only the first
+     * claim wins. Re-claiming the SAME client_id is idempotent - the
+     * release's in-dialog retry resends the identical body. An in-flight ask
+     * is as unresolved as a failed one, so the claim precedes the POST.
+     */
+    fun claim(generation: Long, roomId: String, clientId: String): Boolean {
+        val existing = pending.putIfAbsent(key(generation, roomId), clientId)
+        return existing == null || existing == clientId
     }
 
     fun pendingClientId(generation: Long, roomId: String): String? = pending[key(generation, roomId)]

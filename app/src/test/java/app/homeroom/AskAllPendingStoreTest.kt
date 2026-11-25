@@ -17,17 +17,44 @@ import org.robolectric.annotation.Config
 @Config(sdk=[34])
 class AskAllPendingStoreTest {
 
-    @Test fun markerSetBeforeDispatchBlocksNewSend() {
+    @Test fun claimSetBeforeDispatchBlocksNewSend() {
         val s = AskAllPendingStore()
-        // mark() is called before the POST starts; the pending read the new
+        // claim() is made before the POST starts; the pending read the new
         // dialog performs must already see it (dismiss/reopen in-flight race).
-        s.mark(7L, "room1", "cid-1")
+        assertTrue(s.claim(7L, "room1", "cid-1"))
         assertEquals("cid-1", s.pendingClientId(7L, "room1"))
+    }
+
+    @Test fun competingClaimsOnlyFirstWins() {
+        val s = AskAllPendingStore()
+        // Two dialogs/screens both passed the beginAskAll check (GPT/Gem
+        // f409 #3): the second claim with a DIFFERENT client_id loses and
+        // the original marker is never overwritten.
+        assertTrue(s.claim(7L, "room1", "cid-A"))
+        assertFalse(s.claim(7L, "room1", "cid-B"))
+        assertEquals("cid-A", s.pendingClientId(7L, "room1"))
+    }
+
+    @Test fun sameClientIdReclaimIsIdempotent() {
+        val s = AskAllPendingStore()
+        // The release's in-dialog retry resends the identical body: the
+        // retry's claim must succeed, not be treated as competition.
+        assertTrue(s.claim(7L, "room1", "cid-A"))
+        assertTrue(s.claim(7L, "room1", "cid-A"))
+        assertEquals("cid-A", s.pendingClientId(7L, "room1"))
+    }
+
+    @Test fun claimSucceedsAfterCompareRemove() {
+        val s = AskAllPendingStore()
+        assertTrue(s.claim(7L, "room1", "cid-A"))
+        assertTrue(s.clearIfMatches(7L, "room1", "cid-A"))
+        assertTrue(s.claim(7L, "room1", "cid-B"))
+        assertEquals("cid-B", s.pendingClientId(7L, "room1"))
     }
 
     @Test fun reenterAfterRecreationStillSeesMarker() {
         val s = AskAllPendingStore()
-        s.mark(7L, "room1", "cid-1")
+        s.claim(7L, "room1", "cid-1")
         // Screen recreation reads the same process-level store: the guard
         // survives leave/re-enter while the POST outcome is unknown.
         assertEquals("cid-1", s.pendingClientId(7L, "room1"))
@@ -35,7 +62,7 @@ class AskAllPendingStoreTest {
 
     @Test fun emptyOrUnrelatedFetchReconcilesNothing() {
         val s = AskAllPendingStore()
-        s.mark(7L, "room1", "cid-1")
+        s.claim(7L, "room1", "cid-1")
         assertFalse(s.reconcile(7L, "room1", emptyList()))
         assertFalse(s.reconcile(7L, "room1", listOf("other", null)))
         assertEquals("cid-1", s.pendingClientId(7L, "room1"))
@@ -43,14 +70,14 @@ class AskAllPendingStoreTest {
 
     @Test fun matchingClientIdIsAcceptanceProof() {
         val s = AskAllPendingStore()
-        s.mark(7L, "room1", "cid-1")
+        s.claim(7L, "room1", "cid-1")
         assertTrue(s.reconcile(7L, "room1", listOf("x", "cid-1")))
         assertNull(s.pendingClientId(7L, "room1"))
     }
 
     @Test fun acceptanceCompareRemoveClearsOnlyOwnMarker() {
         val s = AskAllPendingStore()
-        s.mark(7L, "room1", "cid-1")
+        s.claim(7L, "room1", "cid-1")
         assertTrue(s.clearIfMatches(7L, "room1", "cid-1"))
         assertNull(s.pendingClientId(7L, "room1"))
     }
@@ -58,9 +85,9 @@ class AskAllPendingStoreTest {
     @Test fun oldCompletionCannotEraseNewerMarker() {
         val s = AskAllPendingStore()
         // A overridden, B marked; A's late acceptance must not erase B.
-        s.mark(7L, "room1", "cid-A")
+        s.claim(7L, "room1", "cid-A")
         assertTrue(s.clearIfMatches(7L, "room1", "cid-A")) // user override of A
-        s.mark(7L, "room1", "cid-B")
+        s.claim(7L, "room1", "cid-B")
         assertFalse(s.clearIfMatches(7L, "room1", "cid-A")) // A's late completion
         assertEquals("cid-B", s.pendingClientId(7L, "room1"))
         // B's own reconcile still works.
@@ -70,7 +97,7 @@ class AskAllPendingStoreTest {
 
     @Test fun generationScopingIsolatesIdentities() {
         val s = AskAllPendingStore()
-        s.mark(7L, "room1", "cid-1")
+        s.claim(7L, "room1", "cid-1")
         // A moved identity is neither blocked by nor reconciled against the
         // old session's ask.
         assertNull(s.pendingClientId(8L, "room1"))
@@ -80,7 +107,7 @@ class AskAllPendingStoreTest {
 
     @Test fun otherRoomsAreIndependent() {
         val s = AskAllPendingStore()
-        s.mark(7L, "room1", "cid-1")
+        s.claim(7L, "room1", "cid-1")
         assertNull(s.pendingClientId(7L, "room2"))
         assertFalse(s.reconcile(7L, "room2", listOf("cid-1")))
         assertEquals("cid-1", s.pendingClientId(7L, "room1"))
