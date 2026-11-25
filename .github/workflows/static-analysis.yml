@@ -1,8 +1,8 @@
 # SARIF upload is skipped for fork and Dependabot PRs (read-only token); the scan still runs and can fail red.
-# Phase-2 static analysis: Android Lint + detekt, report-only.
+# Static analysis: detekt only (report-only).
 # Findings upload to GitHub code scanning (Security tab); the job NEVER fails
 # on findings. No product/build files are touched: lint SARIF output is injected
-# by an init script; detekt runs as the official standalone CLI (no Gradle
+# by an init script (not used here); detekt runs as the official standalone CLI (no Gradle
 # plugin application, no build-file changes).
 # detekt CLI pinned: v1.23.8 -all.jar from the official GitHub release,
 # sha256 measured on download 2026-11-23 (detekt publishes no checksums).
@@ -12,12 +12,12 @@
 #   error (no SARIF written). Accept ONLY 0 and 2; anything else fails red.
 #   Outputs are deleted before each run and a fresh, non-empty, parseable SARIF
 #   is required afterwards, so no stale artifact can masquerade as a result.
-#   lint: abortOnError=false (init script) keeps findings non-failing, so a
-#   nonzero gradle exit means a genuine scan/build error and fails red.
 #   upload-sarif does not continue on error: a failed upload is visible.
 name: Static Analysis (detekt)
 
 on:
+  push:
+    branches: [instinct1/free-checks-partial]   # TEMP branch-local validation trigger; removed before merge
   pull_request:
   workflow_dispatch:
   schedule:
