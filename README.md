@@ -1,5 +1,7 @@
 # HomeRoom for Android
 
+**Under development.** Not ready for public use yet.
+
 Native Android app for HomeRoom, the self-hosted shared household chat.
 
 Kotlin, standard Android UI toolkit (RecyclerView, Material 3), OkHttp for the
