@@ -161,6 +161,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     // attach/visibility transitions, not the screen's logical active state, so
     // the roster await re-checks this flag instead.
     private var screenActive = false
+    private var askAllGuardDialog: android.app.AlertDialog? = null
     // Unresolved-ask intent guard (I2): set BEFORE the POST starts, because an
     // in-flight ask whose dialog is dismissed is just as unresolved as a failed
     // one. A new dialog builds a NEW client_id (release parity), which does NOT
@@ -195,6 +196,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     val now = host.session.authSnapshot()
                     if (now.generation != launch.generation || now.serverUrl != launch.serverUrl) return@setPositiveButton
                     if (host.appLock.coverShowing) return@setPositiveButton
+                    // A hide path (openRoom/openPage/closePage) that did not
+                    // dismiss this guard must not let a tap on a hidden
+                    // screen clear the marker or open the ask dialog.
+                    if (!screenActive) return@setPositiveButton
                     // Compare-remove only the ask this dialog warned about,
                     // never a newer marker (I2 f409710 #1).
                     askAllPending.clearIfMatches(launch.generation, room.id, blockedId)
@@ -206,7 +211,11 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             // existing one (e.g. a previous guard) before assigning.
             host.transientDialog?.dismiss()
             host.transientDialog = guard
-            guard.setOnDismissListener { if (host.transientDialog === guard) host.transientDialog = null }
+            askAllGuardDialog = guard
+            guard.setOnDismissListener {
+                if (askAllGuardDialog === guard) askAllGuardDialog = null
+                if (host.transientDialog === guard) host.transientDialog = null
+            }
             guard.show()
             return
         }
@@ -425,6 +434,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         screenActive = false
         roomToolsDialog?.dismiss()
         askAllDialog?.dismiss()
+        askAllGuardDialog?.dismiss()
         rememberPlace()
     }
 
