@@ -124,8 +124,12 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             // snapshot of the verified-same identity - no stored credentials.
             try {
                 host.openPage("AI answers", AskAllAnswersScreen(context, accepted.requestId, snap))
-                askAllPending.dropAccepted(snap.generation, room.id, accepted.requestId)
-            } catch (_: Exception) { /* retained for the next onShow */ }
+                askAllPending.dropAccepted(snap.generation, room.id, accepted.requestId, accepted.serverUrl)
+            } catch (_: Exception) {
+                // Retained for the next onShow; tell the user the recoverable
+                // path instead of staying silent.
+                snack(this, "Ask accepted. Reopen this room to see the answers.")
+            }
         }
         if (events.isEmpty()) loadInitial() else positionAtAnchor(force = true)
     }
@@ -197,7 +201,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     beginAskAll()
                 }
                 .create()
-            // Transient tracking like the ask dialog: lock/reset paths own it.
+            // Transient tracking like the ask dialog: lock/reset paths own
+            // it. One transient at a time (host contract): dismiss any
+            // existing one (e.g. a previous guard) before assigning.
+            host.transientDialog?.dismiss()
             host.transientDialog = guard
             guard.setOnDismissListener { if (host.transientDialog === guard) host.transientDialog = null }
             guard.show()
@@ -269,7 +276,16 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 // first claim wins. A dismiss during the flight then leaves
                 // the same possibly-accepted state as an explicit failure.
                 if (!askAllPending.claim(launch.generation, room.id, askClientId)) {
+                    // Claim lost to another in-flight flow whose marker names
+                    // a DIFFERENT client_id: an in-dialog retry could never
+                    // re-claim (only the identical-body failure retry of its
+                    // OWN marker can). A re-enabled Ask here would be a dead
+                    // button, so route to the same informed guard a fresh
+                    // attempt hits (beginAskAll's blocked branch), where the
+                    // user explicitly resolves the possibly-duplicate ask.
                     snack(this@RoomScreen, "Ask not confirmed. Check this room before resending.")
+                    dialog.dismiss()
+                    beginAskAll()
                     return@setOnClickListener
                 }
                 screenScope.launch {
@@ -319,7 +335,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                         // consumed only after the page opens (I2 f409710 #3).
                         try {
                             host.openPage("AI answers", AskAllAnswersScreen(context, requestId, launch))
-                            askAllPending.dropAccepted(launch.generation, room.id, requestId)
+                            askAllPending.dropAccepted(launch.generation, room.id, requestId, launch.serverUrl)
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e
                         } catch (_: Exception) {
                             snack(this@RoomScreen, "Ask accepted. Reopen this room to see the answers.")

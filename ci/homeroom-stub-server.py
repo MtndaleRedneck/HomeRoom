@@ -13,6 +13,7 @@ Usage: homeroom-stub-server.py --port 18080 --log /path/stub-log.jsonl
 """
 import argparse
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,13 +70,16 @@ AIS = {
     ]
 }
 
-# Delayed ask-all responses let the interaction pass exercise the
-# unresolved-ask guard and the accepted-ask recovery for real (main 18:56):
-# "Delayed duplicate probe" outlives the app's 20s read timeout (client-side
-# uncertain outcome, marker stays), "Recovery probe" completes after the
-# dialog is dismissed and the room left (retained acceptance, recovered on
-# re-entry).
-ASK_ALL_PROBE_DELAYS = {"Delayed duplicate probe": 25, "Recovery probe": 6}
+# Duplicate-probe barrier (main 19:22): the "Delayed duplicate probe" response
+# is held behind an OBSERVABLE release file, not a timer. Every request is
+# logged BEFORE it is routed, so the workflow polls the log for the probe POST
+# (receipt = genuinely in flight), exercises the unresolved-ask guard while
+# the server still holds the answer, then touches the release file; only then
+# does the stub respond. Bounded: the hold expires after PROBE_HOLD_MAX_SECONDS
+# even with no release. "Recovery probe" keeps a finite 6s delay (completes
+# after the dialog is dismissed and the room left).
+PROBE_RELEASE_FILE = os.environ.get("HOMEROOM_PROBE_RELEASE", "/tmp/homeroom-probe-release")
+PROBE_HOLD_MAX_SECONDS = 90
 
 ASK_REQUEST = {
     "request_id": "stub-ask-1",
@@ -223,14 +227,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(AIS)
         if self.command == "POST" and p == "/owner/rooms/stub-room/ask-all":
             question = str((body or {}).get("text", "")) if isinstance(body, dict) else ""
-            delay = next((d for marker, d in ASK_ALL_PROBE_DELAYS.items() if marker in question), 0)
-            if delay:
-                time.sleep(delay)
+            if "Delayed duplicate probe" in question:
+                deadline = time.monotonic() + PROBE_HOLD_MAX_SECONDS
+                while time.monotonic() < deadline and not os.path.exists(PROBE_RELEASE_FILE):
+                    time.sleep(0.25)
+                ended = "released" if os.path.exists(PROBE_RELEASE_FILE) else "expired"
+                with Handler.lock:
+                    with open(Handler.log_path, "a") as f:
+                        f.write(json.dumps({"probe_hold_ended": ended}) + "\n")
                 try:
                     return self._send({"request_id": "stub-ask-1"})
                 except (BrokenPipeError, ConnectionResetError):
-                    # The 25s probe outlives the client's read timeout by
-                    # design; the late answer going nowhere is the point.
+                    return
+            if "Recovery probe" in question:
+                time.sleep(6)
+                try:
+                    return self._send({"request_id": "stub-ask-1"})
+                except (BrokenPipeError, ConnectionResetError):
                     return
             return self._send({"request_id": "stub-ask-1"})
         if self.command == "GET" and p == "/owner/requests/stub-ask-1":

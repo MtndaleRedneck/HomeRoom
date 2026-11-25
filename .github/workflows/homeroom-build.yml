@@ -507,11 +507,18 @@ jobs:
             python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "answers page did not render the stub reply"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            # Integration race probe (main 18:56): dismiss during an UNANSWERED
-            # ask-all POST (25s stub delay outlives the 20s read timeout),
-            # leave and re-enter the room (fresh screen instance), and prove
-            # the unresolved-ask guard blocks a new send with the explicit
-            # duplicate warning.
+            # Integration race probe (main 18:56 + 19:22): the stub HOLDS the
+            # "Delayed duplicate probe" answer behind a release file (bounded 90s).
+            # The stub log proves the POST was received (genuinely in flight), the
+            # screen is dismissed and re-entered, the unresolved-ask guard must block
+            # a new send WHILE the server still holds the answer, and the POST count
+            # must stay 2 (happy path + probe). Only then is the barrier released, and
+            # the stub log must say the hold ended by release, never by expiry.
+            # Proof scope: this proves the SERVER still held the request at guard time
+            # (elapsed time is echoed). Whether the app-side request is cancelled or
+            # still running at that moment is NOT asserted; this proves the guard
+            # blocks a duplicate while the server has not answered, not a client
+            # read-timeout behavior.
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
             sleep 4
             XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
@@ -522,8 +529,11 @@ jobs:
             sleep 2
             adb shell input keyevent KEYCODE_BACK
             sleep 2
+            rm -f /tmp/homeroom-probe-release
             XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
-            sleep 2
+            for i in $(seq 1 30); do grep -q 'Delayed duplicate probe' stub-log.jsonl && break; sleep 1; done
+            grep -q 'Delayed duplicate probe' stub-log.jsonl || { echo "probe POST never reached the stub"; exit 1; }
+            PROBE_T0=$(date +%s)
             adb shell input keyevent KEYCODE_BACK
             sleep 2
             adb shell input keyevent KEYCODE_BACK
@@ -536,6 +546,12 @@ jobs:
             sleep 3
             adb exec-out screencap -p > i-askall-blocked.png
             python3 ci/ui-tap.py "Sending again could post it twice" >/dev/null || { echo "unresolved-ask guard did not block the new send after leave/re-enter"; exit 1; }
+            test "$(grep -c '"method": "POST", "path": "/homeroom/v1/owner/rooms/stub-room/ask-all"' stub-log.jsonl)" = "2" || { echo "blocked ask posted a duplicate while the guard was up"; grep 'ask-all' stub-log.jsonl; exit 1; }
+            PROBE_ELAPSED=$(( $(date +%s) - PROBE_T0 ))
+            echo "probe: guard asserted ${PROBE_ELAPSED}s after the stub received the held POST"
+            touch /tmp/homeroom-probe-release
+            for i in $(seq 1 20); do grep -q probe_hold_ended stub-log.jsonl && break; sleep 0.5; done
+            grep -q '"probe_hold_ended": "released"' stub-log.jsonl || { echo "stub hold did not end by explicit release (expired or missing): guard assert is not proven to precede the answer"; grep probe_hold_ended stub-log.jsonl; exit 1; }
             XY=$(python3 ci/ui-tap.py "CANCEL") && adb shell input tap $XY
             sleep 2
             # Recovery probe: explicit informed override, then a 6s-delayed ask

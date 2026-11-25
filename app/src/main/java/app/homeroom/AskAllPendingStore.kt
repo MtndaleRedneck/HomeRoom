@@ -81,15 +81,29 @@ class AskAllPendingStore {
      * Non-consuming read (I2 f409710 #3): the caller consumes via
      * dropAccepted ONLY after the answers page actually opened, so a failed
      * navigation never loses the request_id. Identity re-verified here: a
-     * moved destination never recovers another scope's ask.
+     * moved destination never recovers another scope's ask. Scan, not head
+     * (GPT/Gem 08dde11): a stale-scope head must not block later entries
+     * that DO match the current identity - first matching entry in FIFO
+     * order wins.
      */
-    fun peekAccepted(generation: Long, roomId: String, serverUrl: String?): Accepted? {
-        val a = accepted[key(generation, roomId)]?.peek() ?: return null
-        return if (a.generation == generation && a.serverUrl == serverUrl) a else null
-    }
+    fun peekAccepted(generation: Long, roomId: String, serverUrl: String?): Accepted? =
+        accepted[key(generation, roomId)]?.firstOrNull { it.generation == generation && it.serverUrl == serverUrl }
 
-    fun dropAccepted(generation: Long, roomId: String, requestId: String): Boolean {
+    /**
+     * Removes exactly ONE entry with this full identity (requestId +
+     * generation + serverUrl). A requestId alone is not an identity: a stale
+     * scope's entry can carry the same id as the current one, and dropping it
+     * would leave the consumed entry behind while losing the wrong one. The
+     * first FIFO entry equal to the selected identity goes; duplicates of the
+     * same identity beyond it stay recoverable.
+     */
+    fun dropAccepted(generation: Long, roomId: String, requestId: String, serverUrl: String?): Boolean {
         val q = accepted[key(generation, roomId)] ?: return false
-        return q.removeIf { it.requestId == requestId }
+        val target = Accepted(requestId, generation, serverUrl)
+        val it = q.iterator()
+        while (it.hasNext()) {
+            if (it.next() == target) { it.remove(); return true }
+        }
+        return false
     }
 }
