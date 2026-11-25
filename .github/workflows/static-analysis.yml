@@ -1,4 +1,4 @@
-# SARIF upload is skipped for fork and Dependabot PRs (read-only token); the scan still runs and can fail red.
+# SARIF upload is skipped for fork PRs (read-only token; Dependabot PR uploads were observed to succeed on BumpLog runs); the scan still runs and can fail red.
 # Static analysis: detekt only (report-only).
 # Findings upload to GitHub code scanning (Security tab); the job NEVER fails
 # on findings. No product/build files are touched: lint SARIF output is injected
@@ -16,8 +16,6 @@
 name: Static Analysis (detekt)
 
 on:
-  push:
-    branches: [instinct1/free-checks-partial]   # TEMP branch-local validation trigger; removed before merge
   pull_request:
   workflow_dispatch:
   schedule:
@@ -76,7 +74,7 @@ jobs:
           echo "detekt completed report-only (exit $rc, $count SARIF results)"
           ls -la /tmp/detekt.sarif /tmp/detekt.html
       - name: Upload detekt SARIF
-        if: always() && !(github.event_name == 'pull_request' && (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]'))
+        if: always() && !(github.event_name == 'pull_request' && (github.event.pull_request.head.repo.fork))
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: /tmp/detekt.sarif
