@@ -69,6 +69,14 @@ AIS = {
     ]
 }
 
+# Delayed ask-all responses let the interaction pass exercise the
+# unresolved-ask guard and the accepted-ask recovery for real (main 18:56):
+# "Delayed duplicate probe" outlives the app's 20s read timeout (client-side
+# uncertain outcome, marker stays), "Recovery probe" completes after the
+# dialog is dismissed and the room left (retained acceptance, recovered on
+# re-entry).
+ASK_ALL_PROBE_DELAYS = {"Delayed duplicate probe": 25, "Recovery probe": 6}
+
 ASK_REQUEST = {
     "request_id": "stub-ask-1",
     "text": "What is the stub plan?",
@@ -214,6 +222,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.command == "GET" and p == "/owner/ais":
             return self._send(AIS)
         if self.command == "POST" and p == "/owner/rooms/stub-room/ask-all":
+            question = str((body or {}).get("text", "")) if isinstance(body, dict) else ""
+            delay = next((d for marker, d in ASK_ALL_PROBE_DELAYS.items() if marker in question), 0)
+            if delay:
+                time.sleep(delay)
+                try:
+                    return self._send({"request_id": "stub-ask-1"})
+                except (BrokenPipeError, ConnectionResetError):
+                    # The 25s probe outlives the client's read timeout by
+                    # design; the late answer going nowhere is the point.
+                    return
             return self._send({"request_id": "stub-ask-1"})
         if self.command == "GET" and p == "/owner/requests/stub-ask-1":
             return self._send(ASK_REQUEST)

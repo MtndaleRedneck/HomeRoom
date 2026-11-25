@@ -7,14 +7,15 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Focused evidence for the I2 379008b race findings: dismiss-during-flight,
- * leave/re-enter with an unresolved POST, late/empty fetch reconciliation,
- * and accepted-ask recovery across screen recreation.
+ * Focused store-level evidence (NOT UI race coverage; that is the CI
+ * debug-interaction race probe). Covers the I2 379008b + f409710 mechanisms:
+ * mark-before-dispatch, reentry retention, empty/late fetch no-op, matching
+ * client_id clears, A/B marker compare-remove, accepted queue order,
+ * peek/consume-on-open, and generation/destination scoping.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class AskAllPendingStoreTest {
-    private val auth = Session.OpAuth(7L, "https://srv", "cookie", "csrf")
 
     @Test fun markerSetBeforeDispatchBlocksNewSend() {
         val s = AskAllPendingStore()
@@ -47,10 +48,23 @@ class AskAllPendingStoreTest {
         assertNull(s.pendingClientId(7L, "room1"))
     }
 
-    @Test fun acceptanceClearsMarker() {
+    @Test fun acceptanceCompareRemoveClearsOnlyOwnMarker() {
         val s = AskAllPendingStore()
         s.mark(7L, "room1", "cid-1")
-        s.clear(7L, "room1")
+        assertTrue(s.clearIfMatches(7L, "room1", "cid-1"))
+        assertNull(s.pendingClientId(7L, "room1"))
+    }
+
+    @Test fun oldCompletionCannotEraseNewerMarker() {
+        val s = AskAllPendingStore()
+        // A overridden, B marked; A's late acceptance must not erase B.
+        s.mark(7L, "room1", "cid-A")
+        assertTrue(s.clearIfMatches(7L, "room1", "cid-A")) // user override of A
+        s.mark(7L, "room1", "cid-B")
+        assertFalse(s.clearIfMatches(7L, "room1", "cid-A")) // A's late completion
+        assertEquals("cid-B", s.pendingClientId(7L, "room1"))
+        // B's own reconcile still works.
+        assertTrue(s.reconcile(7L, "room1", listOf("cid-B")))
         assertNull(s.pendingClientId(7L, "room1"))
     }
 
@@ -72,16 +86,38 @@ class AskAllPendingStoreTest {
         assertEquals("cid-1", s.pendingClientId(7L, "room1"))
     }
 
-    @Test fun acceptedRecoveryIsOneShotAndScoped() {
+    @Test fun acceptedQueueRetainsBothInOrder() {
         val s = AskAllPendingStore()
-        s.retainAccepted(7L, "room1", "req-1", auth)
-        // Wrong generation: no recovery leak across identities.
-        assertNull(s.takeAccepted(8L, "room1"))
-        // Right scope: recovered exactly once (survives screen recreation,
-        // consumed when the answers page actually opens).
-        val a = s.takeAccepted(7L, "room1")
+        // A accepted and retained; B accepted before A's page ever opened.
+        // The single-slot overwrite must not lose A (I2 f409710 #2).
+        s.retainAccepted(7L, "room1", "req-A", "https://srv")
+        s.retainAccepted(7L, "room1", "req-B", "https://srv")
+        assertEquals("req-A", s.peekAccepted(7L, "room1", "https://srv")?.requestId)
+        assertTrue(s.dropAccepted(7L, "room1", "req-A"))
+        assertEquals("req-B", s.peekAccepted(7L, "room1", "https://srv")?.requestId)
+        assertTrue(s.dropAccepted(7L, "room1", "req-B"))
+        assertNull(s.peekAccepted(7L, "room1", "https://srv"))
+    }
+
+    @Test fun peekDoesNotConsumeBeforeOpen() {
+        val s = AskAllPendingStore()
+        s.retainAccepted(7L, "room1", "req-1", "https://srv")
+        // Two reads (failed open, then retry) see the same entry (I2 #3).
+        assertEquals("req-1", s.peekAccepted(7L, "room1", "https://srv")?.requestId)
+        assertEquals("req-1", s.peekAccepted(7L, "room1", "https://srv")?.requestId)
+        assertFalse(s.dropAccepted(7L, "room1", "req-other"))
+        assertEquals("req-1", s.peekAccepted(7L, "room1", "https://srv")?.requestId)
+    }
+
+    @Test fun acceptedRecoveryRejectsMovedDestination() {
+        val s = AskAllPendingStore()
+        s.retainAccepted(7L, "room1", "req-1", "https://srv")
+        // Same generation, different destination: no cross-scope recovery.
+        assertNull(s.peekAccepted(7L, "room1", "https://other"))
+        // Right scope still recovers, and carries no credentials.
+        val a = s.peekAccepted(7L, "room1", "https://srv")
         assertEquals("req-1", a?.requestId)
-        assertEquals(7L, a?.auth?.generation)
-        assertNull(s.takeAccepted(7L, "room1"))
+        assertEquals(7L, a?.generation)
+        assertEquals("https://srv", a?.serverUrl)
     }
 }

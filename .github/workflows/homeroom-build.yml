@@ -507,6 +507,64 @@ jobs:
             python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "answers page did not render the stub reply"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 3
+            # Integration race probe (main 18:56): dismiss during an UNANSWERED
+            # ask-all POST (25s stub delay outlives the 20s read timeout),
+            # leave and re-enter the room (fresh screen instance), and prove
+            # the unresolved-ask guard blocks a new send with the explicit
+            # duplicate warning.
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 6
+            XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
+            sleep 2
+            adb shell input text "Delayed%sduplicate%sprobe"
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Stub Room") && adb shell input tap $XY
+            sleep 6
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 3
+            adb exec-out screencap -p > i-askall-blocked.png
+            python3 ci/ui-tap.py "Sending again could post it twice" >/dev/null || { echo "unresolved-ask guard did not block the new send after leave/re-enter"; exit 1; }
+            XY=$(python3 ci/ui-tap.py "CANCEL") && adb shell input tap $XY
+            sleep 2
+            # Recovery probe: explicit informed override, then a 6s-delayed ask
+            # dismissed and left in flight; the retained acceptance must reopen
+            # as a real answers page when the room is re-entered.
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Send anyway") && adb shell input tap $XY
+            sleep 6
+            XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
+            sleep 2
+            adb shell input text "Recovery%sprobe"
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 8
+            XY=$(python3 ci/ui-tap.py "Stub Room") && adb shell input tap $XY
+            sleep 10
+            adb exec-out screencap -p > i-askall-recovered.png
+            python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "accepted ask did not recover into a real answers page on re-entry"; exit 1; }
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
             sleep 4
             XY=$(python3 ci/ui-tap.py "Record voice note") && adb shell input tap $XY
