@@ -93,7 +93,7 @@ class RulesScreen(context:Context):Screen(context) {
         val reread=card()
         val rrHeader=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
         rrHeader.addView(text(context,"Last re-read",13f,C.muted,true),LinearLayout.LayoutParams(0,-2,1f))
-        rrHeader.addView(text(context,"Record my re-read",13.5f,C.accent,true).apply { gravity=Gravity.CENTER_VERTICAL or Gravity.END;minHeight=dp(48);minimumHeight=dp(48);setPadding(dp(8),0,0,0);setOnClickListener { recordReread() } })
+        rrHeader.addView(button(context,"Record my re-read",false) { recordReread() },LinearLayout.LayoutParams(-2,dp(48)))
         reread.addView(rrHeader)
         val people=linkedSetOf<String>();host.session.ownerId?.let { people.add(it) };rooms.flatMap { it.members }.forEach { people.add(it.first) }
         for(actor in people) {
