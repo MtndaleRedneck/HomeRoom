@@ -34,17 +34,14 @@ object PushMessageStore {
         return updated
     }
 
-    /** Drops a room's stored messages (read in the app or elsewhere) while
-     *  keeping the seq watermark. */
-    fun clearRoom(context: Context, roomId: String) {
-        val prefs = context.getSharedPreferences(HomeRoomMessagingService.PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().remove("msgs_" + roomId).apply()
-    }
-
-    /** Current stored entries for a room, oldest first. */
     fun entries(context: Context, roomId: String): List<Entry> {
         val prefs = context.getSharedPreferences(HomeRoomMessagingService.PREFS_NAME, Context.MODE_PRIVATE)
         return read(prefs.getString("msgs_" + roomId, null))
+    }
+
+    fun clearRoom(context: Context, roomId: String) {
+        val prefs = context.getSharedPreferences(HomeRoomMessagingService.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove("msgs_" + roomId).apply()
     }
 
     fun clearAll(context: Context) {

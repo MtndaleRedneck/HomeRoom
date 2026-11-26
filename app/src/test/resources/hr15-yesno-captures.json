@@ -1,0 +1,185 @@
+[
+  {
+    "name": "created",
+    "status": 201,
+    "body": {
+      "decision_id": "dec_afa7a410ceca45f38f618443",
+      "room_id": "rm_test_fixture",
+      "actor": "tab",
+      "version": 1,
+      "content_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+      "title": "Fixture choice",
+      "proposal": "Choose one fixture",
+      "options": [
+        {
+          "option_id": "yes",
+          "label": "Yes"
+        },
+        {
+          "option_id": "no",
+          "label": "No"
+        }
+      ],
+      "effect_class": "discussion",
+      "context_event_ids": [],
+      "decision_type": "yes_no",
+      "action": null,
+      "action_sha256": null,
+      "state": "open",
+      "created_at": "2026-11-11T16:48:53.285Z",
+      "expires_at": "2026-11-18T16:48:53.285Z",
+      "answer": null,
+      "replayed": false,
+      "event_id": "b61b8e48-a90e-4cc0-bccd-e94134b06d7b"
+    }
+  },
+  {
+    "name": "yes_prepared_no_answer",
+    "status": 200,
+    "body": {
+      "confirmation_id": "confirm_2577d8116ba0ae18247f94b1",
+      "expires_at": "2026-11-11T16:53:53.293Z",
+      "state": "confirmation_required",
+      "confirmation": {
+        "proposal": {
+          "action": null,
+          "action_sha256": null,
+          "context_event_ids": [],
+          "decision_type": "yes_no",
+          "effect_class": "discussion",
+          "options": [
+            {
+              "label": "Yes",
+              "option_id": "yes"
+            },
+            {
+              "label": "No",
+              "option_id": "no"
+            }
+          ],
+          "proposal": "Choose one fixture",
+          "title": "Fixture choice"
+        },
+        "option": {
+          "label": "Yes",
+          "option_id": "yes"
+        },
+        "content_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+        "effect_class": "discussion"
+      },
+      "replayed": false
+    }
+  },
+  {
+    "name": "confirmed_receipt",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_bb71965cbbda6398e9fbbb92",
+      "decision_id": "dec_afa7a410ceca45f38f618443",
+      "version": 1,
+      "option_id": "yes",
+      "option_label": "Yes",
+      "proposal_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+      "confirmed_at": "2026-11-11T16:48:53.302Z",
+      "state": "answered",
+      "replayed": false,
+      "confirmation_receipt": {
+        "receipt_id": "receipt_241636dda445e4efb141d768",
+        "decision_id": "dec_afa7a410ceca45f38f618443",
+        "decision_version": 1,
+        "option_id": "yes",
+        "content_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+        "action_id": null,
+        "action_sha256": null,
+        "confirmed_at": "2026-11-11T16:48:53.302Z",
+        "source": "authenticated_owner_session",
+        "external_execution_enabled": false,
+        "message": "Your confirmation was recorded. No outside action has run."
+      }
+    }
+  },
+  {
+    "name": "exact_confirm_replay_after_prepared_expiry",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_bb71965cbbda6398e9fbbb92",
+      "confirmed_at": "2026-11-11T16:48:53.302Z",
+      "decision_id": "dec_afa7a410ceca45f38f618443",
+      "option_id": "yes",
+      "option_label": "Yes",
+      "proposal_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+      "replayed": true,
+      "state": "answered",
+      "version": 1,
+      "confirmation_receipt": {
+        "action_id": null,
+        "action_sha256": null,
+        "confirmed_at": "2026-11-11T16:48:53.302Z",
+        "content_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+        "decision_id": "dec_afa7a410ceca45f38f618443",
+        "decision_version": 1,
+        "external_execution_enabled": false,
+        "message": "Your confirmation was recorded. No outside action has run.",
+        "option_id": "yes",
+        "receipt_id": "receipt_241636dda445e4efb141d768",
+        "source": "authenticated_owner_session"
+      }
+    }
+  },
+  {
+    "name": "no_after_yes_conflict",
+    "status": 409,
+    "body": {
+      "error": "decision_already_answered",
+      "current": {
+        "answer_id": "ans_bb71965cbbda6398e9fbbb92",
+        "decision_id": "dec_afa7a410ceca45f38f618443",
+        "version": 1,
+        "option_id": "yes",
+        "option_label": "Yes",
+        "proposal_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+        "confirmed_at": "2026-11-11T16:48:53.302Z",
+        "state": "answered"
+      }
+    }
+  },
+  {
+    "name": "no_rejected",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_c51ada231b45bf03e846cd46",
+      "decision_id": "dec_7d0d54e2cd2bd36839e02b88",
+      "version": 1,
+      "option_id": "no",
+      "option_label": "No",
+      "proposal_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+      "confirmed_at": "2026-11-11T16:48:53.323Z",
+      "state": "rejected",
+      "confirmation_receipt": null,
+      "replayed": false
+    }
+  },
+  {
+    "name": "no_exact_replay",
+    "status": 200,
+    "body": {
+      "answer_id": "ans_c51ada231b45bf03e846cd46",
+      "confirmation_receipt": null,
+      "confirmed_at": "2026-11-11T16:48:53.323Z",
+      "decision_id": "dec_7d0d54e2cd2bd36839e02b88",
+      "option_id": "no",
+      "option_label": "No",
+      "proposal_sha256": "92398691d0ee9b03c6dbb6b08b345229a8a58c3b1809f38805ff55c755724482",
+      "replayed": true,
+      "state": "rejected",
+      "version": 1
+    }
+  },
+  {
+    "name": "unconfirmed_prepare_expired",
+    "status": 410,
+    "body": {
+      "error": "confirmation_expired"
+    }
+  }
+]

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG-VARIANT ONLY harness overlay (approved Nov 24): enables cleartext so
+     the emulator debug-interaction job can reach the synthetic localhost stub
+     server (http://10.0.2.2:18080). The release manifest keeps
+     usesCleartextTraffic="false"; the workflow verifies the merged release
+     manifest on every run. Never ship this variant. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
+</manifest>

@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
+import com.bumptech.glide.Glide
 
 fun roomIcon(context: Context, room: Room, server: String?, size: Int = 50): View {
     val frame=FrameLayout(context)
@@ -14,15 +15,14 @@ fun roomIcon(context: Context, room: Room, server: String?, size: Int = 50): Vie
     val icon=room.icon
     if(icon?.optString("kind")=="symbol") {
         val color=icon.optString("colour").takeIf { it.matches(Regex("#[0-9a-fA-F]{6}")) }?.let { Color.parseColor(it) } ?: 0xffb9b7be.toInt()
-        frame.background=rounded((color and 0xffffff) or 0x2e000000,context.dp(size*36/100).toFloat())
-        if(icon.optString("glyph")=="leaf") frame.addView(ImageView(context).apply { setImageResource(R.drawable.ic_leaf); setColorFilter(color) }, FrameLayout.LayoutParams(context.dp(size/2),context.dp(size/2),Gravity.CENTER))
-        else frame.addView(text(context,icon.optString("glyph"),24f,color).apply { gravity=Gravity.CENTER },FrameLayout.LayoutParams(-1,-1))
+        frame.background=rounded(color or 0xff000000.toInt(),context.dp(size*36/100).toFloat())
+        if(icon.optString("glyph")=="leaf") frame.addView(ImageView(context).apply { setImageResource(R.drawable.ic_leaf); setColorFilter(Color.WHITE) }, FrameLayout.LayoutParams(context.dp(size/2),context.dp(size/2),Gravity.CENTER))
+        else frame.addView(text(context,icon.optString("glyph"),24f,Color.WHITE).apply { gravity=Gravity.CENTER },FrameLayout.LayoutParams(-1,-1))
     } else {
         val image=ImageView(context).apply { scaleType=ImageView.ScaleType.CENTER_CROP; setImageResource(R.drawable.default_room) }
         frame.addView(image,FrameLayout.LayoutParams(-1,-1))
-        // Custom /homeroom/assets/ URLs are not served by this server.
-        // Keep its bundled public default. No network request or credential retry.
-
+        val src=icon?.optString("src").orEmpty()
+        if(icon?.optString("kind")=="image" && src.startsWith("/homeroom/assets/") && !src.contains("..") && src.none { it in "\\%?#" } && server!=null) Glide.with(image).load(server.trimEnd('/')+src).placeholder(R.drawable.default_room).error(R.drawable.default_room).into(image)
     }
     frame.contentDescription=null
     return frame

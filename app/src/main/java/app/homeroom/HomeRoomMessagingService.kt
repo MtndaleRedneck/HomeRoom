@@ -16,14 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Receives FCM messages. Per the privacy design, pushes carry only opaque
- * values: a room ID, an event ID and the server's global message sequence
- * number - no message text, room name, or sender. Because the sequence is a
- * server-wide running count, Google can see roughly how many messages the
- * whole server handles and when, not just the ones for this phone. Google's
- * FCM service also sees delivery timing and this device's Firebase
- * installation ID and push token. A
- * generic "New message in HomeRoom" notification is posted immediately; a
- * background worker then
+ * IDs - no message text, room name, or sender. A generic "New message in
+ * HomeRoom" notification is posted immediately; a background worker then
  * replaces it in place with sender and preview fetched from your server with
  * the stored session, falling back to the generic one on failure.
  *
@@ -57,20 +51,14 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
 
         val roomId = message.data["room_id"]
 
-        // Muted rooms are filtered server-side (native_fcm checks at enqueue
-        // and again before send), so no local check here: a stale roster
-        // cache must not suppress a room that was unmuted elsewhere.
-
         // Delivery is at-least-once: skip events this device already showed.
         val eventId = message.data["event_id"]
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (eventId != null) {
-            // Ordered list, oldest first, capped at 100: a StringSet would
-            // evict in arbitrary order.
-            val seen = (prefs.getString(KEY_SEEN, "") ?: "")
-                .split(',').filter { it.isNotEmpty() }
+            val seen = prefs.getStringSet(KEY_SEEN, emptySet()) ?: emptySet()
             if (eventId in seen) return
-            prefs.edit().putString(KEY_SEEN, (seen + eventId).takeLast(100).joinToString(",")).apply()
+            val updated = (seen + eventId).toList().takeLast(100).toSet()
+            prefs.edit().putStringSet(KEY_SEEN, updated).apply()
         }
 
         // While the app is in the foreground the poller already shows new
@@ -88,75 +76,23 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
 
             val intent = Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                // PendingIntent equality includes the data URI, so this makes
-                // each room's PendingIntent distinct with no requestCode math.
-                if (roomId != null) {
-                    data = android.net.Uri.parse("homeroom://room/" + android.net.Uri.encode(roomId))
-                    putExtra(EXTRA_ROOM_ID, roomId)
-                }
+                if (roomId != null) putExtra(EXTRA_ROOM_ID, roomId)
             }
             val pending = PendingIntent.getActivity(
-                this, 0, intent,
+                this, notificationId(roomId), intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val channelId = ensureChannel()
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val showing = roomId != null && manager.activeNotifications.any {
-                it.tag == roomId && it.id == ID_MESSAGES
-            }
-            if (roomId != null && !showing) {
-                // Nothing on screen for this room: anything stored was read
-                // here or on another device, so the next stack starts fresh.
-                PushMessageStore.clearRoom(this, roomId)
-            }
-            val showingStack = showing && roomId != null
-            val builder = NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(R.drawable.ic_notification)
+            val notification = NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(R.drawable.ic_chats)
                 .setContentTitle("HomeRoom")
                 .setContentText("New message in HomeRoom")
-                .setGroup(GROUP_KEY)
-                // The plain generic is content-free (PUBLIC); once it carries
-                // stored senders/text it must be PRIVATE with a generic
-                // public version, like the worker's enriched post.
-                .setVisibility(
-                    if (showingStack) NotificationCompat.VISIBILITY_PRIVATE
-                    else NotificationCompat.VISIBILITY_PUBLIC
-                )
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
                 .setContentIntent(pending)
-            if (showingStack) {
-                builder.setPublicVersion(
-                    NotificationCompat.Builder(this, channelId)
-                        .setSmallIcon(R.drawable.ic_notification)
-                        .setContentTitle("HomeRoom")
-                        .setContentText("New message")
-                        .build()
-                )
-            }
-            if (showingStack) {
-                // Keep the existing stack visible instead of flashing a bare
-                // generic; the worker replaces it with the full history.
-                val style = NotificationCompat.MessagingStyle(
-                    androidx.core.app.Person.Builder().setName("HomeRoom").build()
-                )
-                PushMessageStore.entries(this, roomId).forEach { e ->
-                    style.addMessage(
-                        NotificationCompat.MessagingStyle.Message(
-                            e.text, e.ts,
-                            androidx.core.app.Person.Builder().setName(e.sender).build()
-                        )
-                    )
-                }
-                style.addMessage(
-                    NotificationCompat.MessagingStyle.Message(
-                        "New message", System.currentTimeMillis(),
-                        androidx.core.app.Person.Builder().setName("HomeRoom").build()
-                    )
-                )
-                builder.setStyle(style)
-            }
-            manager.notify(roomId, ID_MESSAGES, builder.build())
-            postGroupSummary(this)
+                .build()
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(roomId, ID_MESSAGES, notification)
         }
 
         // Stage two: enrich the same notification with sender + preview from
@@ -169,7 +105,6 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
                         .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
                         .build()
                 )
-                .addTag(WORK_TAG)
                 .setInputData(
                     androidx.work.workDataOf(
                         NotificationFetchWorker.KEY_ROOM_ID to roomId,
@@ -194,6 +129,19 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
     }
 
     companion object {
+        // RECONSTRUCTED: WorkManager tagging is reconstruction-original (the exact
+        // release build contains no WorkManager usage); constant kept for the
+        // reconstruction's own workers.
+        const val WORK_TAG = "homeroom_work"
+
+        // RECONSTRUCTED: refresh the group-summary notification after per-room
+        // notifications are cancelled.
+        fun postGroupSummary(context: Context) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val remaining = prefs.all.keys.count { it.startsWith("msgs_") }
+            if (remaining == 0) manager.cancel(ID_SUMMARY)
+        }
         const val CHANNEL_ID = "messages"
         const val EXTRA_ROOM_ID = "app.homeroom.extra.ROOM_ID"
         const val PREFS_NAME = "homeroom_push"
@@ -202,54 +150,25 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
         /** Message notifications use the room id as the tag with this fixed
          *  id, so distinct rooms can never collide. */
         const val ID_MESSAGES = 1
-
-        /** WorkManager tag for all pending preview fetches; cancelled on
-         *  sign-out and when a session ends. */
-        const val WORK_TAG = "push_fetch"
-
-        /** Notification group for per-room message notifications. */
-        const val GROUP_KEY = "homeroom_messages"
-
-        /** Fixed id of the cross-room group summary notification. */
         const val ID_SUMMARY = 2
-
-        /**
-         * Posts (or refreshes) the cross-room summary. Alert-once: a new
-         * child alerts, summary updates never re-alert.
-         */
-        fun postGroupSummary(context: Context) {
-            val intent = PendingIntent.getActivity(
-                context, 0,
-                Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val summary = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("HomeRoom")
-                .setContentText("New messages")
-                .setGroup(GROUP_KEY)
-                .setGroupSummary(true)
-                .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-                .setOnlyAlertOnce(true)
-                .setAutoCancel(true)
-                .setContentIntent(intent)
-                .build()
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(ID_SUMMARY, summary)
-        }
-
-        /** Cancels the summary when no per-room message notifications remain. */
-        fun cancelSummaryIfEmpty(context: Context) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val childrenLeft = manager.activeNotifications.any {
-                it.id == ID_MESSAGES
-            }
-            if (!childrenLeft) manager.cancel(ID_SUMMARY)
-        }
 
         /** Per-room locks shared with NotificationFetchWorker. */
         val roomLocks = ConcurrentHashMap<String, Any>()
+
+        /**
+         * Stable request code for a room's PendingIntent (31 bits of the room
+         * id's SHA-256; PendingIntent has no tag concept). Notification
+         * identity itself is (tag = roomId, id = ID_MESSAGES), which cannot
+         * collide.
+         */
+        fun notificationId(roomId: String?): Int {
+            if (roomId == null) return 0
+            val d = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(roomId.toByteArray(Charsets.UTF_8))
+            return (((d[0].toInt() and 0xFF) shl 24) or
+                ((d[1].toInt() and 0xFF) shl 16) or
+                ((d[2].toInt() and 0xFF) shl 8) or
+                (d[3].toInt() and 0xFF)) and 0x7FFFFFFF
+        }
     }
 }
