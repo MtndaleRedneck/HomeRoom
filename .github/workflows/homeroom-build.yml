@@ -645,19 +645,19 @@ jobs:
             # 1.8 evidence: populated Rules/Files (synthetic stub data), pushed-page header, Feedback page.
             adb shell input tap 456 2242
             sleep 5
-            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -q 'text="Rules"' || { echo "heading Rules not on screen after nav tap"; adb exec-out screencap -p > i-nav-rules-missing.png; exit 1; }
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -o 'text="Rules"' | awk 'END{exit NR<2}' || { echo "heading Rules not on screen after nav tap"; adb exec-out screencap -p > i-nav-rules-missing.png; exit 1; }
             python3 ci/anr-guard.py i-rules-populated || exit 1
             adb exec-out screencap -p > i-rules-populated.png
             python3 ci/anr-guard.py --check i-rules-populated || exit 1
             adb shell input tap 624 2242
             sleep 5
-            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -q 'text="Files"' || { echo "heading Files not on screen after nav tap"; adb exec-out screencap -p > i-nav-files-missing.png; exit 1; }
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -o 'text="Files"' | awk 'END{exit NR<2}' || { echo "heading Files not on screen after nav tap"; adb exec-out screencap -p > i-nav-files-missing.png; exit 1; }
             python3 ci/anr-guard.py i-files-populated || exit 1
             adb exec-out screencap -p > i-files-populated.png
             python3 ci/anr-guard.py --check i-files-populated || exit 1
             adb shell input tap 792 2242
             sleep 4
-            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -q 'text="Settings"' || { echo "heading Settings not on screen after nav tap"; adb exec-out screencap -p > i-nav-settings-missing.png; exit 1; }
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -o 'text="Settings"' | awk 'END{exit NR<2}' || { echo "heading Settings not on screen after nav tap"; adb exec-out screencap -p > i-nav-settings-missing.png; exit 1; }
             sh ci/settings-tap.sh "Send feedback, report a bug, or suggest a feature"
             sleep 4
             python3 ci/anr-guard.py i-feedback-empty || exit 1
