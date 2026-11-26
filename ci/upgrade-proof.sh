@@ -18,7 +18,24 @@ adb shell cmd uimode night yes
 
 pkginfo() { adb shell dumpsys package "$PKG" | tr -d '\r'; }
 field() { pkginfo | sed -n "s/^ *$1=//p" | head -1; }
+ANRN=0
+clear_anr() { # ONLY the verified cold-emulator dialog "Pixel Launcher isn't responding" is dismissed (tap Wait, max 4, evidence saved
+  # before each tap). Any OTHER "isn't responding" dialog (HomeRoom or any app) FAILS the proof with evidence preserved.
+  for i in 1 2 3 4 5; do
+    adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1 || return 0
+    adb shell cat /sdcard/a.xml > "$EV/anr-probe.xml" 2>/dev/null || return 0
+    grep -q "isn't responding" "$EV/anr-probe.xml" || return 0
+    ANRN=$((ANRN+1))
+    adb exec-out screencap -p > "$EV/anr-$ANRN.png"; cp "$EV/anr-probe.xml" "$EV/anr-$ANRN.xml"; adb logcat -d -b main,system -t 300 > "$EV/anr-$ANRN-logcat.txt" 2>/dev/null || true
+    if ! grep -qF "text=\"Pixel Launcher isn't responding\"" "$EV/anr-probe.xml"; then fail "unexpected system ANR dialog (not the verified Pixel Launcher one); evidence anr-$ANRN.*"; fi
+    [ "$i" -le 4 ] || fail "Pixel Launcher ANR dialog still present after 4 Wait taps; evidence anr-$ANRN.*"
+    log "Pixel Launcher ANR dialog, tapping Wait ($i of 4), evidence anr-$ANRN.png/xml/logcat"
+    xy=$(python3 ci/ui-tap.py "Wait") || fail "Wait button not found on the Pixel Launcher ANR dialog; evidence anr-$ANRN.*"
+    adb shell input tap $xy; sleep 3
+  done
+}
 shot() { # screenshot + UI dump; a missing dump fails the proof (labels are asserted from it)
+  clear_anr
   adb exec-out screencap -p > "$EV/$1.png"
   adb shell uiautomator dump /sdcard/w.xml >/dev/null 2>&1 && adb pull /sdcard/w.xml "$EV/$1.xml" >/dev/null 2>&1 || fail "no UI dump for $1"
   [ -s "$EV/$1.xml" ] || fail "empty UI dump for $1"
@@ -26,6 +43,7 @@ shot() { # screenshot + UI dump; a missing dump fails the proof (labels are asse
 has_label() { grep -qF "text=\"$2\"" "$EV/$1.xml" || fail "$1: label \"$2\" not on screen"; }
 tap_text() { # tap a node by text via ci/ui-tap.py, retry (scroll once) before failing
   for i in 1 2 3 4; do
+    clear_anr
     if xy=$(python3 ci/ui-tap.py "$1"); then adb shell input tap $xy; return 0; fi
     sleep 3
   done
