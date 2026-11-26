@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Harness-only, runs inside the emulator step. Real published 1.7 -> locally signed 1.8 (installed with
+# FRESH-INSTALL SMOKE of the signed candidate, NOT a migration proof. Seeded lock pref (not enabled in UI). Harness-only, runs inside the emulator step. Real published 1.7 -> locally signed 1.8 (installed with
 # `adb install -r`, never uninstalled). The emulator image is google_apis (userdebug), so `adb root` can
 # seed app-private prefs on the NON-debuggable published 1.7. All seeded values are SYNTHETIC.
 set -euo pipefail
@@ -19,20 +19,14 @@ adb shell cmd uimode night yes
 pkginfo() { adb shell dumpsys package "$PKG" | tr -d '\r'; }
 field() { pkginfo | sed -n "s/^ *$1=//p" | head -1; }
 ANRN=0
-clear_anr() { # ONLY the verified cold-emulator dialog "Pixel Launcher isn't responding" is dismissed (tap Wait, max 4, evidence saved
-  # before each tap). Any OTHER "isn't responding" dialog (HomeRoom or any app) FAILS the proof with evidence preserved.
-  for i in 1 2 3 4 5; do
-    adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1 || return 0
-    adb shell cat /sdcard/a.xml > "$EV/anr-probe.xml" 2>/dev/null || return 0
-    grep -q "isn't responding" "$EV/anr-probe.xml" || return 0
-    ANRN=$((ANRN+1))
-    adb exec-out screencap -p > "$EV/anr-$ANRN.png"; cp "$EV/anr-probe.xml" "$EV/anr-$ANRN.xml"; adb logcat -d -b main,system -t 300 > "$EV/anr-$ANRN-logcat.txt" 2>/dev/null || true
-    if ! grep -qF "text=\"Pixel Launcher isn't responding\"" "$EV/anr-probe.xml"; then fail "unexpected system ANR dialog (not the verified Pixel Launcher one); evidence anr-$ANRN.*"; fi
-    [ "$i" -le 4 ] || fail "Pixel Launcher ANR dialog still present after 4 Wait taps; evidence anr-$ANRN.*"
-    log "Pixel Launcher ANR dialog, tapping Wait ($i of 4), evidence anr-$ANRN.png/xml/logcat"
-    xy=$(python3 ci/ui-tap.py "Wait") || fail "Wait button not found on the Pixel Launcher ANR dialog; evidence anr-$ANRN.*"
-    adb shell input tap $xy; sleep 3
-  done
+clear_anr() { # Record-only: ANY "isn't responding" dialog saves screenshot/UI dump/logcat and STOPS the run with no result. Nothing is dismissed.
+  adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1 || return 0
+  adb shell cat /sdcard/a.xml > "$EV/anr-probe.xml" 2>/dev/null || return 0
+  grep -q "isn't responding" "$EV/anr-probe.xml" || return 0
+  ANRN=$((ANRN+1))
+  adb exec-out screencap -p > "$EV/anr-$ANRN.png"; cp "$EV/anr-probe.xml" "$EV/anr-$ANRN.xml"; adb logcat -d -b main,system -t 600 > "$EV/anr-$ANRN-logcat.txt" 2>/dev/null || true
+  adb shell dumpsys activity processes 2>/dev/null | head -60 > "$EV/anr-$ANRN-procs.txt" || true
+  fail "system dialog 'isn't responding' present (recorded, not dismissed, NO RESULT); evidence anr-$ANRN.*"
 }
 shot() { # screenshot + UI dump; a missing dump fails the proof (labels are asserted from it)
   clear_anr
@@ -75,7 +69,9 @@ printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map>'
   '<string name="server_url">https://seed.invalid</string>' '<string name="cookie">SYNTHETIC-seed-cookie</string>' \
   '<string name="csrf">SYNTHETIC-csrf</string>' '<string name="owner_name">Seed Owner</string>' \
   '<string name="last_room_id">seed-room-1</string>' '<string name="skipped_update_tag">none</string>' '</map>' > homeroom_session.xml
-adb shell am force-stop "$PKG"
+adb shell am start -n "$PKG/.MainActivity" >/dev/null; sleep 15; clear_anr; adb exec-out screencap -p > "$EV/first-launch.png"
+adb shell am force-stop "$PKG"; sleep 2
+OWN=$(adb shell stat -c %u:%g "/data/data/$PKG" | tr -d '\r')
 adb shell mkdir -p "/data/data/$PKG/shared_prefs"
 adb push homeroom_session.xml /data/local/tmp/homeroom_session.xml >/dev/null
 adb shell "cp /data/local/tmp/homeroom_session.xml /data/data/$PKG/shared_prefs/homeroom_session.xml && chown $OWN /data/data/$PKG/shared_prefs/homeroom_session.xml && chmod 660 /data/data/$PKG/shared_prefs/homeroom_session.xml; chown $OWN /data/data/$PKG/shared_prefs; restorecon -R /data/data/$PKG/shared_prefs"
@@ -85,6 +81,13 @@ adb shell "cp /data/local/tmp/homeroom_session.xml /data/data/$PKG/shared_prefs/
 SEC6="$EV/signed-paths.log"; : > "$SEC6"
 s6() { echo "$*" | tee -a "$SEC6" | tee -a "$EV/proof.log" >/dev/null; }
 no_label() { if grep -qF "text=\"$2\"" "$EV/$1.xml"; then fail "$1: label \"$2\" must NOT be on screen"; fi; }
+
+nolocked_leak() { # $1=shot name: no toast, no share dialog, no room/error body, focus stays in HomeRoom
+  for t in "Open your room list before sharing a file." "Connect HomeRoom before sharing a file."; do no_label "$1" "$t"; done
+  if grep -qiE 'Review shared|Share|Send to|Couldn.t|error|Try again|Rooms|Settings' "$EV/$1.xml"; then fail "$1: share dialog / room or error body text exposed under the cover"; fi
+  adb shell dumpsys window | tr -d '\r' | grep -m1 mCurrentFocus > "$EV/$1-focus.txt" || true
+  grep -q "$PKG" "$EV/$1-focus.txt" || fail "$1: focus is not HomeRoom ($(cat "$EV/$1-focus.txt"))"
+}
 qlaunch() { adb shell am start -n "$PKG/.MainActivity" >/dev/null; sleep 10; adb shell input keyevent KEYCODE_WAKEUP; sleep 2; }
 enter_pin() { sleep 4; adb shell input text 1234; sleep 1; adb shell input keyevent 66; sleep 5; }
 unlock_app() { tap_text "Unlock" || fail "lock cover has no Unlock button"; enter_pin; }
@@ -99,7 +102,7 @@ adb shell "cp /data/local/tmp/app_privacy.xml /data/data/$PKG/shared_prefs/app_p
 adb logcat -b crash -c
 # 6a lock on at cold start: cover shown, app content hidden
 qlaunch; shot lock-cold
-has_label lock-cold "HomeRoom is locked"; no_label lock-cold "Rooms"
+has_label lock-cold "HomeRoom is locked"; no_label lock-cold "Rooms"; nolocked_leak lock-cold
 s6 "6a PASS: lock=true cold start shows cover 'HomeRoom is locked', tab label Rooms hidden"
 # 6b unlock with the emulator PIN: cover gone, content back
 unlock_app; shot lock-unlocked
@@ -107,12 +110,12 @@ no_label lock-unlocked "HomeRoom is locked"; has_label lock-unlocked "Rooms"
 s6 "6b PASS: PIN unlock removes the cover and shows Rooms"
 # 6c background then return: relocks
 adb shell input keyevent KEYCODE_HOME; sleep 3; qlaunch; shot lock-relock
-has_label lock-relock "HomeRoom is locked"; no_label lock-relock "Rooms"
+has_label lock-relock "HomeRoom is locked"; no_label lock-relock "Rooms"; nolocked_leak lock-relock
 s6 "6c PASS: HOME then return shows the cover again"
 # 6d share while LOCKED: cover stays, nothing delivered before unlock
 adb shell am start -a android.intent.action.SEND -t text/plain --eu android.intent.extra.STREAM content://media/external/file/1 -n "$PKG/.MainActivity" >/dev/null; sleep 6
 shot share-locked
-has_label share-locked "HomeRoom is locked"
+has_label share-locked "HomeRoom is locked"; nolocked_leak share-locked
 s6 "6d PASS: ACTION_SEND while locked keeps the cover up"
 # 6e after unlock the queued share is delivered: no room is loaded (seed.invalid), so the app must say so (toast text if the dump caught it)
 unlock_app; adb shell uiautomator dump /sdcard/t.xml >/dev/null 2>&1; adb pull /sdcard/t.xml "$EV/share-after-unlock.xml" >/dev/null 2>&1 || true
