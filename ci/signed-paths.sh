@@ -33,6 +33,9 @@ shot() { # screenshot + UI dump; a missing dump fails the proof (labels are asse
   adb exec-out screencap -p > "$EV/$1.png"
   adb shell uiautomator dump /sdcard/w.xml >/dev/null 2>&1 && adb pull /sdcard/w.xml "$EV/$1.xml" >/dev/null 2>&1 || fail "no UI dump for $1"
   [ -s "$EV/$1.xml" ] || fail "empty UI dump for $1"
+  # Accessibility-service view: --compressed drops views NOT important for accessibility (e.g. under NO_HIDE_DESCENDANTS). The full dump above includes them, so it is NOT what TalkBack reads.
+  adb shell uiautomator dump --compressed /sdcard/wa.xml >/dev/null 2>&1 && adb pull /sdcard/wa.xml "$EV/$1.a11y.xml" >/dev/null 2>&1 || fail "no compressed UI dump for $1"
+  [ -s "$EV/$1.a11y.xml" ] || fail "empty compressed UI dump for $1"
 }
 has_label() { grep -qF "text=\"$2\"" "$EV/$1.xml" || fail "$1: label \"$2\" not on screen"; }
 tap_text() { # tap a node by text via ci/ui-tap.py, retry (scroll once) before failing
@@ -80,11 +83,11 @@ adb shell "cp /data/local/tmp/homeroom_session.xml /data/data/$PKG/shared_prefs/
 #    Seeded session = enrolled but unreachable server (seed.invalid): connected share/update success is NOT exercised here.
 SEC6="$EV/signed-paths.log"; : > "$SEC6"
 s6() { echo "$*" | tee -a "$SEC6" | tee -a "$EV/proof.log" >/dev/null; }
-no_label() { if grep -qF "text=\"$2\"" "$EV/$1.xml"; then fail "$1: label \"$2\" must NOT be on screen"; fi; }
+no_label() { if grep -qF "text=\"$2\"" "$EV/$1.a11y.xml"; then fail "$1: label \"$2\" must NOT be in the accessibility-visible tree"; fi; if grep -qF "text=\"$2\"" "$EV/$1.xml"; then s6 "NOTE $1: \"$2\" present only in the full (include-not-important) dump, absent from the accessibility-visible dump"; fi; }
 
 nolocked_leak() { # $1=shot name: no toast, no share dialog, no room/error body, focus stays in HomeRoom
   for t in "Open your room list before sharing a file." "Connect HomeRoom before sharing a file."; do no_label "$1" "$t"; done
-  if grep -qiE 'Review shared|Share|Send to|Couldn.t|error|Try again|Rooms|Settings' "$EV/$1.xml"; then fail "$1: share dialog / room or error body text exposed under the cover"; fi
+  if grep -qiE 'Review shared|Share|Send to|Couldn.t|error|Try again|Rooms|Settings' "$EV/$1.a11y.xml"; then fail "$1: share dialog / room or error body text exposed under the cover"; fi
   adb shell dumpsys window | tr -d '\r' | grep -m1 mCurrentFocus > "$EV/$1-focus.txt" || true
   grep -q "$PKG" "$EV/$1-focus.txt" || fail "$1: focus is not HomeRoom ($(cat "$EV/$1-focus.txt"))"
 }
@@ -106,7 +109,7 @@ has_label lock-cold "HomeRoom is locked"; no_label lock-cold "Rooms"; nolocked_l
 s6 "6a PASS: lock=true cold start shows cover 'HomeRoom is locked', tab label Rooms hidden"
 # 6b unlock with the emulator PIN: cover gone, content back
 unlock_app; shot lock-unlocked
-no_label lock-unlocked "HomeRoom is locked"; has_label lock-unlocked "Rooms"
+no_label lock-unlocked "HomeRoom is locked"; has_label lock-unlocked "Rooms"; grep -qF 'text="Rooms"' "$EV/lock-unlocked.a11y.xml" || fail "positive control: Rooms missing from the compressed dump when unlocked (compressed dump does not discriminate)"
 s6 "6b PASS: PIN unlock removes the cover and shows Rooms"
 # 6c background then return: relocks
 adb shell input keyevent KEYCODE_HOME; sleep 3; qlaunch; shot lock-relock
