@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Harness-only, runs inside the emulator step. Real published 1.6 -> locally signed 1.7 (installed with
+# `adb install -r`, never uninstalled). The emulator image is google_apis (userdebug), so `adb root` can
+# seed app-private prefs on the NON-debuggable published 1.6. All seeded values are SYNTHETIC.
+set -euo pipefail
+PKG=app.homeroom
+UP=/tmp/up
+EV=upgrade-evidence; mkdir -p "$EV"
+BT=/tmp/bt/android-14
+log() { echo "$*" | tee -a "$EV/proof.log"; }
+fail() { log "ASSERT FAIL: $*"; exit 1; }
+
+while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+adb root >/dev/null; adb wait-for-device
+while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != 1 ]; do sleep 3; done
+adb shell settings put global verifier_verify_adb_installs 0
+adb shell cmd uimode night yes
+
+pkginfo() { adb shell dumpsys package "$PKG" | tr -d '\r'; }
+field() { pkginfo | sed -n "s/^ *$1=//p" | head -1; }
+shot() { # screenshot + UI dump; a missing dump fails the proof (labels are asserted from it)
+  adb exec-out screencap -p > "$EV/$1.png"
+  adb shell uiautomator dump /sdcard/w.xml >/dev/null 2>&1 && adb pull /sdcard/w.xml "$EV/$1.xml" >/dev/null 2>&1 || fail "no UI dump for $1"
+  [ -s "$EV/$1.xml" ] || fail "empty UI dump for $1"
+}
+has_label() { grep -qF "text=\"$2\"" "$EV/$1.xml" || fail "$1: label \"$2\" not on screen"; }
+tap_text() { # tap a node by text via ci/ui-tap.py, retry (scroll once) before failing
+  for i in 1 2 3 4; do
+    if xy=$(python3 ci/ui-tap.py "$1"); then adb shell input tap $xy; return 0; fi
+    sleep 3
+  done
+  return 1
+}
+prefs_state() { # $1=tag; force-stopped state, synthetic values only
+  adb shell am force-stop "$PKG"; sleep 2
+  rm -rf "$EV/prefs-$1"; mkdir -p "$EV/prefs-$1"
+  for f in homeroom_session.xml app_privacy.xml; do
+    adb exec-out cat "/data/data/$PKG/shared_prefs/$f" > "$EV/prefs-$1/$f" || fail "cannot read $f ($1)"
+  done
+  python3 ci/prefs_map.py "$EV/prefs-$1/homeroom_session.xml" "$EV/prefs-$1/app_privacy.xml" > "$EV/map-$1.txt"
+  (cd "$EV/prefs-$1" && sha256sum homeroom_session.xml app_privacy.xml) > "$EV/sha-$1.txt"
+}
+launch() { adb shell am start -n "$PKG/.MainActivity" >/dev/null; sleep 30; adb shell input keyevent KEYCODE_WAKEUP; sleep 5; }
+
+# 1) published 1.6, clean install
+adb install "$UP/HomeRoom-1.6.apk" | tee -a "$EV/proof.log"
+[ "$(field versionCode | cut -d' ' -f1)" = 11 ] || fail "installed versionCode is not 11"
+FIT_BEFORE=$(field firstInstallTime); LUT_BEFORE=$(field lastUpdateTime)
+log "1.6 installed: firstInstallTime=$FIT_BEFORE lastUpdateTime=$LUT_BEFORE"
+
+# 2) seed synthetic state as the app's uid (published 1.6 is not debuggable, so run-as cannot do this)
+OWN=$(adb shell stat -c %u:%g "/data/data/$PKG" | tr -d '\r')
+printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map>' \
+  '<string name="server_url">https://seed.invalid</string>' '<string name="cookie">SYNTHETIC-seed-cookie</string>' \
+  '<string name="csrf">SYNTHETIC-csrf</string>' '<string name="owner_name">Seed Owner</string>' \
+  '<string name="last_room_id">seed-room-1</string>' '<string name="skipped_update_tag">none</string>' '</map>' > homeroom_session.xml
+printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map>' \
+  '<boolean name="hide_previews" value="true" />' '<boolean name="hide_recents" value="false" />' '<boolean name="lock" value="false" />' '</map>' > app_privacy.xml
+adb shell am force-stop "$PKG"
+adb shell mkdir -p "/data/data/$PKG/shared_prefs"
+for f in homeroom_session.xml app_privacy.xml; do
+  adb push "$f" "/data/local/tmp/$f" >/dev/null
+  adb shell "cp /data/local/tmp/$f /data/data/$PKG/shared_prefs/$f && chown $OWN /data/data/$PKG/shared_prefs/$f && chmod 660 /data/data/$PKG/shared_prefs/$f"
+done
+adb shell "chown $OWN /data/data/$PKG/shared_prefs; restorecon -R /data/data/$PKG/shared_prefs"
+
+# 3) 1.6 reads the seed: main shell (not setup) and the Privacy screen
+launch
+shot 16-main
+tap_text "Settings" || fail "1.6: Settings tab not found (seed not recognised?)"; sleep 4
+tap_text "App lock and privacy" || fail "1.6: privacy row not found"; sleep 4
+shot 16-privacy
+has_label 16-main "Rooms"   # GlassNav tab label (1.6 source GlassNav.kt); a setup screen has no tab bar
+# Privacy screen (AppPrivacy.kt, identical in 1.6 and 1.7): buttons read "<title>: On|Off" from the seeded prefs
+has_label 16-privacy "Hide lock-screen alerts: On"
+has_label 16-privacy "Hide in recent apps: Off"
+prefs_state 16
+cat "$EV/map-16.txt" | tee -a "$EV/proof.log"
+for k in server_url cookie csrf owner_name last_room_id skipped_update_tag; do grep -q "^homeroom_session.xml:$k=" "$EV/map-16.txt" || fail "1.6 dropped seeded key $k"; done
+
+# 4) in-place upgrade to the locally signed 1.7, no uninstall
+adb install -r "$UP/HomeRoom-1.7-signed.apk" | tee -a "$EV/proof.log"
+FIT_AFTER=$(field firstInstallTime); LUT_AFTER=$(field lastUpdateTime)
+log "1.7 installed over 1.6: firstInstallTime=$FIT_AFTER lastUpdateTime=$LUT_AFTER"
+[ "$FIT_BEFORE" = "$FIT_AFTER" ] || fail "firstInstallTime changed ($FIT_BEFORE -> $FIT_AFTER)"
+[ "$LUT_BEFORE" != "$LUT_AFTER" ] || fail "lastUpdateTime did not change"
+[ "$(field versionCode | cut -d' ' -f1)" = 12 ] || fail "versionCode after upgrade is not 12"
+adb shell am force-stop "$PKG"
+# data untouched by the install itself: raw bytes, before any 1.7 launch
+adb exec-out cat "/data/data/$PKG/shared_prefs/homeroom_session.xml" | sha256sum | cut -d' ' -f1 > "$EV/sha-17-prelaunch-session.txt"
+adb exec-out cat "/data/data/$PKG/shared_prefs/app_privacy.xml" | sha256sum | cut -d' ' -f1 > "$EV/sha-17-prelaunch-privacy.txt"
+[ "$(cut -d' ' -f1 "$EV/sha-16.txt" | sed -n 1p)" = "$(cat "$EV/sha-17-prelaunch-session.txt")" ] || fail "homeroom_session.xml bytes changed by install -r"
+[ "$(cut -d' ' -f1 "$EV/sha-16.txt" | sed -n 2p)" = "$(cat "$EV/sha-17-prelaunch-privacy.txt")" ] || fail "app_privacy.xml bytes changed by install -r"
+log "prefs bytes identical after install -r, before first 1.7 launch"
+
+# installed APK is the signed candidate and keeps the signer
+BASE=$(adb shell pm path "$PKG" | tr -d '\r' | sed -n 's/^package://p' | head -1)
+adb pull "$BASE" /tmp/installed-base.apk >/dev/null
+INST=$(sha256sum /tmp/installed-base.apk | cut -d' ' -f1)
+[ "$INST" = "$SIGNED_SHA256" ] || fail "installed base.apk sha256 $INST != candidate $SIGNED_SHA256"
+CERT=$("$BT/apksigner" verify --print-certs /tmp/installed-base.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+[ "$CERT" = "$TRUSTED_CERT" ] || fail "installed signer $CERT"
+log "installed base.apk sha256=$INST signer=$CERT"
+
+# 5) 1.7 launches on the preserved state (crash buffer cleared first, so only this launch is judged)
+adb logcat -b crash -c
+launch
+shot 17-main
+tap_text "Settings" || fail "1.7: Settings tab not found"; sleep 4
+shot 17-settings
+tap_text "App lock and privacy" || fail "1.7: privacy row not found"; sleep 4
+shot 17-privacy
+has_label 17-main "Rooms"
+has_label 17-privacy "Hide lock-screen alerts: On"
+has_label 17-privacy "Hide in recent apps: Off"
+prefs_state 17
+cat "$EV/map-17.txt" | tee -a "$EV/proof.log"
+while IFS= read -r line; do grep -qxF "$line" "$EV/map-17.txt" || fail "seeded value changed or lost after 1.7 launch: ${line%%=*}"; done < "$EV/map-16.txt"
+adb logcat -d -b crash > "$EV/crash-17.txt" || fail "cannot read the crash buffer"
+if grep -q "Process: $PKG" "$EV/crash-17.txt"; then fail "crash of $PKG after the 1.7 launch (see crash-17.txt)"; fi
+log "crash buffer since the 1.7 launch: $(wc -l < "$EV/crash-17.txt") lines, none for $PKG"
+adb shell cmd uimode night auto
+log "PASS: 1.6(11) -> 1.7(12) in place; same firstInstallTime; seeded values preserved; installed bytes == candidate; signer unchanged"

@@ -1,0 +1,98 @@
+name: homeroom-upgrade-proof
+
+# Harness only. Runs ONLY on a push to the temp branch (see `on:`). No secrets, read-only token (plus actions: read to fetch the gate
+# run's unsigned artifact). Proves the real published 1.6 upgrades in place to the locally signed 1.7:
+# 1.6 is installed, SYNTHETIC prefs are seeded as root on a google_apis (userdebug) emulator, then the signed
+# 1.7 is installed with `adb install -r` (never uninstalled) and the state, firstInstallTime and installed
+# bytes are checked. The signed APK is rebuilt here from the PUBLIC unsigned artifact of a green gate run plus
+# a public signature delta; nothing signed is stored in git, and no key or keystore is used here.
+
+on:
+  # TEMP-BRANCH VARIANT: a dispatch needs the workflow on the default branch, so this runs on a push to the
+  # throwaway branch below and reads its inputs from ci/upgrade-proof-inputs.env (all public values: run id,
+  # head, shas and the public signature delta). The branch is deleted after the one proof run.
+  push:
+    branches: [tmp/homeroom-upgrade-proof]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: homeroom-upgrade-proof
+  cancel-in-progress: false
+
+jobs:
+  upgrade-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TRUSTED_CERT: 0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6
+      BUILD_TOOLS_ZIP_SHA256: e858c4b60069d0431051b225d384413b1643e1289b00a4825aed347f25bd510f
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load the pinned inputs (fail closed) and bind them to the gate run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          f=ci/upgrade-proof-inputs.env
+          test -s "$f"
+          for k in SOURCE_RUN_ID EXPECTED_HEAD UNSIGNED_SHA256 ALIGNED_SHA256 SIGNED_SHA256 PATCH_B64; do
+            v=$(grep -E "^$k=" "$f" | head -1 | cut -d= -f2-)
+            test -n "$v" || { echo "inputs: $k missing or empty"; exit 1; }
+            case $k in
+              SOURCE_RUN_ID) [[ $v =~ ^[0-9]+$ ]] || { echo "bad $k"; exit 1; } ;;
+              EXPECTED_HEAD) [[ $v =~ ^[0-9a-f]{40}$ ]] || { echo "bad $k"; exit 1; } ;;
+              *_SHA256) [[ $v =~ ^[0-9a-f]{64}$ ]] || { echo "bad $k"; exit 1; } ;;
+              PATCH_B64) [[ $v =~ ^[A-Za-z0-9+/]+=*$ ]] || { echo "bad $k"; exit 1; } ;;
+            esac
+            echo "$k=$v" >> "$GITHUB_ENV"
+          done
+          run=$(grep -E '^SOURCE_RUN_ID=' "$f" | cut -d= -f2-)
+          head=$(grep -E '^EXPECTED_HEAD=' "$f" | cut -d= -f2-)
+          info=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run")
+          rhead=$(jq -r .head_sha <<<"$info"); rconc=$(jq -r .conclusion <<<"$info"); rpath=$(jq -r .path <<<"$info")
+          echo "gate run $run: head_sha=$rhead conclusion=$rconc path=$rpath"
+          test "$rhead" = "$head" || { echo "gate run head != expected head"; exit 1; }
+          test "$rconc" = success || { echo "gate run not success"; exit 1; }
+
+      - name: Download the gate run's unsigned APK
+        uses: actions/download-artifact@v4
+        with:
+          name: unsigned-release-apk
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: in
+
+      - name: Rebuild the signed 1.7 from unsigned + delta, fetch the published 1.6 (all hash-pinned)
+        run: |
+          set -euo pipefail
+          test "$(tr -d '[:space:]' < in/source-commit.txt)" = "$EXPECTED_HEAD" || { echo "artifact source-commit != expected head"; exit 1; }
+          bash ci/upgrade-proof-prepare.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules || true
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: In-place upgrade on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          # The action runs the script line by line; everything is in the script file.
+          script: bash ci/upgrade-proof.sh
+
+      - name: Upload evidence (screenshots, UI dumps, synthetic prefs, log)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-proof-evidence
+          path: upgrade-evidence/*
+          retention-days: 3
