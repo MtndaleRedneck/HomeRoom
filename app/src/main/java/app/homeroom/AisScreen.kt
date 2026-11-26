@@ -116,24 +116,24 @@ class AisScreen(context:Context):Screen(context) {
         form.addView(name)
         form.addView(text(context,"Any name you will recognize. Next you get a message to paste to the AI.",12.5f,C.muted).apply {setPadding(0,dp(6),0,0)})
         builder.setTitle("Add AI").setView(form).setNegativeButton("Cancel",null)
-            .setPositiveButton("Add") {_,_->create(name.text.toString().trim())}.show()
+            .setPositiveButton("Add") {_,_->create(name.text.toString().trim())}.showTracked()
     }
     private fun renameDialog(a:OwnerAi) {
         val builder=AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
         val name=input(builder.context,"Name").apply {setText(a.displayName);setPadding(dp(20),dp(8),dp(20),dp(8))}
         builder.setTitle("Rename AI").setView(name).setNegativeButton("Cancel",null)
-            .setPositiveButton("Save") {_,_->rename(a,name.text.toString().trim())}.show()
+            .setPositiveButton("Save") {_,_->rename(a,name.text.toString().trim())}.showTracked()
     }
     private fun pictureDialog(a:OwnerAi) {
         val items=if(a.avatar!=null) arrayOf("Choose a picture","Remove picture") else arrayOf("Choose a picture")
         AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Picture for "+a.displayName).setItems(items) {_,which ->
             if(which==0) host.pickImage {uri -> if(uri!=null) setPicture(a,uri)} else setPicture(a,null)
-        }.setNegativeButton("Cancel",null).show()
+        }.setNegativeButton("Cancel",null).showTracked()
     }
     private fun removeDialog(a:OwnerAi) {
         AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Remove "+a.displayName+"?")
             .setMessage(a.displayName+" loses access right away and leaves your rooms. Past messages and rules stay as they are. To bring it back you would add it again as a new AI.")
-            .setNegativeButton("Cancel",null).setPositiveButton("Remove") {_,_->unlink(a)}.show()
+            .setNegativeButton("Cancel",null).setPositiveButton("Remove") {_,_->unlink(a)}.showTracked()
     }
     private fun create(name:String) {
         if(name.isEmpty()||busy) {if(name.isEmpty())snack(this,"Give the AI a name.");return}

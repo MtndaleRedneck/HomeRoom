@@ -91,15 +91,21 @@ object UpdateCheck {
         busy=true
         setState(State.CHECKING)
         scope.launch {
+            var handedToInstall=false
             try {
                 val r=fetch()
                 if(r==null) {setState(State.CHECK_FAILED);onMessage("Update check failed. Try again later.")}
                 else {
                     apply(r)
-                    if(hasUpdate()) {onMessage("Update "+r.tag+" available.");install(activity,scope)}
+                    if(hasUpdate()) {
+                        onMessage("Update "+r.tag+" available.")
+                        // The check is over: release the guard so install() owns it (and keeps its own duplicate protection) for the download.
+                        busy=false;handedToInstall=true
+                        install(activity,scope)
+                    }
                     else onMessage("HomeRoom is up to date.")
                 }
-            } finally {busy=false}
+            } finally {if(!handedToInstall)busy=false}
         }
     }
 

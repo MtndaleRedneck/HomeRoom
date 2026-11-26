@@ -40,6 +40,6 @@ internal object YesNoConfirmation {
                 catch(_:Exception) {snack(content,"Confirmation not verified. Retry keeps the exact confirmation ID; do not choose again until checked.");confirm.isEnabled=true}
             }
         }}
-        dialog.show()
+        dialog.showTracked()
     }
 }

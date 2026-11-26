@@ -49,6 +49,8 @@ class SettingsScreen(context:Context):Screen(context) {
         }
         card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
+    /** Update state changed (check finished, download progress or failure): redraw the Updates card while visible. */
+    fun onUpdateChanged() {post {if(isAttachedToWindow)rebuild()}}
     private fun rebuild() {
         col.removeAllViews()
         val owner=host.session.ownerName ?: "You"
@@ -207,16 +209,16 @@ class SettingsScreen(context:Context):Screen(context) {
                 catch(e:SessionEndedException) {host.onSessionEnded(e)}
                 catch(_:Exception) {snack(this@SettingsScreen,"Couldn't sign out that device. Try again.")}
             }
-        }.show()
+        }.showTracked()
     }
     private fun confirmSignOut() {
         AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Sign out of HomeRoom on this phone?").setMessage("Signing out erases this phone's saved sign-in and any unsent staged attachments.").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
             host.scope.launch {
                 host.session.fcmRegisteredToken?.let {token->try {host.api.unregisterPushToken(token)}catch(_:Exception) {}}
                 try {host.api.logout()}catch(_:Exception) {}
-                com.google.firebase.messaging.FirebaseMessaging.getInstance().deleteToken()
+                PushTokenDeletion.request(host.applicationContext)
                 host.session.clear();host.onSignedOut()
             }
-        }.show()
+        }.showTracked()
     }
 }

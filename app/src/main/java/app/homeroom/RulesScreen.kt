@@ -138,7 +138,7 @@ class RulesScreen(context:Context):Screen(context) {
                 com.google.android.material.bottomsheet.BottomSheetDialog(context).apply {
                     val content=column(context).apply { setPadding(dp(16),dp(20),dp(16),dp(24));background=rounded(C.surface,dp(20).toFloat()) }
                     content.addView(text(context,"Version history",20f,C.text,true));content.addView(text(context,body.ifBlank { "No earlier versions." },14f,C.text).apply { setTextIsSelectable(true) })
-                    setContentView(ScrollView(context).apply { addView(content) });show()
+                    setContentView(ScrollView(context).apply { addView(content) });showTracked()
                 }
             } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) { snack(this@RulesScreen,"Couldn't load the history.") }

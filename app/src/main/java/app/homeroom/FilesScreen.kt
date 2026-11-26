@@ -132,7 +132,7 @@ class FilesScreen(context:Context):Screen(context) {
         } else FileDownloads.download(host,file)
     }
     private fun showInChat(file:RoomFile) {
-        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setItems(arrayOf("Show in chat")) {_,_->selected?.let { room->file.eventId?.let {host.openRoomAt(room,it)} }}.show()
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setItems(arrayOf("Show in chat")) {_,_->selected?.let { room->file.eventId?.let {host.openRoomAt(room,it)} }}.showTracked()
     }
     private fun preview(file:RoomFile) {
         host.scope.launch {
@@ -146,7 +146,7 @@ class FilesScreen(context:Context):Screen(context) {
                 top.addView(iconButton(context,R.drawable.ic_arrow_back,C.text,"Back") {dialog.dismiss()},LinearLayout.LayoutParams(dp(48),dp(48)))
                 top.addView(text(context,file.name+"\n"+file.uploader+" · "+formatRoomTime(file.createdAt),13.5f,C.text).apply {maxLines=2},LinearLayout.LayoutParams(0,-2,1f))
                 top.addView(iconButton(context,R.drawable.ic_download,C.text,"Download") {open(file)},LinearLayout.LayoutParams(dp(48),dp(48)))
-                container.addView(top);container.addView(image,LinearLayout.LayoutParams(-1,0,1f));dialog.setContentView(container);dialog.show()
+                container.addView(top);container.addView(image,LinearLayout.LayoutParams(-1,0,1f));dialog.setContentView(container);dialog.showTracked()
             } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {snack(this@FilesScreen,"Couldn't load the preview. Tap to retry.")}
         }
     }
