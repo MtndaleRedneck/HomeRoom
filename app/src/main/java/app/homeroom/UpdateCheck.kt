@@ -131,7 +131,7 @@ object UpdateCheck {
 
     private suspend fun fetch():Release? = withContext(Dispatchers.IO) {
         try {
-            val req=Request.Builder().url(LATEST_RELEASE_API).header("Accept","application/vnd.github+json").header("User-Agent","HomeRoom-Android").build()
+            val req=Request.Builder().url(BuildConfig.UPDATE_API_OVERRIDE.ifEmpty {LATEST_RELEASE_API}).header("Accept","application/vnd.github+json").header("User-Agent","HomeRoom-Android").build()
             client.newCall(req).execute().use {resp ->
                 if(!resp.isSuccessful) return@withContext null
                 val release=JSONObject(resp.body!!.string())
