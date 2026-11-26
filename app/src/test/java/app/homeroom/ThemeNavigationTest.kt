@@ -25,6 +25,11 @@ class ThemeNavigationTest {
             .putString("cookie", "smoke-cookie").commit()
     }
 
+    @org.junit.After fun clearSeededEnrollment() {
+        org.robolectric.RuntimeEnvironment.getApplication()
+            .getSharedPreferences("homeroom_session", 0).edit().clear().commit()
+    }
+
     private fun contentOf(activity: MainActivity): FrameLayout =
         activity.javaClass.getDeclaredField("content").apply { isAccessible = true }
             .get(activity) as FrameLayout
