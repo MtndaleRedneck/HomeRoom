@@ -65,7 +65,7 @@ class AiKeysScreen(context:Context):Screen(context) {
         val c=column(context).apply {background=rounded(C.surface,dp(20).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
         val head=LinearLayout(context).apply {gravity=android.view.Gravity.CENTER_VERTICAL}
         head.addView(text(context,key.name,17f,C.text,true),LinearLayout.LayoutParams(0,-2,1f))
-        val statusColor=when(key.status) {"active"->C.teal;"pending"->C.accent;else->C.muted}
+        val statusColor=when(key.status) {"active"->C.teal;"pending"->C.accentText;else->C.muted}
         head.addView(text(context,key.status.replaceFirstChar {if(it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString()},12.5f,statusColor,true))
         c.addView(head)
         line(c,"AI ID",key.actor)
@@ -77,7 +77,7 @@ class AiKeysScreen(context:Context):Screen(context) {
             val state=compareState(key)
             if(typed[key.keyId]?.first!=state) typed[key.keyId]=state to ""
             if(key.suspectPending) c.addView(text(context,"Marked suspicious: the AI said its join message was already used. Deny this key.",13.5f,C.danger,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
-            c.addView(text(context,"If your AI did not just show you this fingerprint, tap Deny.",13.5f,C.accent,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+            c.addView(text(context,"If your AI did not just show you this fingerprint, tap Deny.",13.5f,C.accentText,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
             c.addView(text(context,"Compare the whole fingerprint with what the AI showed you in its own chat. Then type the last ${key.suffixLength} characters here.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
             val approveBtn=button(context,"Approve",true) {confirmApprove(key)}
             val edit=input(context,"Last ${key.suffixLength} characters")

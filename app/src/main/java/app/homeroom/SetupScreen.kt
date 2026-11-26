@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.ScrollView
+import android.widget.LinearLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -15,6 +16,7 @@ class SetupScreen(context: Context) : Screen(context) {
     private val linkInput=input(context,"Connection link")
     internal val checklist=SetupChecklist(host.session.enrolled)
     private val rows=column(context)
+    private val strip=LinearLayout(context)
     private val connectButton=button(context,"Connect") {connect()}
     private val continueButton=button(context,"Continue to rooms") {if(checklist.ready)host.onEnrolled()}
     private val alertsButton=button(context,"Allow notifications",false) {
@@ -24,13 +26,23 @@ class SetupScreen(context: Context) : Screen(context) {
     init {
         val body=column(context);pad(body,24,16)
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
+        // 1.9: app tile, then the same wording, a
+        // five-segment progress strip, and the steps in one card with status
+        // dots. Step names, states, details and next lines are 1.8-verbatim.
+        body.addView(text(context,"H",26f,C.onAccent,true).apply {gravity=Gravity.CENTER;background=accentFill(context,16f)},android.widget.LinearLayout.LayoutParams(dp(56),dp(56)).apply {bottomMargin=dp(16)})
         body.addView(text(context,"HomeRoom",30f,C.text,true))
         body.addView(text(context,"Connect step by step",18f,C.text,true))
         body.addView(text(context,"Paste the whole one-use connection link from your server's connect page. Keep the link private.",14f,C.muted))
         linkInput.minLines=2;linkInput.gravity=Gravity.TOP
         linkInput.inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         body.addView(linkInput,lp());body.addView(connectButton,lp())
-        body.addView(rows,lp());body.addView(alertsButton,lp());body.addView(continueButton,lp())
+        strip.orientation=LinearLayout.HORIZONTAL
+        body.addView(strip,android.widget.LinearLayout.LayoutParams(-1,dp(4)).apply {topMargin=dp(10);bottomMargin=dp(6)})
+        val stepsCard=sectionCard(context)
+        stepsCard.addView(rows,lp())
+        body.addView(stepsCard,lp())
+        // 1.9 mockup order: the primary Continue above the optional alerts row.
+        body.addView(continueButton,lp());body.addView(alertsButton,lp())
         body.addView(text(context,"Notifications are optional. Allowing alerts does not prove they will arrive.",13f,C.muted))
         render()
     }
@@ -44,12 +56,35 @@ class SetupScreen(context: Context) : Screen(context) {
         val allowed=androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
         checklist.notifications(allowed)
         rows.removeAllViews()
+        strip.removeAllViews()
         val labels=listOf("1. Connection link","2. Phone reaches server","3. Sign-in accepted","4. Rooms loaded","5. Notifications allowed")
-        SetupStep.entries.forEachIndexed {i,step ->
+        val steps=SetupStep.entries
+        var firstOpen=-1
+        steps.forEachIndexed {i,step ->
             val check=checklist.checks.getValue(step)
-            rows.addView(text(context,labels[i]+": "+check.state,16f,if(check.state=="Passed")C.text else C.muted,true).apply {setPadding(0,dp(12),0,dp(3))})
-            if(check.detail.isNotEmpty())rows.addView(text(context,check.detail,14f,C.muted))
-            if(check.next.isNotEmpty())rows.addView(text(context,check.next,14f,C.text))
+            if(firstOpen<0 && check.state!="Passed")firstOpen=i
+            // Progress strip segment: accent when passed, danger for the failed
+            // states (fp66c: a failed segment read the same as a waiting one),
+            // dimmed accent for the step in flight, raised card color for the rest.
+            val failedSeg=check.state=="Needs attention"||check.state=="Not confirmed"
+            strip.addView(View(context).apply {
+                background=rounded(if(check.state=="Passed") C.accent else if(failedSeg) C.danger else C.surfaceAlt,dp(2).toFloat())
+                if(check.state!="Passed" && !failedSeg && i==firstOpen) background=rounded(androidx.core.graphics.ColorUtils.blendARGB(C.accent,C.surfaceAlt,0.5f),dp(2).toFloat())
+            },android.widget.LinearLayout.LayoutParams(0,-1,1f).apply {rightMargin=dp(4)})
+            val row=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(10),0,dp(2))}
+            // Status dot: green check when passed, danger "!" for the failed
+            // states (Needs attention / Not confirmed), "…" in flight, dash else.
+            val failed=check.state=="Needs attention"||check.state=="Not confirmed"
+            val glyph=if(check.state=="Passed") "✓" else if(failed) "!" else if(i==firstOpen) "…" else "–"
+            val dotBg=if(check.state=="Passed") C.green else if(failed) C.danger else C.surfaceAlt
+            row.addView(text(context,glyph,13f,if(check.state=="Passed"||failed) android.graphics.Color.parseColor("#1B1B1E") else C.muted,true).apply {gravity=Gravity.CENTER;background=rounded(dotBg,dp(12).toFloat())},android.widget.LinearLayout.LayoutParams(dp(24),dp(24)).apply {rightMargin=dp(12)})
+            val copy=column(context)
+            copy.addView(text(context,labels[i],15.5f,if(check.state=="Passed") C.text else C.muted,true))
+            val stateLine=check.state+(if(check.detail.isNotEmpty()) " · "+check.detail else "")
+            copy.addView(text(context,stateLine,13f,if(failed) C.danger else C.muted).apply {setPadding(0,dp(1),0,0)})
+            if(check.next.isNotEmpty())copy.addView(text(context,check.next,14f,C.text))
+            row.addView(copy,android.widget.LinearLayout.LayoutParams(0,-2,1f))
+            rows.addView(row,android.widget.LinearLayout.LayoutParams(-1,-2))
         }
         linkInput.visibility=if(checklist.accepted)View.GONE else View.VISIBLE
         linkInput.isEnabled=!checklist.busy && !checklist.submitted

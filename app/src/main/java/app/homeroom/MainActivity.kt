@@ -33,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var header: LinearLayout
     private lateinit var headerBack: View
     private lateinit var headerTitle: android.widget.TextView
+    private lateinit var headerMeta: LinearLayout
     private lateinit var headerSearch: View
     private var displayedRoom: Room? = null
     // Explicit pause-block for the backdrop capture (I2 review Nov 24): the
@@ -52,6 +53,7 @@ class MainActivity : AppCompatActivity() {
         // light appearance is qualified on real device pixels (dark-tuned palette
         // values would be exposed by a light mode as-is).
         Theme.applyTo(this)
+        AccentStore.init(this)
         use24Hour = android.text.format.DateFormat.is24HourFormat(this)
         super.onCreate(savedInstanceState)
         session = Session(this)
@@ -102,7 +104,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         header.addView(headerBack, LinearLayout.LayoutParams(dp(48), dp(48)))
-        header.addView(headerTitle, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        // 1.9: in a room, the title carries a small
+        // member-dots row beneath it (existing Room.members data only).
+        headerMeta = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, 0, 0); visibility = View.GONE }
+        val titleWrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+        titleWrap.addView(headerTitle, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        titleWrap.addView(headerMeta, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        header.addView(titleWrap, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         header.addView(headerSearch, LinearLayout.LayoutParams(dp(48), dp(48)))
         column.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(56)))
 
@@ -126,7 +134,9 @@ class MainActivity : AppCompatActivity() {
             captureSuspended || appLock.coverShowing ||
                 (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
         }
-        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
+        // 1.9: the floating bar drops to
+        // 54dp tall and sits 16dp above the system bar (was 64dp at 28dp).
+        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), navHeightFor(resources.displayMetrics.density, resources.configuration.fontScale), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) })
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
@@ -229,7 +239,8 @@ class MainActivity : AppCompatActivity() {
         if (::nav.isInitialized) {
             val dm = resources.displayMetrics
             val w = navWidthFor(dm.widthPixels, dm.density, newConfig.fontScale)
-            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { if (it.width != w) { it.width = w; nav.layoutParams = it } }
+            val h = navHeightFor(dm.density, newConfig.fontScale)
+            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { if (it.width != w || it.height != h) { it.width = w; it.height = h; nav.layoutParams = it } }
         }
     }
     private fun navWidthPx():Int = navWidthFor(resources.displayMetrics.widthPixels, resources.displayMetrics.density, resources.configuration.fontScale)
@@ -395,6 +406,15 @@ class MainActivity : AppCompatActivity() {
     // request a fresh capture.
     fun invalidateNavBackdrop() { if (::nav.isInitialized) nav.invalidateBackdrop() }
     fun refreshNavBackdrop() { if (::nav.isInitialized) nav.backdropChanged() }
+
+    /** 1.9: the accent pick changed in Settings - recolor the bar and let the
+     *  visible screens repaint anything that baked the old accent in. */
+    fun onAccentChanged() {
+        if (::nav.isInitialized) nav.refreshColors()
+        tabScreens.values.forEach { it.onAccentChanged() }
+        currentPage?.onAccentChanged()
+        roomScreen?.onAccentChanged()
+    }
     private val pageStack = java.util.ArrayDeque<PageState>()
     private var currentPage: Screen? = null
     // Retained transient dialog slot: screens register activity-level dialogs
@@ -451,6 +471,7 @@ class MainActivity : AppCompatActivity() {
         headerTitle.text = title
         headerBack.visibility = View.VISIBLE
         headerSearch.visibility = View.GONE
+        setHeaderMeta(null)
         setNavVisible(View.GONE)
         screen.onShow()
     }
@@ -480,6 +501,7 @@ class MainActivity : AppCompatActivity() {
         // tab root: only non-tab screens count as a pushed page.
         currentPage = state.screen.takeUnless { tabScreens.containsValue(it) }
         roomScreen = state.room
+        setHeaderMeta(if (state.room != null) displayedRoom else null)
         headerTitle.text = state.title
         headerBack.visibility = state.backVisible
         headerSearch.visibility = state.searchVisible
@@ -600,6 +622,7 @@ class MainActivity : AppCompatActivity() {
         // private12 MainActivity.d0: header search shows on the rooms and
         // files tabs only; the title is the app name on the rooms tab.
         headerSearch.visibility = if (id == R.id.nav_chats || id == R.id.nav_files) View.VISIBLE else View.GONE
+        setHeaderMeta(null)
         headerTitle.text = when (id) {
             R.id.nav_files -> "Files"
             R.id.nav_rules -> "Rules"
@@ -637,6 +660,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(screen, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         headerBack.visibility = View.VISIBLE
         headerTitle.text = room.name
+        setHeaderMeta(room)
         // Release: the header search stays visible in a room, scoped to it.
         headerSearch.visibility = View.VISIBLE
         setNavVisible(View.GONE)
@@ -648,8 +672,30 @@ class MainActivity : AppCompatActivity() {
         roomScreen = null
         displayedRoom = null
         closing?.onHide()
+        setHeaderMeta(null)
         setNavVisible(View.VISIBLE)
         showTab(currentTab)
+    }
+
+    /** 1.9: member dots + count under the in-room title; hidden everywhere else. */
+    private fun setHeaderMeta(room: Room?) {
+        if (!::headerMeta.isInitialized) return
+        headerMeta.removeAllViews()
+        if (room == null) { headerMeta.visibility = View.GONE; return }
+        headerMeta.visibility = View.VISIBLE
+        headerMeta.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second.ifBlank { it.first } } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
+        for (member in room.members.take(6)) {
+            headerMeta.addView(View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
+            }, LinearLayout.LayoutParams(dp(7), dp(7)).apply { rightMargin = dp(3) })
+        }
+        val count = room.members.size
+        headerMeta.addView(android.widget.TextView(this).apply {
+            text = if (count == 1) "1 member" else "$count members"
+            textSize = 11f
+            setTextColor(C.muted)
+            setPadding(dp(5), 0, 0, 0)
+        })
     }
 
     fun cacheRooms(rooms: List<Room>) {
@@ -794,7 +840,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openMutedRooms() { openPage("Muted rooms", MutedRoomsScreen(this)) }
-
     // RECONSTRUCTED: Android 13+ notification permission prompt.
     private val notificationPermissionLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
@@ -836,4 +881,16 @@ internal fun navWidthFor(screenPx:Int, density:Float, fontScale:Float):Int {
     val base=(256*density).toInt()
     val wanted=(base*maxOf(1f,fontScale)).toInt()
     return minOf(wanted,screenPx-(24*density).toInt()).coerceAtLeast(minOf(base,screenPx))
+}
+
+/**
+ * Height of the floating nav in px: 54dp at normal font, growing past 1.0 by
+ * the label's extra line height (10.5sp at ~1.2 line factor) so the labels
+ * stay whole at larger system font sizes. The fixed 54dp clipped every label
+ * at the capsule bottom at 1.3x (found on the v3-rules-bottom-font13 pixels).
+ */
+internal fun navHeightFor(density:Float, fontScale:Float):Int {
+    val base=(54*density).toInt()
+    val extra=(10.5f*1.2f*maxOf(0f,fontScale-1f)*density).toInt()
+    return base+extra
 }

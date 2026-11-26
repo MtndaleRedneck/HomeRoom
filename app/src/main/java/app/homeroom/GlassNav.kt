@@ -61,7 +61,7 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         }
         addView(sheen, LayoutParams(-1,-1))
         items.gravity = Gravity.CENTER_VERTICAL
-        items.setPadding(dp(7),dp(5),dp(7),dp(5))
+        items.setPadding(dp(7),dp(4),dp(7),dp(4))
         addView(items, LayoutParams(-1,-1))
         tabs.forEach { (id,label,icon) ->
             val cell = column(context).apply { gravity=Gravity.CENTER; tag=id; contentDescription=label; setOnClickListener { selectedItemId=id } }
@@ -73,9 +73,9 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             val inner = column(context).apply {
                 tag="inner"
                 gravity=Gravity.CENTER
-                setPadding(dp(4),dp(5),dp(4),dp(5))
+                setPadding(dp(4),dp(3),dp(4),dp(3))
             }
-            inner.addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(22),dp(22)))
+            inner.addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(21),dp(21)))
             // Whole label always: it follows the system font size in full, and the
             // nav itself widens with the font scale (MainActivity.navWidthPx).
             inner.addView(text(context,label,10.5f,C.muted,true).apply {
@@ -86,7 +86,7 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             items.addView(cell, LinearLayout.LayoutParams(0,-1,1f))
         }
         updateSelection()
-        if(android.os.Build.VERSION.SDK_INT<31) backdrop.setBackgroundColor(0xeb2b2a2d.toInt())
+        if(android.os.Build.VERSION.SDK_INT<31) backdrop.setBackgroundColor(0xeb26262d.toInt())
     }
 
     // Historical Nov 10 bodies (operator readback, parsed as data): dirtied
@@ -121,7 +121,7 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
     }
 
     private fun showFlatFallback() {
-        if (!blockedFlat) { backdrop.setBackgroundColor(0xeb2b2a2d.toInt()); blockedFlat=true }
+        if (!blockedFlat) { backdrop.setBackgroundColor(0xeb26262d.toInt()); blockedFlat=true }
     }
     private fun clearFlatFallback() {
         if (blockedFlat && android.os.Build.VERSION.SDK_INT >= 31) { backdrop.background=null; blockedFlat=false }
@@ -162,7 +162,7 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             val count=when(id) { R.id.nav_chats -> unread; R.id.nav_rules -> pending; R.id.nav_settings -> if(updateAvailable)1 else 0; else -> 0 }
             val cell=items.getChildAt(index) as LinearLayout
             cell.contentDescription=if(count>0) "$label, $count" else label
-            val badge=cell.findViewWithTag<TextView>("badge") ?: text(context,"",10.5f,Color.WHITE,true).apply {
+            val badge=cell.findViewWithTag<TextView>("badge") ?: text(context,"",10.5f,C.onAccent,true).apply {
                 tag="badge";gravity=Gravity.CENTER;background=rounded(C.accent,dp(8).toFloat());minWidth=dp(16)
                 val inner=innerOf(cell)
                 (inner.getChildAt(0) as ImageView).let { image ->
@@ -180,15 +180,27 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         }
     }
     private fun innerOf(cell:LinearLayout)=cell.findViewWithTag<LinearLayout>("inner")!!
+    // 1.9: the selected tab is a white icon
+    // and label on a soft frosted neutral capsule - the orange block is gone;
+    // the accent now lives only on the badges.
     private fun updateSelection() {
         for(i in 0 until items.childCount) {
             val cell=items.getChildAt(i) as LinearLayout
             val inner=innerOf(cell)
             val selected=cell.tag==selectedItemId
-            inner.background=if(selected) rounded(0x42fc8613,dp(20).toFloat(),0x73fc8613,dp(1).toFloat()) else null
+            inner.background=if(selected) rounded(0x1fffffff,dp(20).toFloat(),0x38ffffff,dp(1).toFloat()) else null
             val icon=inner.getChildAt(0)
-            (if(icon is ImageView) icon else (icon as FrameLayout).getChildAt(0) as ImageView).setColorFilter(if(selected) C.accent else C.muted)
-            (inner.getChildAt(1) as TextView).setTextColor(if(selected) C.accent else C.muted)
+            (if(icon is ImageView) icon else (icon as FrameLayout).getChildAt(0) as ImageView).setColorFilter(if(selected) C.text else C.muted)
+            (inner.getChildAt(1) as TextView).setTextColor(if(selected) C.text else C.muted)
+        }
+    }
+    /** Accent pick changed: recolor badges and the selection state in place. */
+    fun refreshColors() {
+        updateSelection()
+        for(i in 0 until items.childCount) {
+            val badge=(items.getChildAt(i) as LinearLayout).findViewWithTag<TextView>("badge") ?: continue
+            badge.background=rounded(C.accent,dp(8).toFloat())
+            badge.setTextColor(C.onAccent)
         }
     }
     private fun capture() {

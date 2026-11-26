@@ -21,4 +21,6 @@ abstract class Screen(context: Context) : FrameLayout(context) {
     open fun poll() {}
     /** True when this screen consumed the back press. */
     open fun onBack(): Boolean = false
+    /** 1.9: the accent pick changed; repaint anything that baked the old accent in. */
+    open fun onAccentChanged() {}
 }

@@ -28,17 +28,29 @@ class ProfileScreen(context:Context):Screen(context) {
             catch(_:Exception) {snack(this@ProfileScreen,"Couldn't load your profile.")}
         }
     }
+    override fun onAccentChanged() {render()}
     private fun render() {
         body.removeAllViews()
         val card=column(context).apply {background=rounded(C.surface,dp(20).toFloat());setPadding(dp(16),dp(16),dp(16),dp(16))}
-        val pic=Avatars.view(context,screenScope,host.api,shownName.ifBlank {"You"},C.owner,96,OwnerProfileState.avatar).apply {
+        // 1.9: square avatar tile with a camera badge
+        // on the corner; name field is a pill. Wording kept from 1.8.
+        val picWrap=android.widget.FrameLayout(context)
+        val pic=Avatars.view(context,screenScope,host.api,shownName.ifBlank {"You"},C.owner,96,OwnerProfileState.avatar,square=true).apply {
             contentDescription="Change your picture";setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}}
-        card.addView(pic,LinearLayout.LayoutParams(dp(96),dp(96)).apply {gravity=Gravity.CENTER_HORIZONTAL})
-        card.addView(text(context,"Change picture",14f,C.accent,true).apply {gravity=Gravity.CENTER;setPadding(0,dp(12),0,dp(4));setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}},LinearLayout.LayoutParams(-1,-2))
+        picWrap.addView(pic,android.widget.FrameLayout.LayoutParams(dp(96),dp(96),Gravity.CENTER))
+        val badge=android.widget.FrameLayout(context).apply {
+            background=rounded(C.accent,dp(14).toFloat(),C.surface,dp(2).toFloat())
+            addView(iconView(context,R.drawable.ic_pencil,C.onAccent,14),android.widget.FrameLayout.LayoutParams(dp(14),dp(14),Gravity.CENTER))
+            setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}
+            contentDescription="Change your picture"
+        }
+        picWrap.addView(badge,android.widget.FrameLayout.LayoutParams(dp(28),dp(28),Gravity.BOTTOM or Gravity.END).apply {rightMargin=dp(-2);bottomMargin=dp(-2)})
+        card.addView(picWrap,LinearLayout.LayoutParams(dp(100),dp(100)).apply {gravity=Gravity.CENTER_HORIZONTAL})
+        card.addView(text(context,"Change picture",14f,C.accentText,true).apply {gravity=Gravity.CENTER;setPadding(0,dp(12),0,dp(4));setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}},LinearLayout.LayoutParams(-1,-2))
         if(OwnerProfileState.avatar!=null) card.addView(text(context,"Remove picture",13.5f,C.danger,true).apply {gravity=Gravity.CENTER;setPadding(0,dp(8),0,dp(4));setOnClickListener {setPicture(null)}},LinearLayout.LayoutParams(-1,-2))
         card.addView(text(context,"Name",13f,C.muted,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(16)})
         val name=input(context,"Your name").apply {
-            background=rounded(C.surfaceAlt,dp(12).toFloat());setPadding(dp(12),dp(10),dp(12),dp(10));setText(typedName ?: shownName);maxLines=1
+            background=rounded(C.surfaceAlt,dp(24).toFloat());setPadding(dp(16),dp(10),dp(16),dp(10));setText(typedName ?: shownName);maxLines=1
             addTextChangedListener(object:android.text.TextWatcher {
                 override fun beforeTextChanged(s:CharSequence?,a:Int,b:Int,d:Int) {}
                 override fun onTextChanged(s:CharSequence?,a:Int,b:Int,d:Int) {}

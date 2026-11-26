@@ -35,6 +35,7 @@ class FilesScreen(context:Context):Screen(context) {
         body.setPadding(dp(16),dp(8),dp(16),dp(110));body.addView(note)
         root.addView(ScrollView(context).apply { addView(body) },LinearLayout.LayoutParams(-1,0,1f));addView(root,LayoutParams(-1,-1))
     }
+    override fun onAccentChanged() { buildChips();if(files.isNotEmpty()) render() }
     fun showSearch() { query.visibility=View.VISIBLE;query.requestFocus();(context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(query,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT) }
     override fun onShow() {
         host.scope.launch {
@@ -49,7 +50,7 @@ class FilesScreen(context:Context):Screen(context) {
     private fun buildChips() {
         chips.removeAllViews();chips.setPadding(dp(16),0,dp(16),dp(8))
         rooms.forEach { room ->
-            val chip=text(context,room.name,14f,if(room.id==selected?.id) android.graphics.Color.WHITE else C.text,true).apply { gravity=Gravity.CENTER;setPadding(dp(14),0,dp(14),0);background=rounded(if(room.id==selected?.id) C.accent else C.surfaceAlt,dp(17).toFloat());setOnClickListener { if(room.id!=selected?.id) {selected=room;buildChips();load(room)} } }
+            val chip=text(context,room.name,14f,if(room.id==selected?.id) C.onAccent else C.text,true).apply { gravity=Gravity.CENTER;setPadding(dp(14),0,dp(14),0);background=if(room.id==selected?.id) accentFill(context,17f) else rounded(C.surfaceAlt,dp(17).toFloat());setOnClickListener { if(room.id!=selected?.id) {selected=room;buildChips();load(room)} } }
             chips.addView(chip,LinearLayout.LayoutParams(-2,dp(34)).apply { rightMargin=dp(8) })
         }
     }
@@ -118,7 +119,7 @@ class FilesScreen(context:Context):Screen(context) {
                 row.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
                 row.addView(iconButton(context,if(file.kind=="link") R.drawable.ic_open_link else R.drawable.ic_download,C.muted,if(file.kind=="link") "Open link" else "Download") {open(file)},LinearLayout.LayoutParams(dp(48),dp(48)))
                 card.addView(row,LinearLayout.LayoutParams(-1,dp(68)))
-                if(index<others.lastIndex) card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())})
+                if(index<others.lastIndex) card.addView(divider(context))
             }
             body.addView(card)
         }

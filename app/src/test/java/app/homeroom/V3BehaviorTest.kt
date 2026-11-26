@@ -210,6 +210,13 @@ class V3BehaviorTest {
         assertEquals("screen narrower than 256dp: full width, never past it",240,navWidthFor(240,1f,1.3f))
         assertEquals("density scales it",768,navWidthFor(1080,3f,1.0f))
     }
+    @Test fun navHeightGrowsWithFontSoLabelsStayWhole() {
+        assertEquals("normal font keeps the live 54dp",54,navHeightFor(1f,1.0f))
+        assertEquals("smaller-than-1 font never shortens it",54,navHeightFor(1f,0.85f))
+        assertEquals("1.3x grows by the label's extra line height",57,navHeightFor(1f,1.3f))
+        assertEquals("2x grows in step",66,navHeightFor(1f,2.0f))
+        assertEquals("density scales it",162,navHeightFor(3f,1.0f))
+    }
     @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
     fun realNavUsesTheFontAwareWidthAndStaysInsideTheScreen() {
         val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()

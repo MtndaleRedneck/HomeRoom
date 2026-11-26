@@ -15,6 +15,20 @@ internal fun sha256(bytes:ByteArray)=MessageDigest.getInstance("SHA-256").digest
 class AttachmentComposer(context:Context,private val room:Room,private val uri:Uri,private val suppliedName:String?=null,private val voice:Boolean=false,private val resume:org.json.JSONObject?=null):Screen(context) {
     private val body=column(context).apply {setPadding(dp(16),dp(12),dp(16),dp(24))}
     private val status=text(context,"Preparing attachment...",14f,C.muted)
+    private lateinit var uploadBar:android.widget.ProgressBar
+    private lateinit var previewSub:android.widget.TextView
+    private fun fmtSize(b:Long)=if(b>=1000000) "%.1f MB".format(b/1000000.0) else "%.0f KB".format(b/1000.0)
+    private fun showUploadProgress(offset:Long,total:Long) {
+        if(!::uploadBar.isInitialized) return
+        uploadBar.visibility=android.view.View.VISIBLE
+        uploadBar.progress=if(total>0) ((offset*1000)/total).toInt() else 0
+        previewSub.text=fmtSize(total)+" · to "+room.name
+    }
+    private fun markUploadComplete(total:Long) {
+        if(!::uploadBar.isInitialized) return
+        uploadBar.visibility=android.view.View.VISIBLE;uploadBar.progress=1000
+        if(total>0) previewSub.text=fmtSize(total)+" · to "+room.name
+    }
     private val message=input(context,"Optional message")
     // After a failed resume the button re-runs status-first recovery instead
     // of an inert post() (I2 UX residual: retry while ready=false no-ops).
@@ -196,7 +210,32 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         priorUnresolved=StagedUpload.hasUnresolvedPrior(resume)
         consumedUnresolved=StagedUpload.unresolvedCancellationMarked(resume)
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
-        body.addView(text(context,if(voice)"Voice note" else "Attach a file",22f,C.text,true));body.addView(status);body.addView(message);body.addView(send)
+        body.addView(text(context,if(voice)"Voice note" else "Attach a file",22f,C.text,true))
+        // 1.9: file preview card, live upload bar,
+        // labelled larger message box. All texts/statuses unchanged.
+        val preview=column(context).apply {background=rounded(C.surface,dp(16).toFloat());setPadding(dp(12),dp(12),dp(12),dp(12))}
+        val prow=LinearLayout(context).apply {gravity=android.view.Gravity.CENTER_VERTICAL}
+        val tile=android.widget.FrameLayout(context).apply {background=rounded(C.surfaceAlt,dp(12).toFloat())}
+        tile.addView(iconView(context,if(voice) R.drawable.ic_notification else R.drawable.ic_upload,C.muted,22),android.widget.FrameLayout.LayoutParams(dp(22),dp(22),android.view.Gravity.CENTER))
+        prow.addView(tile,LinearLayout.LayoutParams(dp(44),dp(44)).apply {rightMargin=dp(12)})
+        val ptext=column(context)
+        ptext.addView(text(context,fileName,15f,C.text,true))
+        previewSub=text(context,"to "+room.name,12.5f,C.muted)
+        ptext.addView(previewSub)
+        prow.addView(ptext,LinearLayout.LayoutParams(0,-2,1f))
+        preview.addView(prow)
+        uploadBar=android.widget.ProgressBar(context,null,android.R.attr.progressBarStyleHorizontal).apply {
+            max=1000;progress=0;visibility=android.view.View.GONE
+            progressTintList=android.content.res.ColorStateList.valueOf(C.accent)
+            progressBackgroundTintList=android.content.res.ColorStateList.valueOf(C.surfaceAlt)
+        }
+        preview.addView(uploadBar,LinearLayout.LayoutParams(-1,dp(4)).apply {topMargin=dp(10)})
+        body.addView(preview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        body.addView(status,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
+        body.addView(text(context,"MESSAGE (OPTIONAL)",11.5f,C.muted,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12);bottomMargin=dp(4)})
+        message.apply {minLines=3;gravity=android.view.Gravity.TOP or android.view.Gravity.START;background=rounded(C.surface,dp(16).toFloat());setPadding(dp(14),dp(12),dp(14),dp(12))}
+        body.addView(message)
+        body.addView(send,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         send.isEnabled=false
         body.addStacked(button(context,"Cancel upload",false) {cancelUpload()})
     }
@@ -294,7 +333,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     val recordHash=record.getString("sha256")
                     val actualHash=withContext(Dispatchers.IO) {java.io.File(privateFile.absolutePath).readBytes().let {sha256(it)}}
                     StagedUpload.requireComplete(recordHash,total,actualHash,"ready",srv.optString("verified_sha256").ifEmpty {null},srv.optLong("byte_size"))
-                    ready=true;send.isEnabled=true
+                    ready=true;send.isEnabled=true;markUploadComplete(total)
                     restoreUnconfirmedAttempt(record)
                     return
                 }
@@ -323,7 +362,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     val next=host.api.uploadChunk(upload!!,offset,chunk,sha256(chunk),initiatingAuth).getLong("next_offset")
                     require(next==offset+chunk.size);offset=next
                     if(!persistSwap {it.put("offset",offset)}) {aborted=true;return@withContext}
-                    withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+total+" bytes"}
+                    withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+total+" bytes";showUploadProgress(offset,total)}
                 }
             }}
             if(aborted) return  // stale generation mid-resume: no complete call
@@ -336,7 +375,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             if(markConsumedIfPosted(completeJson))return
             val complete=UploadStatus.from(completeJson)
             StagedUpload.requireComplete(recordHash,total,actualHash,complete.state,complete.verified,complete.size)
-            ready=true;send.isEnabled=true
+            ready=true;send.isEnabled=true;markUploadComplete(total)
             restoreUnconfirmedAttempt(record)
         }catch(e:CancellationException) {throw e}
         catch(e:SessionEndedException) {host.onSessionEnded(e)}
@@ -466,7 +505,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
                     // The chunk already landed; if this save fails the SERVER
                     // offset governs the resume, never the local record (I2).
                     if(!persistSwap {it.put("offset",offset)}) {aborted=true;return@withContext}
-                    withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+metadata.first+" bytes"}
+                    withContext(Dispatchers.Main) {status.text="Uploading: "+offset+" / "+metadata.first+" bytes";showUploadProgress(offset,metadata.first)}
                 }
             }}
             if(aborted) return@launch  // stale generation mid-upload: no complete call
@@ -474,7 +513,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
             if(markConsumedIfPosted(completeJson))return@launch
             val complete=UploadStatus.from(completeJson)
             StagedUpload.requireComplete(metadata.second,metadata.first,metadata.second,complete.state,complete.verified,complete.size)
-            ready=true;send.isEnabled=true
+            ready=true;send.isEnabled=true;markUploadComplete(metadata.first)
             status.text=safeName+" · uploaded and checksum verified. Not sent yet."+(if(voice)" Voice transcription may be unavailable." else "")
         }catch(e:CancellationException) {throw e}
         catch(e:SessionEndedException) {host.onSessionEnded(e)}
