@@ -97,7 +97,12 @@ class AisScreen(context:Context):Screen(context) {
             c.addView(text(context,"Works with AIs that can run code and privately keep a signing key.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
             val timer=text(context,countdownText(s.invite.secondsLeft(System.currentTimeMillis(),s.receivedAt)),14f,C.text,true)
             countdowns[a.actor]=timer
-            c.addView(timer,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
+            // 1.9: timer rides a raised row with a
+            // clock icon; wording unchanged from 1.8.
+            val timerRow=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;background=rounded(C.surfaceAlt,dp(14).toFloat());setPadding(dp(12),dp(10),dp(12),dp(10))}
+            timerRow.addView(iconView(context,R.drawable.ic_history,C.accentText,18))
+            timerRow.addView(timer,LinearLayout.LayoutParams(0,-2,1f).apply {leftMargin=dp(10)})
+            c.addView(timerRow,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
             c.addView(button(context,"Copy join message",true) {copyMessage(s.invite)},LinearLayout.LayoutParams(-1,dp(44)).apply {topMargin=dp(8)})
             c.addView(text(context,"Paste it into that AI's own chat. It works once and expires in 15 minutes.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
         } else {
