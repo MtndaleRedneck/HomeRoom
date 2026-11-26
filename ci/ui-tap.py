@@ -93,14 +93,20 @@ def main():
     # instead of tapping the wrong control.
     screen_h = max((bounds_of(n)[3] for n in root.iter("node") if bounds_of(n)), default=0)
     nav_top = None
+    nav_tab_bounds = set()
     for node in root.iter("node"):
         b = bounds_of(node)
         if (b and node.get("clickable") == "true"
                 and (node.get("content-desc") or "").split(",")[0] in ("Rooms", "Rules", "Files", "Settings")
                 and b[1] > screen_h * 0.6):
             nav_top = b[1] if nav_top is None else min(nav_top, b[1])
+            nav_tab_bounds.add(b)
 
     def under_nav(b):
+        # A bar tab is the bar, never "under" it: exempt exactly those nodes (by their own bounds),
+        # not any target that merely shares a label. Everything else below the bar top stays refused.
+        if b in nav_tab_bounds:
+            return False
         return nav_top is not None and center(b)[1] >= nav_top
 
     # Prefer the nearest clickable ancestor of any match.
