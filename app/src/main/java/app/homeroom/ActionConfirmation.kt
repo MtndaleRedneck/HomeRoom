@@ -23,11 +23,18 @@ internal object ActionConfirmation {
             addView(text(host,frozen.title,20f,C.text,true))
             addView(text(host,frozen.proposal,16f,C.text).apply {setTextIsSelectable(true)})
             addView(text(host,"Review the entire exact action. Confirm records permission for only this action and intended AI, for 15 minutes. HomeRoom does not execute it. The consumer must independently verify your authority, current details and any payment approval.",14f,C.amber))
-            for((label,value) in details.fields) {
-                addView(text(host,label,14f,C.muted,true))
-                addView(text(host,value,16f,C.text).apply {setTextIsSelectable(true)})
+            // 1.9: the exact fields sit in ONE card with
+            // dividers. Every field and its wording stay byte-identical to 1.8;
+            // only the container and spacing changed.
+            addView(text(host,"Exact details",12f,C.muted,true).apply {setAllCaps(true);letterSpacing=0.08f},LinearLayout.LayoutParams(-1,-2).apply {topMargin=host.dp(14);bottomMargin=host.dp(6);leftMargin=host.dp(4)})
+            val detailsCard=column(host).apply { background=rounded(C.surface,host.dp(16).toFloat());setPadding(host.dp(16),host.dp(4),host.dp(16),host.dp(4)) }
+            details.fields.forEachIndexed { index,(label,value) ->
+                if(index>0) detailsCard.addView(divider(host))
+                detailsCard.addView(text(host,label,13f,C.muted,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=host.dp(10)})
+                detailsCard.addView(text(host,value,15.5f,C.text).apply {setTextIsSelectable(true)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=host.dp(2);bottomMargin=host.dp(10)})
             }
-            addView(text(host,"A changed destination, content, attachment, payment method or total needs a new card. A claimed or uncertain action must not be retried.",14f,C.amber))
+            addView(detailsCard)
+            addView(text(host,"A changed destination, content, attachment, payment method or total needs a new card. A claimed or uncertain action must not be retried.",14f,C.amber),LinearLayout.LayoutParams(-1,-2).apply {topMargin=host.dp(10)})
         }
     }
     fun show(host:MainActivity,card:DecisionCard,saved:JSONObject,serverReviewed:Boolean,completed:()->Unit) {
