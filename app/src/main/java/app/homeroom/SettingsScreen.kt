@@ -42,7 +42,8 @@ class SettingsScreen(context:Context):Screen(context) {
     private fun row(card:LinearLayout,title:String,subtitle:String,trailing:String?=null,click:(()->Unit)?=null) {
         divide(card)
         val line=navRow(context,title,subtitle,chevron=trailing=="›",onClick=click)
-        if(trailing!=null && trailing!="›") {
+        if(trailing=="link") line.addView(iconView(context,R.drawable.ic_open_link,C.muted,24),LinearLayout.LayoutParams(dp(24),dp(24)))
+        else if(trailing!=null && trailing!="›") {
             line.addView(text(context,trailing,12.5f,if(trailing=="Remove") C.danger else C.accent,true).apply {gravity=Gravity.CENTER;minHeight=dp(48);setPadding(dp(12),0,dp(4),0)})
         }
         card.addView(line,LinearLayout.LayoutParams(-1,-2))
@@ -53,14 +54,14 @@ class SettingsScreen(context:Context):Screen(context) {
         val ownerCard=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;background=rounded(C.surface,dp(16).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
         ownerCard.addView(text(context,owner.take(1),22f,C.bg,true).apply {gravity=Gravity.CENTER;background=rounded(C.owner,dp(22).toFloat())},LinearLayout.LayoutParams(dp(44),dp(44)).apply {rightMargin=dp(12)})
         val ownerCopy=column(context)
-        ownerCopy.addView(text(context,owner+"  Owner",18f,C.text,true))
+        ownerCopy.addView(text(context,owner+" · Owner",18f,C.text,true))
         val server=try {java.net.URI(host.session.serverUrl.orEmpty()).host ?: "HomeRoom"} catch(_:Exception) {"HomeRoom"}
         ownerCopy.addView(text(context,"Connected to "+server,13f,C.muted))
         ownerCard.addView(ownerCopy,LinearLayout.LayoutParams(0,-2,1f));col.addView(ownerCard,LinearLayout.LayoutParams(-1,dp(84)))
         val notifications=group("Notifications")
         val enabled=androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
         val push=when { !enabled -> "Off in Android settings";host.session.fcmRegisteredToken==null -> "Not set up";else -> "On · stacked per room" }
-        row(notifications,"Push notifications",push) {
+        row(notifications,"Push notifications",push,"link") {
             try {host.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,context.packageName))} catch(_:android.content.ActivityNotFoundException) {snack(this,"Notification settings aren't available.")}
         }
         val muted=rooms.filter {it.muted}

@@ -17,6 +17,7 @@ scroll and retry. Harness-only helper for the debug-interaction CI job.
 
 Usage: ui-tap.py "Room tools"   ->   "412 903"
 """
+import os
 import re
 import subprocess
 import sys
@@ -49,6 +50,12 @@ def main():
     if len(sys.argv) != 2:
         sys.exit(2)
     target = sys.argv[1]
+    # Launcher-ANR guard (harness only, bounded, fails closed); its messages go
+    # to stderr so the printed tap coordinates stay clean.
+    safe_label = "tap-" + re.sub(r"[^A-Za-z0-9]+", "-", target).strip("-")[:30]
+    g = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "anr-guard.py"), safe_label], stdout=sys.stderr)
+    if g.returncode != 0:
+        sys.exit(3)
     subprocess.run(["adb", "shell", "uiautomator", "dump", "/sdcard/ui-dump.xml"],
                    check=True, capture_output=True)
     xml = subprocess.run(["adb", "shell", "cat", "/sdcard/ui-dump.xml"],
