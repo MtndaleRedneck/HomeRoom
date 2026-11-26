@@ -201,6 +201,28 @@ class V3BehaviorTest {
     @Test fun navLabelsShowWholeNamesAtNormalFont() = navLabelsFit(1.0f)
     @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
     fun navLabelsShowWholeNamesAtLargeFont() = navLabelsFit(1.3f)
+    @Test fun navWidthGrowsWithFontButStaysOnScreen() {
+        assertEquals("normal font keeps the live 256dp",256,navWidthFor(360,1f,1.0f))
+        assertEquals("smaller-than-1 font never narrows it",256,navWidthFor(360,1f,0.85f))
+        assertEquals("1.3x widens in step",332,navWidthFor(360,1f,1.3f),1)
+        assertEquals("huge font stops 12dp short of each screen edge",336,navWidthFor(360,1f,2.0f))
+        assertEquals("medium screen",276,navWidthFor(300,1f,1.3f))
+        assertEquals("screen narrower than 256dp: full width, never past it",240,navWidthFor(240,1f,1.3f))
+        assertEquals("density scales it",768,navWidthFor(1080,3f,1.0f))
+    }
+    @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
+    fun realNavUsesTheFontAwareWidthAndStaysInsideTheScreen() {
+        val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()
+        field(a,"polling").setBoolean(a,false)
+        a.javaClass.getDeclaredMethod("showMain").apply {isAccessible=true}.invoke(a)
+        val frame=a.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
+        val nav=field(a,"nav").get(a) as android.view.View
+        frame.measure(android.view.View.MeasureSpec.makeMeasureSpec(360,android.view.View.MeasureSpec.EXACTLY),android.view.View.MeasureSpec.makeMeasureSpec(780,android.view.View.MeasureSpec.EXACTLY))
+        frame.layout(0,0,360,780)
+        assertEquals("the MainActivity nav, not a fixture width",navWidthFor(360,1f,1.3f),nav.width)
+        assertTrue("nav inside the screen",nav.left>=12 && nav.right<=348)
+        c.pause()
+    }
     @Test fun vibrateOnPressDefaultsOnAndPersists() {
         val ctx=RuntimeEnvironment.getApplication() as Context
         ctx.getSharedPreferences("homeroom_ui",Context.MODE_PRIVATE).edit().clear().commit()

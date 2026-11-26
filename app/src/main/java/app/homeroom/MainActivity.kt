@@ -202,11 +202,7 @@ class MainActivity : AppCompatActivity() {
     // The floating nav is 256dp wide at normal font. It widens in step with the
     // system font size (never past the screen minus 12dp each side) so the
     // labels keep following the user's font setting and "Settings" stays whole.
-    private fun navWidthPx():Int {
-        val screen=resources.displayMetrics.widthPixels
-        val wanted=(dp(256)*maxOf(1f,resources.configuration.fontScale)).toInt()
-        return minOf(wanted,screen-dp(24)).coerceAtLeast(minOf(dp(256),screen))
-    }
+    private fun navWidthPx():Int = navWidthFor(resources.displayMetrics.widthPixels, resources.displayMetrics.density, resources.configuration.fontScale)
     private fun onRoomIntent(intent: android.content.Intent?) {
         val roomId = intent?.getStringExtra(HomeRoomMessagingService.EXTRA_ROOM_ID) ?: return
         intent.removeExtra(HomeRoomMessagingService.EXTRA_ROOM_ID)
@@ -760,4 +756,15 @@ class MainActivity : AppCompatActivity() {
         fun setUpdateListener(listener: (() -> Unit)?) { updateListener = listener }
         fun onUpdateChanged() { updateListener?.invoke() }
     }
+}
+
+/**
+ * Width of the floating nav in px: 256dp at normal font, growing with the font
+ * scale, never wider than the screen minus 12dp per side, never narrower than
+ * 256dp unless the screen itself is narrower (then the full screen width).
+ */
+internal fun navWidthFor(screenPx:Int, density:Float, fontScale:Float):Int {
+    val base=(256*density).toInt()
+    val wanted=(base*maxOf(1f,fontScale)).toInt()
+    return minOf(wanted,screenPx-(24*density).toInt()).coerceAtLeast(minOf(base,screenPx))
 }
