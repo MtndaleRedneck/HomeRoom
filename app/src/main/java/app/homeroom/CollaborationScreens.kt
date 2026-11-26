@@ -69,24 +69,51 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
         body.addStacked(button(context,"Confirm answer",true) {confirm()})
         body.addStacked(button(context,"Cancel",false) {host.onBackPressedDispatcher.onBackPressed()})
     }
+    // The server may have recorded the answer even when a call fails, so a failed or unreadable reply is never
+    // treated as "not recorded": the same answer identity stays usable (the server replays an exact repeat) and the
+    // screen says the outcome is unknown. A verified receipt is the only thing that shows "Answer recorded".
+    private var attempted=false
     private fun confirm() {
         if(busy || done)return
-        if(try {java.time.Instant.now().isAfter(java.time.Instant.parse(expires))}catch(_:Exception) {true}) {snack(this,"Confirmation expired. Go back and select again.");return}
-        busy=true
+        if(!attempted && (try {java.time.Instant.now().isAfter(java.time.Instant.parse(expires))}catch(_:Exception) {true})) {snack(this,"Confirmation expired. Go back and select again.");return}
+        busy=true;attempted=true
         screenScope.launch {
             try {
                 val receipt=V15Api(host.api).confirm(card,confirmation,actionId)
-                require(receipt.getString("decision_id")==card.id && receipt.getString("option_id")==choice.id && receipt.getString("proposal_sha256")==card.hash && receipt.getString("state")=="answered")
-                done=true;body.removeAllViews()
-                val done=sectionCard(context,"Answer recorded")
-                done.addView(text(context,choice.label+"\n"+receipt.getString("confirmed_at"),15f,C.text))
-                done.addView(text(context,"Server receipt: "+receipt.getString("answer_id")+". This is not proof that an outside action happened.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
-                body.addCard(done)
+                when(val outcome=receiptOutcome(receipt,card.id,choice.id,card.hash)) {
+                    is ReceiptOutcome.Recorded -> {
+                        val recorded=recordedCard(context,choice.label,outcome) // fully built before the screen changes
+                        done=true
+                        body.removeAllViews();body.addCard(recorded)
+                    }
+                    ReceiptOutcome.Unverified -> snack(this@DecisionConfirmScreen,"The server's reply could not be verified for this answer. It may or may not be recorded. Check the decision before choosing again.")
+                }
             } catch(e:SessionEndedException) {host.onSessionEnded(e)}
-            catch(_:Exception) {snack(this@DecisionConfirmScreen,"Answer not confirmed. Retry uses the same answer identity; do not choose again until checked.")}
+            catch(_:Exception) {snack(this@DecisionConfirmScreen,"Couldn't confirm whether the answer was recorded. Tap Confirm answer again to check (same answer identity), or check the decision before choosing again.")}
             finally {busy=false}
         }
     }
+}
+
+internal sealed class ReceiptOutcome {
+    data class Recorded(val answerId:String?,val confirmedAt:String?):ReceiptOutcome()
+    object Unverified:ReceiptOutcome()
+}
+
+/** Verified recorded only when the receipt names this decision, this option and this proposal hash with state "answered". answer_id and confirmed_at are shown when present. */
+internal fun receiptOutcome(receipt:JSONObject,decisionId:String,optionId:String,proposalSha:String):ReceiptOutcome {
+    val bound=receipt.optString("decision_id")==decisionId && receipt.optString("option_id")==optionId &&
+        receipt.optString("proposal_sha256")==proposalSha && receipt.optString("state")=="answered"
+    if(!bound)return ReceiptOutcome.Unverified
+    return ReceiptOutcome.Recorded(receipt.nullableString("answer_id"),receipt.nullableString("confirmed_at"))
+}
+
+internal fun recordedCard(context:Context,label:String,outcome:ReceiptOutcome.Recorded):LinearLayout {
+    val card=sectionCard(context,"Answer recorded")
+    card.addView(text(context,label+(outcome.confirmedAt?.let {"\n"+(formatTime(it).ifBlank {it})} ?: ""),15f,C.text))
+    val receiptLine=outcome.answerId?.let {"Server receipt: "+it+"."} ?: "The server confirmed this answer but sent no receipt details."
+    card.addView(text(context,receiptLine+" This is not proof that an outside action happened.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=context.dp(8)})
+    return card
 }
 class TeamScreen(context:Context):Screen(context) {
     private val body=column(context).apply {setPadding(dp(16),dp(12),dp(16),dp(24))}
