@@ -104,7 +104,7 @@ class AiKeysScreen(context:Context):Screen(context) {
         body.addView(c,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(12)})
     }
     private fun confirmApprove(key:AiKey) {
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
             .setTitle("Approve this key for ${key.name}?")
             .setMessage("Only approve this if the AI itself showed you this same fingerprint.\n\nKey ${key.keyId}\nEnds in ${key.suffix()}\nRooms: ${key.rooms.size}")
             .setNegativeButton("Cancel",null)
@@ -112,7 +112,7 @@ class AiKeysScreen(context:Context):Screen(context) {
             .show()
     }
     private fun confirmDeny(key:AiKey) {
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
             .setTitle("Deny this key?")
             .setMessage("${key.name} can't use this key. To connect it again, make a new join message.")
             .setNegativeButton("Cancel",null)

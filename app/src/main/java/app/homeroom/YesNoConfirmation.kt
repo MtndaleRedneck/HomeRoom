@@ -26,7 +26,7 @@ internal object YesNoConfirmation {
         content.addView(text(host,card.proposal,16f,C.text).apply {setTextIsSelectable(true)})
         content.addView(text(host,"Your answer: Yes\nAction: discussion answer only\nAmount: none\nRecipient: this HomeRoom room only",15f,C.text))
         content.addView(text(host,"Confirm records your Yes. It does not authorize or run an outside action.",14f,C.amber))
-        val dialog=AlertDialog.Builder(host).setTitle("Confirm Yes?").setView(ScrollView(host).apply {addView(content)}).setNegativeButton("Cancel",null).setPositiveButton("Confirm",null).create()
+        val dialog=AlertDialog.Builder(host,R.style.Theme_HomeRoom_Dialog).setTitle("Confirm Yes?").setView(ScrollView(host).apply {addView(content)}).setNegativeButton("Cancel",null).setPositiveButton("Confirm",null).create()
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if(!saved.optBoolean("attempted") && try {java.time.Instant.now().isAfter(java.time.Instant.parse(saved.getString("expires")))}catch(_:Exception) {true}) {snack(content,"Confirmation expired. Cancel and choose again.");return@setOnClickListener}
             val confirm=dialog.getButton(AlertDialog.BUTTON_POSITIVE);confirm.isEnabled=false

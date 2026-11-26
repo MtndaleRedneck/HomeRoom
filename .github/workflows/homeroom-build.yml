@@ -683,20 +683,25 @@ jobs:
             python3 ci/anr-guard.py i-feedback-typed || exit 1
             adb exec-out screencap -p > i-feedback-typed.png
             python3 ci/anr-guard.py --check i-feedback-typed || exit 1
-            # Larger text (system font scale 1.3): Feedback, then Settings. Always reset to 1.0.
+            # Larger text (system font scale 1.3). The activity is recreated at the Rooms tab, so navigate again and
+            # assert the real screen before each capture. Reset to 1.0 on every exit path.
+            R='adb shell settings put system font_scale 1.0'
             adb shell settings put system font_scale 1.3
             sleep 6
-            python3 ci/anr-guard.py i-feedback-large || { adb shell settings put system font_scale 1.0; exit 1; }
-            adb exec-out screencap -p > i-feedback-large.png
-            python3 ci/anr-guard.py --check i-feedback-large || { adb shell settings put system font_scale 1.0; exit 1; }
-            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -q 'Feedback &amp; bugs' || { echo "Feedback page not on screen at font scale 1.3"; adb shell settings put system font_scale 1.0; exit 1; }
-            adb shell input keyevent KEYCODE_BACK
-            sleep 3
-            python3 ci/anr-guard.py i-settings-large || { adb shell settings put system font_scale 1.0; exit 1; }
+            adb exec-out screencap -p > i-large-after-recreate.png
+            adb shell input tap 792 2242
+            sleep 4
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -o 'text="Settings"' | awk 'END{exit NR<2}' || { echo "Settings not on screen at font scale 1.3"; adb exec-out screencap -p > i-large-settings-missing.png; $R; exit 1; }
+            python3 ci/anr-guard.py i-settings-large || { $R; exit 1; }
             adb exec-out screencap -p > i-settings-large.png
-            python3 ci/anr-guard.py --check i-settings-large || { adb shell settings put system font_scale 1.0; exit 1; }
-            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -o 'text="Settings"' | awk 'END{exit NR<2}' || { echo "Settings tab not on screen at font scale 1.3"; adb shell settings put system font_scale 1.0; exit 1; }
-            adb shell settings put system font_scale 1.0
+            python3 ci/anr-guard.py --check i-settings-large || { $R; exit 1; }
+            sh ci/settings-tap.sh "Send feedback, report a bug, or suggest a feature" || { adb exec-out screencap -p > i-large-feedbackrow-missing.png; $R; exit 1; }
+            sleep 4
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -q 'Feedback &amp; bugs' || { echo "Feedback page not on screen at font scale 1.3"; adb exec-out screencap -p > i-large-feedback-missing.png; $R; exit 1; }
+            python3 ci/anr-guard.py i-feedback-large || { $R; exit 1; }
+            adb exec-out screencap -p > i-feedback-large.png
+            python3 ci/anr-guard.py --check i-feedback-large || { $R; exit 1; }
+            $R
             sleep 3
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
             adb shell cmd uimode night auto

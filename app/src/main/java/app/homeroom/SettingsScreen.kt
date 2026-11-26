@@ -201,7 +201,7 @@ class SettingsScreen(context:Context):Screen(context) {
         card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     private fun confirmRemove(device:OwnerDevice) {
-        AlertDialog.Builder(context).setTitle("Sign out ${device.label}?").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Sign out ${device.label}?").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
             host.scope.launch {
                 try {host.api.revokeSession(device.id);onShow()}
                 catch(e:SessionEndedException) {host.onSessionEnded(e)}
@@ -210,7 +210,7 @@ class SettingsScreen(context:Context):Screen(context) {
         }.show()
     }
     private fun confirmSignOut() {
-        AlertDialog.Builder(context).setTitle("Sign out of HomeRoom on this phone?").setMessage("Signing out erases this phone's saved sign-in and any unsent staged attachments.").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Sign out of HomeRoom on this phone?").setMessage("Signing out erases this phone's saved sign-in and any unsent staged attachments.").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->
             host.scope.launch {
                 host.session.fcmRegisteredToken?.let {token->try {host.api.unregisterPushToken(token)}catch(_:Exception) {}}
                 try {host.api.logout()}catch(_:Exception) {}

@@ -132,7 +132,7 @@ class FilesScreen(context:Context):Screen(context) {
         } else FileDownloads.download(host,file)
     }
     private fun showInChat(file:RoomFile) {
-        AlertDialog.Builder(context).setItems(arrayOf("Show in chat")) {_,_->selected?.let { room->file.eventId?.let {host.openRoomAt(room,it)} }}.show()
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setItems(arrayOf("Show in chat")) {_,_->selected?.let { room->file.eventId?.let {host.openRoomAt(room,it)} }}.show()
     }
     private fun preview(file:RoomFile) {
         host.scope.launch {

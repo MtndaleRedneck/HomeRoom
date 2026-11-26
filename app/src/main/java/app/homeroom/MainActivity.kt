@@ -256,7 +256,7 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             val names = rooms.map { it.name }.toTypedArray()
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this,R.style.Theme_HomeRoom_Dialog)
                 .setTitle("Review shared file in room")
                 .setItems(names) { _, which ->
                     openPage("Review shared file in room", AttachmentComposer(this, rooms[which], uri))
@@ -302,7 +302,7 @@ class MainActivity : AppCompatActivity() {
         // origin match would bypass consent. Every handoff in this state gets an
         // explicit enrollment decision showing the verified destination host.
         val host = try { java.net.URI(handoff.origin).host } catch (e: Exception) { handoff.origin }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this,R.style.Theme_HomeRoom_Dialog)
             .setTitle("Connect to this server?")
             .setMessage(host.toString() + "\n\nOnly continue if this is your intended HomeRoom server.")
             .setNegativeButton("Cancel", null)

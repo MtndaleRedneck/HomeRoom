@@ -214,7 +214,7 @@ class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
         body.addStacked(button(context,"Write a goal proposal",false) {
             val box=outlinedInput(context,"Goal").apply {setText(current.nullableString("text").orEmpty())}
             val actionId=clientId()
-            AlertDialog.Builder(context).setTitle("Propose room goal").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Propose") {_,_->
+            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Propose room goal").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Propose") {_,_->
                 val value=box.text.toString();if(value.isBlank() || value.length>4000) {snack(this,"Use 1 to 4000 characters.");return@setPositiveButton}
                 change {V15Api(host.api).goalProposal(room.id,current.getInt("version"),value,actionId)}
             }.show()
@@ -227,7 +227,7 @@ class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
             for(decision in listOf("reject","approve")) {
                 val actionId=clientId()
                 pc.addStacked(button(context,decision.replaceFirstChar {it.uppercase()},decision=="approve") {
-                    AlertDialog.Builder(context).setTitle(if(decision=="approve")"Make this goal live?" else "Reject this goal?")
+                    AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle(if(decision=="approve")"Make this goal live?" else "Reject this goal?")
                         .setMessage(proposal.getString("text")).setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->change {V15Api(host.api).goalDecision(proposal,decision,actionId)}}.show()
                 })
             }
