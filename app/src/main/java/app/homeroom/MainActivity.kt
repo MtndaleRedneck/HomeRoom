@@ -48,7 +48,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // RECONSTRUCTED: release picks theme colors from the system night-mode flag.
-        C.light = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_NO
+        // Dark mode by default. Fixed dark until a
+        // light appearance is qualified on real device pixels (dark-tuned palette
+        // values would be exposed by a light mode as-is).
+        Theme.applyTo(this)
         use24Hour = android.text.format.DateFormat.is24HourFormat(this)
         super.onCreate(savedInstanceState)
         session = Session(this)
