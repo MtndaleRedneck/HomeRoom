@@ -215,7 +215,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         // labelled larger message box. All texts/statuses unchanged.
         val preview=column(context).apply {background=rounded(C.surface,dp(16).toFloat());setPadding(dp(12),dp(12),dp(12),dp(12))}
         val prow=LinearLayout(context).apply {gravity=android.view.Gravity.CENTER_VERTICAL}
-        val tile=android.widget.FrameLayout(context).apply {background=rounded(C.raised,dp(12).toFloat())}
+        val tile=android.widget.FrameLayout(context).apply {background=rounded(C.surfaceAlt,dp(12).toFloat())}
         tile.addView(iconView(context,if(voice) R.drawable.ic_notification else R.drawable.ic_upload,C.muted,22),android.widget.FrameLayout.LayoutParams(dp(22),dp(22),android.view.Gravity.CENTER))
         prow.addView(tile,LinearLayout.LayoutParams(dp(44),dp(44)).apply {rightMargin=dp(12)})
         val ptext=column(context)
@@ -227,13 +227,13 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         uploadBar=android.widget.ProgressBar(context,null,android.R.attr.progressBarStyleHorizontal).apply {
             max=1000;progress=0;visibility=android.view.View.GONE
             progressTintList=android.content.res.ColorStateList.valueOf(C.accent)
-            progressBackgroundTintList=android.content.res.ColorStateList.valueOf(C.raised)
+            progressBackgroundTintList=android.content.res.ColorStateList.valueOf(C.surfaceAlt)
         }
         preview.addView(uploadBar,LinearLayout.LayoutParams(-1,dp(4)).apply {topMargin=dp(10)})
         body.addView(preview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         body.addView(status,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
         body.addView(text(context,"MESSAGE (OPTIONAL)",11.5f,C.muted,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12);bottomMargin=dp(4)})
-        message.apply {minLines=3;gravity=android.view.Gravity.TOP or Gravity.START;background=rounded(C.surface,dp(16).toFloat());setPadding(dp(14),dp(12),dp(14),dp(12))}
+        message.apply {minLines=3;gravity=android.view.Gravity.TOP or android.view.Gravity.START;background=rounded(C.surface,dp(16).toFloat());setPadding(dp(14),dp(12),dp(14),dp(12))}
         body.addView(message)
         body.addView(send,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         send.isEnabled=false
