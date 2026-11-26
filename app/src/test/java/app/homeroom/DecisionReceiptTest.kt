@@ -63,4 +63,21 @@ class DecisionReceiptTest {
     @Test fun exactReplayReceiptAfterExpiryIsAlsoVerified() {
         assertTrue(outcome(capture("exact_confirm_replay_after_prepared_expiry")) is ReceiptOutcome.Recorded)
     }
+
+    @Test fun capturedDefiniteFailuresAreClassifiedAndEverythingElseStaysUnknown() {
+        assertEquals(ConfirmFailure.Expired,confirmFailure(410,"confirmation_expired"))
+        assertEquals(ConfirmFailure.AlreadyAnswered,confirmFailure(409,"decision_already_answered"))
+        assertEquals(ConfirmFailure.Unknown,confirmFailure(500,"server_error"))
+        assertEquals(ConfirmFailure.Unknown,confirmFailure(408,"timeout"))
+        assertEquals(ConfirmFailure.Unknown,confirmFailure(409,"decision_version_conflict"))
+        assertEquals(ConfirmFailure.Unknown,confirmFailure(410,"approval_expired"))
+    }
+
+    @Test fun failureCardsAreTruthfulAboutWhatIsKnown() {
+        val ctx=RuntimeEnvironment.getApplication()
+        val exp=texts(failureCard(ctx,ConfirmFailure.Expired)).joinToString("\n")
+        assertTrue(exp.contains("Confirmation expired")&&exp.contains("before the answer was recorded"))
+        val ans=texts(failureCard(ctx,ConfirmFailure.AlreadyAnswered)).joinToString("\n")
+        assertTrue(ans.contains("Already answered")&&ans.contains("may be a different answer"))
+    }
 }

@@ -89,10 +89,33 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
                     ReceiptOutcome.Unverified -> snack(this@DecisionConfirmScreen,"The server's reply could not be verified for this answer. It may or may not be recorded. Check the decision before choosing again.")
                 }
             } catch(e:SessionEndedException) {host.onSessionEnded(e)}
+            catch(e:ApiException) when(confirmFailure(e.status,e.code)!=ConfirmFailure.Unknown) {
+                // Definitive server replies (captured contract): shown as a persistent card, no retry loop.
+                done=true
+                val kind=confirmFailure(e.status,e.code)
+                val card2=failureCard(context,kind)
+                body.removeAllViews();body.addCard(card2)
+            }
             catch(_:Exception) {snack(this@DecisionConfirmScreen,"Couldn't confirm whether the answer was recorded. Tap Confirm answer again to check (same answer identity), or check the decision before choosing again.")}
             finally {busy=false}
         }
     }
+}
+
+/** Only the two captured definitive replies are classified; every other status or code (timeout, 5xx, unknown) stays Unknown and says so. */
+internal enum class ConfirmFailure {Expired,AlreadyAnswered,Unknown}
+internal fun confirmFailure(status:Int,code:String):ConfirmFailure = when {
+    status==410 && code=="confirmation_expired" -> ConfirmFailure.Expired
+    status==409 && code=="decision_already_answered" -> ConfirmFailure.AlreadyAnswered
+    else -> ConfirmFailure.Unknown
+}
+
+internal fun failureCard(context:Context,kind:ConfirmFailure):LinearLayout {
+    val card=sectionCard(context,if(kind==ConfirmFailure.Expired)"Confirmation expired" else "Already answered")
+    val msg=if(kind==ConfirmFailure.Expired)"This confirmation expired before the answer was recorded. Go back and choose again."
+        else "The server says this decision already has a recorded answer. It may be a different answer than the one you chose. Open the decision to see it."
+    card.addView(text(context,msg,15f,C.text))
+    return card
 }
 
 internal sealed class ReceiptOutcome {
