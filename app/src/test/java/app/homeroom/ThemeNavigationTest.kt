@@ -25,6 +25,10 @@ class ThemeNavigationTest {
             .putString("cookie", "smoke-cookie").commit()
     }
 
+    @org.junit.After fun restorePalette() {
+        C.light = false
+    }
+
     @org.junit.After fun clearSeededEnrollment() {
         org.robolectric.RuntimeEnvironment.getApplication()
             .getSharedPreferences("homeroom_session", 0).edit().clear().commit()
@@ -43,6 +47,16 @@ class ThemeNavigationTest {
         assertEquals(listOf(R.id.nav_chats), chosen)
         nav.selectedItemId = R.id.nav_settings
         assertEquals(listOf(R.id.nav_chats, R.id.nav_settings), chosen)
+    }
+
+    @Test fun onCreateForcesDarkFromLightPalette() {
+        // Discriminating coverage (I2 finite read, Nov 25): with the palette
+        // forced light, the REAL MainActivity.onCreate must leave it dark -
+        // deleting the Theme.applyTo(this) call must fail this test.
+        C.light = true
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        assertFalse("onCreate must force dark from a light palette", C.light)
+        controller.pause().stop().destroy()
     }
 
     @Test fun coldStartShowsChatsTabContent() {
