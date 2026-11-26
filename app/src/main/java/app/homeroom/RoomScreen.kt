@@ -782,8 +782,10 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             }
 
             event.decisionId?.let { did ->
-                // 1.9: the decision entry is a small card ("Decision waiting" +
-                // Review) under the bubble, opening the same decision screen.
+                // private12 parity (K0/N3:815-830): decision-linked messages get
+                // a "Review decision" entry under the bubble that opens the
+                // decision screen. 1.9: card styling, SAME label and target (the
+                // CI interaction taps this text verbatim).
                 val card = LinearLayout(context).apply {
                     gravity = Gravity.CENTER_VERTICAL
                     background = rounded(C.surface, dp(14).toFloat())
@@ -791,8 +793,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                     pressIn()
                     setOnClickListener { host.openPage("Review decision", DecisionScreen(context, did)) }
                 }
-                card.addView(text(context, "Decision waiting", 13.5f, C.text, true), LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-                card.addView(text(context, "Review", 13f, C.accentText, true))
+                card.addView(text(context, "Review decision", 13.5f, C.accentText, true))
                 container.addView(card, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
             }
         }
