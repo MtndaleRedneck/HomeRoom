@@ -56,6 +56,36 @@ class V3BehaviorTest {
         assertSame(settings,content.getChildAt(0))
         c.pause()
     }
+    @Test fun settingsBottomOrderMatchesSharedLayout() {
+        // 1.7 locked shared layout: Sign out above the
+        // Feedback & bugs card, the Updates card ALWAYS last, the version
+        // inside the Updates card, and a Feel > Vibrate on press toggle.
+        val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()
+        field(a,"polling").setBoolean(a,false)
+        val settings=SettingsScreen(a)
+        field(settings,"rooms").set(settings,listOf<Room>())
+        field(settings,"devicesLoaded").set(settings,true)
+        field(settings,"devices").set(settings,listOf<OwnerDevice>())
+        settings.javaClass.getDeclaredMethod("rebuild").apply {isAccessible=true}.invoke(settings)
+        val col=field(settings,"col").get(settings) as android.widget.LinearLayout
+        val texts=mutableListOf<String>()
+        fun walk(v:android.view.View) {
+            if(v is android.widget.TextView) texts.add(v.text.toString())
+            if(v is android.view.ViewGroup) for(i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        walk(col)
+        val signout=texts.indexOf("Sign out")
+        val feedback=texts.indexOf("Feedback & bugs")
+        val updates=texts.indexOf("Updates")
+        assertTrue("sign out present",signout>=0)
+        assertTrue("feedback card present",feedback>=0)
+        assertTrue("updates card present",updates>=0)
+        assertTrue("sign out above the feedback card",signout<feedback)
+        assertTrue("feedback card above updates",feedback<updates)
+        assertTrue("updates is the last card",texts.indexOf("Version "+BuildConfig.VERSION_NAME)>updates)
+        assertTrue("vibrate toggle present",texts.contains("Vibrate on press"))
+        c.pause()
+    }
     @Test fun falseOwnIsNotInferredFromActorString() {
         val event=ChatEvent.from(JSONObject("""{"actor":"owner","own":false}"""))
         assertFalse(event.own)

@@ -71,6 +71,7 @@ fun button(context: Context, label: CharSequence, primary: Boolean = true, onCli
         isAllCaps = false
         setTextColor(if (primary) Color.parseColor("#1a1206") else C.text)
         background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(10).toFloat())
+        pressIn()
         setOnClickListener { onClick() }
     }
 
@@ -94,6 +95,43 @@ fun spacer(context: Context, hDp: Int): View = View(context).apply {
 fun divider(context: Context): View = View(context).apply {
     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
     setBackgroundColor(C.surfaceAlt)
+}
+
+// 1.7: shared
+// press feedback, matching the BingeMote spec - taps buzz (gated by the saved
+// "Vibrate on press" setting), and pressed views sink to 0.94 and dim ~15%,
+// 90 ms down / 120 ms up.
+object Haptics {
+    private const val PREFS = "homeroom_ui"
+    private const val KEY_VIBRATE = "vibrate_on_press"
+    fun on(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_VIBRATE, true)
+    fun set(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_VIBRATE, value).apply()
+    }
+}
+
+fun tapHaptic(view: View) {
+    if (Haptics.on(view.context)) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+}
+
+/**
+ * Press-in feedback: the view sinks to 0.94 and dims ~15% while held, easing
+ * back on release or cancel. The haptic fires on the down, like BingeMote's
+ * PressTile. Returns false from the touch listener so clicks still land.
+ */
+fun View.pressIn() {
+    setOnTouchListener { v, ev ->
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                tapHaptic(v)
+                v.animate().scaleX(0.94f).scaleY(0.94f).alpha(0.85f).setDuration(90).start()
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(120).start()
+        }
+        false
+    }
 }
 
 fun snack(host: View, msg: CharSequence) {
