@@ -63,7 +63,7 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
         val c=sectionCard(context,"Confirm this exact answer")
         c.addView(text(context,card.title,16f,C.text,true))
         c.addView(text(context,card.proposal,15f,C.text).apply {setTextIsSelectable(true)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
-        c.addView(text(context,"Your answer: "+choice.label,16f,C.accent,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        c.addView(text(context,"Your answer: "+choice.label,16f,C.accentText,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         body.addCard(c)
         body.addCard(sectionCard(context).apply {addView(text(context,"This records your answer in HomeRoom only. It does not execute an outside action. Confirm only if the proposal contains the full action, cost and audience you intend.",13.5f,C.text))})
         body.addStacked(button(context,"Confirm answer",true) {confirm()})

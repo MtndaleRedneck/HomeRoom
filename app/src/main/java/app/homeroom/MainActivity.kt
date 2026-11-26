@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
         // light appearance is qualified on real device pixels (dark-tuned palette
         // values would be exposed by a light mode as-is).
         Theme.applyTo(this)
+        AccentStore.init(this)
         use24Hour = android.text.format.DateFormat.is24HourFormat(this)
         super.onCreate(savedInstanceState)
         session = Session(this)
@@ -126,7 +127,9 @@ class MainActivity : AppCompatActivity() {
             captureSuspended || appLock.coverShowing ||
                 (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
         }
-        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
+        // 1.9: the floating bar drops to
+        // 54dp tall and sits 16dp above the system bar (was 64dp at 28dp).
+        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), dp(54), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) })
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
@@ -395,6 +398,15 @@ class MainActivity : AppCompatActivity() {
     // request a fresh capture.
     fun invalidateNavBackdrop() { if (::nav.isInitialized) nav.invalidateBackdrop() }
     fun refreshNavBackdrop() { if (::nav.isInitialized) nav.backdropChanged() }
+
+    /** 1.9: the accent pick changed in Settings - recolor the bar and let the
+     *  visible screens repaint anything that baked the old accent in. */
+    fun onAccentChanged() {
+        if (::nav.isInitialized) nav.refreshColors()
+        tabScreens.values.forEach { it.onAccentChanged() }
+        currentPage?.onAccentChanged()
+        roomScreen?.onAccentChanged()
+    }
     private val pageStack = java.util.ArrayDeque<PageState>()
     private var currentPage: Screen? = null
     // Retained transient dialog slot: screens register activity-level dialogs
@@ -794,6 +806,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openMutedRooms() { openPage("Muted rooms", MutedRoomsScreen(this)) }
+    /** 1.9: the rooms-list rules strip taps through to the Rules tab. */
+    fun openRulesTab() {
+        showTab(R.id.nav_rules)
+        if (nav.selectedItemId != R.id.nav_rules) nav.selectedItemId = R.id.nav_rules
+    }
 
     // RECONSTRUCTED: Android 13+ notification permission prompt.
     private val notificationPermissionLauncher =

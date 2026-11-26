@@ -41,15 +41,18 @@ class RulesScreen(context:Context):Screen(context) {
         }
     }
     override fun poll() { load() }
+    override fun onAccentChanged() { buildChips();if(scope.versions.isNotEmpty()) render() }
     fun selectPendingScope(roomId:String?) { selected=roomId;buildChips();load() }
     private fun buildChips() {
         chips.removeAllViews();chips.setPadding(dp(16),0,dp(16),dp(8))
         val scopes=listOf(null to "Global")+rooms.map { it.id to it.name }
         for((id,name) in scopes) {
             val label=name+(if((id==null && scope.pendingCount>0 && selected==null) || rooms.firstOrNull { it.id==id }?.pendingRulesCount?.let { it>0 }==true) " •" else "")
-            val chip=text(context,label,14f,if(id==selected) android.graphics.Color.WHITE else C.text,true).apply {
+            // 1.9: selected scope chip is an accent
+            // pill with dark ink; ink passes WCAG via onAccent.
+            val chip=text(context,label,14f,if(id==selected) C.onAccent else C.text,true).apply {
                 if(label.endsWith(" •")) contentDescription=name+", a rule is waiting for your yes"
-                gravity=Gravity.CENTER;background=rounded(if(id==selected) C.accent else C.surfaceAlt,dp(17).toFloat());setPadding(dp(14),0,dp(14),0)
+                gravity=Gravity.CENTER;background=if(id==selected) accentFill(context,17f) else rounded(C.surfaceAlt,dp(17).toFloat());setPadding(dp(14),0,dp(14),0)
                 setOnClickListener { if(!loading) { selected=id;buildChips();load() } }
             }
             chips.addView(chip,LinearLayout.LayoutParams(-2,dp(34)).apply { rightMargin=dp(8) })
@@ -76,16 +79,23 @@ class RulesScreen(context:Context):Screen(context) {
         cards.removeAllViews()
         if(scope.pending.isNotEmpty()) section("Needs your yes · ${scope.pending.size}")
         for(rule in scope.pending) {
-            val cell=card()
+            // 1.9: proposal cards carry a 4dp accent edge on the left.
+            val cellWrap=LinearLayout(context).apply { background=rounded(C.surface,dp(20).toFloat()) }
+            val edge=View(context).apply { background=android.graphics.drawable.GradientDrawable().apply { cornerRadii=floatArrayOf(dp(20).toFloat(),dp(20).toFloat(),0f,0f,0f,0f,dp(20).toFloat(),dp(20).toFloat());setColor(C.accent) } }
+            cellWrap.addView(edge,LinearLayout.LayoutParams(dp(4),-1).apply { topMargin=dp(14);bottomMargin=dp(14);leftMargin=dp(2) })
+            val cell=column(context)
+            cellWrap.addView(cell,LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(12) })
+            cell.setPadding(dp(0),dp(16),dp(16),dp(16))
+            cards.addView(cellWrap,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
             val header=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
             header.addView(text(context,"Proposed by "+actorName(rule.proposedBy)+" · v${rule.version}",13.5f,personColor(rule.proposedBy),true),LinearLayout.LayoutParams(0,-2,1f))
             header.addView(iconButton(context,R.drawable.ic_history,C.muted,"Version history") { history(rule) },LinearLayout.LayoutParams(dp(48),dp(48)))
             cell.addView(header)
-            scope.active.firstOrNull { it.ruleId==rule.ruleId }?.let { old -> cell.addView(text(context,"Now: "+old.text,14f,C.muted),LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }) }
+            scope.active.firstOrNull { it.ruleId==rule.ruleId }?.let { old -> cell.addView(text(context,"Now: "+old.text,14f,C.muted).apply { paintFlags=paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }) }
             cell.addView(text(context,rule.text,15.5f,C.text))
             val actions=LinearLayout(context).apply { gravity=Gravity.END }
             for((label,decision) in listOf("Reject" to "reject","Approve" to "approve")) {
-                val action=button(context,label,decision=="approve") { decide(rule,decision) }.apply { isEnabled=rule.ruleId !in inFlight;textSize=14f;minimumHeight=0;minHeight=0;setPadding(dp(16),0,dp(16),0);background=rounded(if(decision=="approve") C.accent else C.surface,dp(18).toFloat(),if(decision=="approve") null else 0xff3a4856.toInt()) }
+                val action=button(context,label,decision=="approve") { decide(rule,decision) }.apply { isEnabled=rule.ruleId !in inFlight;textSize=14f;minimumHeight=0;minHeight=0;setPadding(dp(16),0,dp(16),0);background=if(decision=="approve") accentFill(context,18f) else rounded(C.surface,dp(18).toFloat(),C.divider) }
                 actions.addView(action,LinearLayout.LayoutParams(-2,dp(48)).apply { leftMargin=dp(8) })
             }
             cell.addView(actions,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
@@ -98,6 +108,9 @@ class RulesScreen(context:Context):Screen(context) {
         val people=linkedSetOf<String>();host.session.ownerId?.let { people.add(it) };rooms.flatMap { it.members }.forEach { people.add(it.first) }
         for(actor in people) {
             val row=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
+            // 1.9: re-read status dot (filled accent when recorded, hollow otherwise).
+            val dot=View(context).apply { background=android.graphics.drawable.GradientDrawable().apply { shape=android.graphics.drawable.GradientDrawable.OVAL;if(scope.rereads[actor]!=null) setColor(C.accent) else { setColor(android.graphics.Color.TRANSPARENT);setStroke(dp(1),C.muted) } } }
+            row.addView(dot,LinearLayout.LayoutParams(dp(8),dp(8)).apply { rightMargin=dp(10) })
             row.addView(text(context,actorName(actor),15f,C.text),LinearLayout.LayoutParams(0,dp(40),1f))
             row.addView(text(context,scope.rereads[actor]?.let { formatRoomTime(it) } ?: "No re-read recorded",13f,if(scope.rereads[actor]==null) C.disabled else C.muted))
             reread.addView(row)

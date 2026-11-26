@@ -72,7 +72,7 @@ class AisScreen(context:Context):Screen(context) {
             contentDescription="Change picture for "+a.displayName;setOnClickListener {pictureDialog(a)}}
         head.addView(pic,LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
         head.addView(text(context,a.displayName,17f,C.text,true),LinearLayout.LayoutParams(0,-2,1f))
-        head.addView(text(context,"Rename",13f,C.accent,true).apply {setPadding(dp(8),dp(8),dp(0),dp(8));setOnClickListener {renameDialog(a)}})
+        head.addView(text(context,"Rename",13f,C.accentText,true).apply {setPadding(dp(8),dp(8),dp(0),dp(8));setOnClickListener {renameDialog(a)}})
         c.addView(head)
         c.addView(text(context,statusText(a),13.5f,when(a.keyStatus) {"active" -> C.green;"pending" -> C.amber;else -> C.muted}),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
         if(a.keyStatus=="active") {

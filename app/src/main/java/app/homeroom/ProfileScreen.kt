@@ -34,7 +34,7 @@ class ProfileScreen(context:Context):Screen(context) {
         val pic=Avatars.view(context,screenScope,host.api,shownName.ifBlank {"You"},C.owner,96,OwnerProfileState.avatar).apply {
             contentDescription="Change your picture";setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}}
         card.addView(pic,LinearLayout.LayoutParams(dp(96),dp(96)).apply {gravity=Gravity.CENTER_HORIZONTAL})
-        card.addView(text(context,"Change picture",14f,C.accent,true).apply {gravity=Gravity.CENTER;setPadding(0,dp(12),0,dp(4));setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}},LinearLayout.LayoutParams(-1,-2))
+        card.addView(text(context,"Change picture",14f,C.accentText,true).apply {gravity=Gravity.CENTER;setPadding(0,dp(12),0,dp(4));setOnClickListener {host.pickImage {uri -> if(uri!=null) setPicture(uri)}}},LinearLayout.LayoutParams(-1,-2))
         if(OwnerProfileState.avatar!=null) card.addView(text(context,"Remove picture",13.5f,C.danger,true).apply {gravity=Gravity.CENTER;setPadding(0,dp(8),0,dp(4));setOnClickListener {setPicture(null)}},LinearLayout.LayoutParams(-1,-2))
         card.addView(text(context,"Name",13f,C.muted,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(16)})
         val name=input(context,"Your name").apply {
