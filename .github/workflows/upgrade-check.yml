@@ -3,27 +3,24 @@ on:
   push:
     branches: [ci/upgrade-check-1.5]
 jobs:
-  upgrade-v14-to-v15:
-    # Finite upgrade evidence: published v1.4 APK -> adb install -r the
-    # signed 1.5 release candidate from ci-inputs/ -> launch. Proves the
-    # upgrade path (signature continuity, package identity and app data
-    # retained across the update), which the fresh-install signed lane
-    # does not cover.
+  upgrade-installed15-to-16:
+    # Finite upgrade evidence: the ACTUAL installed 1.5 baseline (private12
+    # TestLab APK, versionCode 10, signer 0063cd16...) -> adb install -r the
+    # signed 1.6 release candidate (versionCode 11) -> launch. Proves the
+    # real upgrade path: signature continuity, package identity and app data
+    # retained across the update.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download the published v1.4 APK
-        run: curl -fL -o v1.4.apk https://github.com/MtndaleRedneck/HomeRoom/releases/download/v1.4/HomeRoom.apk
-
       - name: Verify both APKs carry the mandatory signer cert
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BT/apksigner" verify --print-certs v1.4.apk | tee v14-certs.txt
-          "$BT/apksigner" verify --print-certs ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee v15-certs.txt
-          grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' v14-certs.txt
-          grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' v15-certs.txt
-          sha256sum v1.4.apk ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee apk-sha256.txt
+          "$BT/apksigner" verify --print-certs ci-inputs/baseline-1.5-private12.apk | tee v15-baseline-certs.txt
+          "$BT/apksigner" verify --print-certs ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee v16-certs.txt
+          grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' v15-baseline-certs.txt
+          grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' v16-certs.txt
+          sha256sum ci-inputs/baseline-1.5-private12.apk ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee apk-sha256.txt
 
       - name: Enable KVM (best effort)
         run: |
@@ -43,7 +40,7 @@ jobs:
           script: |
             while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
             adb shell settings put global verifier_verify_adb_installs 0
-            adb install v1.4.apk
+            adb install ci-inputs/baseline-1.5-private12.apk
             adb shell monkey -p app.homeroom -c android.intent.category.LAUNCHER 1
             sleep 20
             adb shell pidof app.homeroom
@@ -61,8 +58,8 @@ jobs:
             grep firstInstallTime before-upgrade.txt > fb.txt
             grep firstInstallTime after-upgrade.txt > fa.txt
             cmp fb.txt fa.txt || { echo 'FAIL: firstInstallTime changed across upgrade - package identity/data NOT retained'; paste fb.txt fa.txt; exit 1; }
-            grep -q 'versionCode=8' before-upgrade.txt || { echo 'FAIL: v1.4 baseline versionCode not 8'; cat before-upgrade.txt; exit 1; }
-            grep -q 'versionCode=10' after-upgrade.txt || { echo 'FAIL: post-upgrade versionCode not 10'; cat after-upgrade.txt; exit 1; }
+            grep -q 'versionCode=10' before-upgrade.txt || { echo 'FAIL: installed-1.5 baseline versionCode not 10'; cat before-upgrade.txt; exit 1; }
+            grep -q 'versionCode=11' after-upgrade.txt || { echo 'FAIL: post-upgrade versionCode not 11'; cat after-upgrade.txt; exit 1; }
             adb shell monkey -p app.homeroom -c android.intent.category.LAUNCHER 1
             sleep 30
             adb shell input keyevent KEYCODE_WAKEUP
@@ -77,7 +74,7 @@ jobs:
             adb shell 'ls -la /data/data/app.homeroom/files/ /data/data/app.homeroom/shared_prefs/ 2>/dev/null' | tee files-after.txt
             adb shell screencap -p /data/local/tmp/post-upgrade.png
             adb pull /data/local/tmp/post-upgrade.png post-upgrade.png
-            echo 'ok: v1.4 -> signed 1.5 in-place upgrade keeps firstInstallTime, versionCode 8 -> 10, app launches post-upgrade, no fatal exception'
+            echo 'ok: installed-1.5 (private12) -> signed 1.6 in-place upgrade keeps firstInstallTime, versionCode 10 -> 11, app launches post-upgrade, no fatal exception'
       - name: Upload upgrade evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,8 +83,8 @@ jobs:
           path: |
             before-upgrade.txt
             after-upgrade.txt
-            v14-certs.txt
-            v15-certs.txt
+            v15-baseline-certs.txt
+            v16-certs.txt
             apk-sha256.txt
             marker-seeded.txt
             marker-after.txt
