@@ -152,6 +152,11 @@ class V3RenderTest {
         sv.scrollTo(0,sv.getChildAt(0).height)
         frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
         sv.scrollTo(0,sv.getChildAt(0).height)
+        // The glass recaptures its backdrop on the next animation frame after the scroll. Run
+        // that frame before drawing, or the preview shows the PRE-scroll backdrop (the stale
+        // Privacy row under the nav seen in the earlier bottom previews).
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(200))
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
         val col=sv.getChildAt(0) as ViewGroup
         val last=col.getChildAt(col.childCount-1)
         val lastLoc=IntArray(2);last.getLocationInWindow(lastLoc)
