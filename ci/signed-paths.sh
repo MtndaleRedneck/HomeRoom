@@ -130,9 +130,10 @@ finish() { # $1=exit code; always clear the emulator PIN, record crash buffer, s
   if grep -q "Process: $PKG" "$EV/crash-signed-paths.txt" 2>/dev/null; then s6 "CRASH of $PKG recorded in crash-signed-paths.txt"; HFAILS="$HFAILS crash"; fi
   adb shell locksettings clear --old 1234 >/dev/null 2>&1 || true
   if [ -s "$EV/control-failed" ]; then s6 "CONTROL FAILED ($(cat "$EV/control-failed")): clean negatives in 6a/6c are VACUOUS, not a pass"; fi
-  s6 "SUMMARY exit=$1 harness_failures=[${HFAILS# }]; Connected share/update success: NOT exercised (seed.invalid)."
+  local rc=$1; if [ "$rc" = 0 ] && [ -n "${HFAILS# }" ]; then rc=1; fi  # crash/harness failures recorded above must not leave a green exit
+  s6 "SUMMARY exit=$rc harness_failures=[${HFAILS# }]; Connected share/update success: NOT exercised (seed.invalid)."
   log "DONE: signed-paths checks finished (see signed-paths.log)"
-  exit "$1"
+  exit "$rc"
 }
 run_sec() { # name fn
   local n=$1 rc; shift
