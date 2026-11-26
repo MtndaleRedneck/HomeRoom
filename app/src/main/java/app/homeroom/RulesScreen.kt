@@ -91,7 +91,7 @@ class RulesScreen(context:Context):Screen(context) {
             header.addView(text(context,"Proposed by "+actorName(rule.proposedBy)+" · v${rule.version}",13.5f,personColor(rule.proposedBy),true),LinearLayout.LayoutParams(0,-2,1f))
             header.addView(iconButton(context,R.drawable.ic_history,C.muted,"Version history") { history(rule) },LinearLayout.LayoutParams(dp(48),dp(48)))
             cell.addView(header)
-            scope.active.firstOrNull { it.ruleId==rule.ruleId }?.let { old -> cell.addView(text(context,"Now: "+old.text,14f,C.muted).apply { paintFlags=paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG },LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }) }
+            scope.active.firstOrNull { it.ruleId==rule.ruleId }?.let { old -> cell.addView(text(context,"Now: "+old.text,14f,C.muted),LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }) }
             cell.addView(text(context,rule.text,15.5f,C.text))
             val actions=LinearLayout(context).apply { gravity=Gravity.END }
             for((label,decision) in listOf("Reject" to "reject","Approve" to "approve")) {

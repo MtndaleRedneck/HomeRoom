@@ -746,8 +746,11 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 bubble.addView(text(context, event.actorName, 12f, personColor(event.actorId), true))
             }
             row.replyPreview?.let {
-                val quote = text(context, it, 12f, metaInk)
-                quote.background=android.graphics.drawable.LayerDrawable(arrayOf(rounded(C.bg,context.dp(8).toFloat()),rounded(if(row.own) C.onAccent else C.accent,context.dp(2).toFloat()))).apply {setLayerInset(1,0,context.dp(3),context.dp(300),context.dp(3));setLayerWidth(1,context.dp(3))}
+                // fp66: inside an OWN bubble the quote keeps the dark C.bg well,
+                // so it takes a light ink and the true accent bar (the dark
+                // onAccent ink/bar on C.bg read as dark-on-dark).
+                val quote = text(context, it, 12f, if (row.own) C.text else metaInk)
+                quote.background=android.graphics.drawable.LayerDrawable(arrayOf(rounded(C.bg,context.dp(8).toFloat()),rounded(C.accent,context.dp(2).toFloat()))).apply {setLayerInset(1,0,context.dp(3),context.dp(300),context.dp(3));setLayerWidth(1,context.dp(3))}
                 quote.setPadding(context.dp(12), context.dp(4), context.dp(8), context.dp(4))
                 bubble.addView(quote, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)) // release: explicit (-2,-2), K0/N3:777
                 bubble.addView(spacer(context, 4))

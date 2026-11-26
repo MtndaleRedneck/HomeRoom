@@ -682,7 +682,8 @@ class MainActivity : AppCompatActivity() {
         headerMeta.removeAllViews()
         if (room == null) { headerMeta.visibility = View.GONE; return }
         headerMeta.visibility = View.VISIBLE
-        for (member in room.members.take(5)) {
+        headerMeta.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
+        for (member in room.members.take(6)) {
             headerMeta.addView(View(this).apply {
                 background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
             }, LinearLayout.LayoutParams(dp(7), dp(7)).apply { rightMargin = dp(3) })
@@ -838,12 +839,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openMutedRooms() { openPage("Muted rooms", MutedRoomsScreen(this)) }
-    /** 1.9: the rooms-list rules strip taps through to the Rules tab. */
-    fun openRulesTab() {
-        showTab(R.id.nav_rules)
-        if (nav.selectedItemId != R.id.nav_rules) nav.selectedItemId = R.id.nav_rules
-    }
-
     // RECONSTRUCTED: Android 13+ notification permission prompt.
     private val notificationPermissionLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}

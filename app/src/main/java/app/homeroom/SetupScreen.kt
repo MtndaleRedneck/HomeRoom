@@ -70,14 +70,16 @@ class SetupScreen(context: Context) : Screen(context) {
                 if(check.state!="Passed" && i==firstOpen) background=rounded(androidx.core.graphics.ColorUtils.blendARGB(C.accent,C.surfaceAlt,0.5f),dp(2).toFloat())
             },android.widget.LinearLayout.LayoutParams(0,-1,1f).apply {rightMargin=dp(4)})
             val row=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(10),0,dp(2))}
-            // Status dot: green check when passed, clock while waiting, dash otherwise.
-            val glyph=if(check.state=="Passed") "✓" else if(i==firstOpen) "…" else "–"
-            val dotBg=if(check.state=="Passed") C.green else C.surfaceAlt
-            row.addView(text(context,glyph,13f,if(check.state=="Passed") android.graphics.Color.parseColor("#1B1B1E") else C.muted,true).apply {gravity=Gravity.CENTER;background=rounded(dotBg,dp(12).toFloat())},android.widget.LinearLayout.LayoutParams(dp(24),dp(24)).apply {rightMargin=dp(12)})
+            // Status dot: green check when passed, danger "!" for the failed
+            // states (Needs attention / Not confirmed), "…" in flight, dash else.
+            val failed=check.state=="Needs attention"||check.state=="Not confirmed"
+            val glyph=if(check.state=="Passed") "✓" else if(failed) "!" else if(i==firstOpen) "…" else "–"
+            val dotBg=if(check.state=="Passed") C.green else if(failed) C.danger else C.surfaceAlt
+            row.addView(text(context,glyph,13f,if(check.state=="Passed"||failed) android.graphics.Color.parseColor("#1B1B1E") else C.muted,true).apply {gravity=Gravity.CENTER;background=rounded(dotBg,dp(12).toFloat())},android.widget.LinearLayout.LayoutParams(dp(24),dp(24)).apply {rightMargin=dp(12)})
             val copy=column(context)
             copy.addView(text(context,labels[i],15.5f,if(check.state=="Passed") C.text else C.muted,true))
             val stateLine=check.state+(if(check.detail.isNotEmpty()) " · "+check.detail else "")
-            copy.addView(text(context,stateLine,13f,C.muted).apply {setPadding(0,dp(1),0,0)})
+            copy.addView(text(context,stateLine,13f,if(failed) C.danger else C.muted).apply {setPadding(0,dp(1),0,0)})
             if(check.next.isNotEmpty())copy.addView(text(context,check.next,14f,C.text))
             row.addView(copy,android.widget.LinearLayout.LayoutParams(0,-2,1f))
             rows.addView(row,android.widget.LinearLayout.LayoutParams(-1,-2))

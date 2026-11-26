@@ -18,21 +18,13 @@ class RoomsScreen(context: Context) : Screen(context) {
     // both for rendering (relative ages against the server clock, the
     // pending-rules state). Wired from the roster fetch; settable in tests.
     private var serverTime: String? = null
-    private var globalPending: Int = 0
     private val adapter = Adapter()
     private val refresh: SwipeRefreshLayout
     private val empty = text(context, "No rooms yet.", 15f, C.muted)
-    // 1.9 (owner-approved redesign): a strip above the list when rules wait on
-    // the owner's yes; taps through to the Rules tab (existing destination).
-    private val rulesStrip = LinearLayout(context)
     private var loading = false
 
     init {
         val root = column(context)
-        rulesStrip.orientation = LinearLayout.HORIZONTAL
-        rulesStrip.gravity = Gravity.CENTER_VERTICAL
-        rulesStrip.visibility = View.GONE
-        root.addView(rulesStrip, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         refresh = SwipeRefreshLayout(context).apply {
             setColorSchemeColors(C.accent)
             setProgressBackgroundColorSchemeColor(C.surface)
@@ -62,7 +54,6 @@ class RoomsScreen(context: Context) : Screen(context) {
 
     override fun onAccentChanged() {
         refresh.setColorSchemeColors(C.accent)
-        renderRulesStrip()
         adapter.notifyDataSetChanged()
     }
 
@@ -75,12 +66,10 @@ class RoomsScreen(context: Context) : Screen(context) {
                 val roster = RoomRoster.from(host.api.roomsEnvelope())
                 val rooms = roster.rooms
                 serverTime = roster.serverTime
-                globalPending = roster.globalPendingRulesCount
                 host.cacheRooms(rooms)
                 rows.clear()
                 rows.addAll(rooms)
-                renderRulesStrip()
-                adapter.notifyDataSetChanged()
+                        adapter.notifyDataSetChanged()
                 empty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
             } catch (e: SessionEndedException) {
                 host.onSessionEnded(e)
@@ -96,27 +85,6 @@ class RoomsScreen(context: Context) : Screen(context) {
         }
     }
 
-    private fun renderRulesStrip() {
-        rulesStrip.removeAllViews()
-        if (globalPending <= 0) { rulesStrip.visibility = View.GONE; return }
-        rulesStrip.visibility = View.VISIBLE
-        val card = LinearLayout(context).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            background = rounded(C.surface, dp(14).toFloat())
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            pressIn()
-            setOnClickListener { host.openRulesTab() }
-        }
-        card.addView(View(context).apply {
-            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(C.accent) }
-        }, LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(10) })
-        val label = if (globalPending == 1) "1 rule needs your yes" else "$globalPending rules need your yes"
-        card.addView(text(context, label, 14f, C.text, true), LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        card.addView(text(context, "Review", 13f, C.accentText, true))
-        rulesStrip.addView(card, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            val m = dp(16); setMargins(m, dp(8), m, dp(4))
-        })
-    }
 
     private inner class Adapter : RecyclerView.Adapter<Holder>() {
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): Holder {
@@ -158,6 +126,8 @@ class RoomsScreen(context: Context) : Screen(context) {
             }
             // Member dots + waiting / rule-to-review markers (existing roster data).
             val metaRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+            // fp66: dots alone carried no names for screen readers.
+            metaRow.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
             for (member in room.members.take(6)) {
                 metaRow.addView(View(context).apply {
                     background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
@@ -176,6 +146,8 @@ class RoomsScreen(context: Context) : Screen(context) {
                     gravity = Gravity.CENTER
                     background = rounded(C.accent, dp(12).toFloat())
                     minWidth = dp(24); minHeight = dp(24)
+                    // fp66: the bare number carried meaning by color/position alone.
+                    contentDescription = room.unreadCount.toString() + " unread"
                 }
                 cell.addView(unread, LinearLayout.LayoutParams(-2, dp(24)).apply { leftMargin = dp(10) })
             }

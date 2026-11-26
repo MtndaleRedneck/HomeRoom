@@ -46,7 +46,9 @@ object C {
     /** The accent adjusted for TEXT/icon roles on dark surfaces: the raw swatch
      *  when it clears 4.5:1, else a lightened shade that does (burnt orange and
      *  terracotta need it on cards). Fills keep the true swatch via C.accent. */
-    val accentText get() = AccentStore.accentOn(surface)
+    // fp66: computed against the LIGHTER surface (surfaceAlt) so the one value
+    // clears WCAG 4.5:1 on both cards and raised surfaces for all nine swatches.
+    val accentText get() = AccentStore.accentOn(surfaceAlt)
     val teal get() = themed("#35c2c9", "#087b81")
     val violet get() = themed("#a08cff", "#6f48b1")
     val info get() = themed("#2aabee", "#09679d")
