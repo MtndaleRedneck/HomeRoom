@@ -35,12 +35,12 @@ class SettingsScreen(context:Context):Screen(context) {
     }
     private fun row(card:LinearLayout,glyph:String,color:Int,title:String,subtitle:String,trailing:String?=null,click:(()->Unit)?=null) {
         if(card.childCount>0)card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())},LinearLayout.LayoutParams(-1,1).apply {leftMargin=dp(64)})
-        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),0,dp(12),0);click?.let {action->setOnClickListener {action()}}}
+        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(64);setPadding(dp(16),dp(8),dp(12),dp(8));click?.let {action->pressIn();setOnClickListener {action()}}}
         line.addView(text(context,glyph,18f,android.graphics.Color.WHITE,true).apply {gravity=Gravity.CENTER;background=rounded(color,dp(10).toFloat())},LinearLayout.LayoutParams(dp(32),dp(32)).apply {rightMargin=dp(14)})
-        val copy=column(context);copy.addView(text(context,title,16f,C.text,true));copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
+        val copy=column(context);copy.addView(text(context,title,16f,C.text,true));if(subtitle.isNotEmpty()) copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
         trailing?.let {label ->line.addView(text(context,label,13f,if(label=="Remove") C.danger else C.accent,true).apply {gravity=Gravity.CENTER;setPadding(dp(12),0,dp(12),0);background=rounded(C.surfaceAlt,dp(16).toFloat());click?.let {action->setOnClickListener {action()}}},LinearLayout.LayoutParams(-2,dp(32)))}
-        card.addView(line,LinearLayout.LayoutParams(-1,dp(64)))
+        card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     private fun rebuild() {
         col.removeAllViews()
@@ -72,6 +72,10 @@ class SettingsScreen(context:Context):Screen(context) {
         // entry was missing from Settings).
         val privacy=group("Privacy")
         row(privacy,"▣",C.violet,"App lock and privacy","Fingerprint or PIN, lock screen and recent apps","›") {host.openPage("App lock and privacy",PrivacyScreen(context))}
+        // 1.7: shared Feel section (BingeMote wording "Vibrate on press");
+        // gates every press haptic in the app.
+        val feel=group("Feel")
+        toggleRow(feel,"~",C.violet,"Vibrate on press","A small buzz when buttons and tabs are tapped",Haptics.on(context)) {on->Haptics.set(context,on)}
         val app=group("App")
         // private12 parity, settings rows verified against the release's own
         // targets (K0/Y4 handlers): "Activity" -> D1(true), "Needs you" ->
@@ -89,16 +93,22 @@ class SettingsScreen(context:Context):Screen(context) {
         row(app,"=",C.violet,"Unsent attachments","Staged uploads you can resume or remove","›") {host.openPage("Unsent attachments",StagedUploadsScreen(context))}
         // Release rows "Add room" and "Archived rooms" have no reconstructed
         // flow and are intentionally not offered (tracked gaps, not wired).
-        // RECONSTRUCTED Nov 23, 2026: row recovered from the exact private12 release build.
-        row(app,"›",C.accent,"Feedback & bugs","Report a problem or suggest something","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
-        // Locked Updates card, restored to the exact private12 arrangement
-        // (d5.java): rounded surface card with a bold "Updates" header, a
-        // state-machine button (#1475B3, rounded 12dp, disabled at 60% alpha
-        // while busy), an optional centered status line with the original
-        // strings, a "What's new" section when an update carries notes, and
-        // the version line, at the bottom above Sign out. private12 has no
-        // 20-second up-to-date revert timer anywhere in the decompile; the
-        // status stays until the next check or rebuild.
+        // 1.7 (Ezzy, Nov 25: bring the Settings list in line with his other
+        // apps): the shared bottom arrangement is Sign out, then a Feedback &
+        // bugs card, then the Updates card ALWAYS last (his locked rule; the
+        // old order had Sign out below Updates, a known exception he asked to
+        // fix on a later update).
+        val signout=text(context,"Sign out",16f,C.danger,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(20).toFloat());pressIn();setOnClickListener {confirmSignOut()}}
+        col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(20)})
+        val feedback=group("Feedback & bugs")
+        row(feedback,"›",C.accent,"Send feedback, report a bug, or suggest a feature","","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
+        // Locked Updates card (shared cross-app design): rounded surface card
+        // with a bold "Updates" header, a state-machine button (#1475B3,
+        // rounded 12dp, disabled at 60% alpha while busy), an optional centered
+        // status line (NOT used for up-to-date), a "What's new" section when an
+        // update carries notes, and a bottom row with the version at the left
+        // and "You're up to date." at the right, reverting after 5 seconds.
+        // Always the LAST card in Settings.
         val update=UpdateCheck.hasUpdate()
         val updatesCard=column(context).apply {
             background=rounded(C.surface,dp(20).toFloat())
@@ -117,6 +127,7 @@ class SettingsScreen(context:Context):Screen(context) {
             background=rounded(android.graphics.Color.parseColor("#1475B3"),dp(12).toFloat())
             isEnabled=!busy
             alpha=if(isEnabled) 1.0f else 0.6f
+            pressIn()
             setOnClickListener {
                 if(update && UpdateCheck.openLatest(host,host.scope)) return@setOnClickListener
                 UpdateCheck.checkManually(host,host.scope,host.session) {_->rebuild()}
@@ -125,12 +136,14 @@ class SettingsScreen(context:Context):Screen(context) {
         updatesCard.addView(checkBtn,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(12)})
         val status=when {
             update -> "Version ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""} is available."
-            UpdateCheck.state==UpdateCheck.State.UP_TO_DATE -> "You're up to date."
             UpdateCheck.state==UpdateCheck.State.CHECK_FAILED -> "Couldn't check. Try again."
             UpdateCheck.state==UpdateCheck.State.DOWNLOAD_FAILED -> "The download didn't finish. Try again."
             UpdateCheck.state==UpdateCheck.State.NEEDS_PERMISSION -> "Allow installs from HomeRoom in Android's screen, then tap Install again."
             else -> ""
         }
+        // "You're up to date." is NOT a status line here: per the locked shared
+        // design it sits on the version row, level with the version, and
+        // reverts after 5 seconds.
         if(status.isNotEmpty()) {
             updatesCard.addView(text(context,status,13.5f,C.muted).apply {gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         }
@@ -139,12 +152,54 @@ class SettingsScreen(context:Context):Screen(context) {
             updatesCard.addView(text(context,"What's new in ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""}",14f,C.text,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
             updatesCard.addView(text(context,notes,13.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
         }
-        updatesCard.addView(text(context,"Version "+BuildConfig.VERSION_NAME,13.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+        val versionRow=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL}
+        versionRow.addView(text(context,"Version "+BuildConfig.VERSION_NAME,13.5f,C.muted),LinearLayout.LayoutParams(0,-2,1f))
+        if(UpdateCheck.state==UpdateCheck.State.UP_TO_DATE) {
+            versionRow.addView(text(context,"You're up to date.",13.5f,C.muted))
+            // The 5-second rule, made visible: UpdateCheck flips back to IDLE
+            // on its own timer (which only refreshes the nav dot), so repaint
+            // just after to actually drop the line while the screen stays open.
+            // Bounded re-checks cover the timer landing a beat late; a fresh
+            // check rebuilds through its own callback and ends the loop.
+            var checks=0
+            val revertCheck=object:Runnable { override fun run() {
+                if(!isAttachedToWindow) return
+                if(UpdateCheck.state!=UpdateCheck.State.UP_TO_DATE) {rebuild();return}
+                if(checks++<6) postDelayed(this,250)
+            } }
+            postDelayed({ if(isAttachedToWindow) revertCheck.run() },5100)
+        }
+        updatesCard.addView(versionRow,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         col.addView(updatesCard,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(20)})
-        val signout=text(context,"Sign out",16f,C.danger,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(20).toFloat());setOnClickListener {confirmSignOut()}}
-        col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(24)})
         // NOTE: an earlier reconstruction called a backdrop refresh here; no
         // backdrop exists in the exact release build evidence, so it was removed.
+    }
+    private fun toggleRow(card:LinearLayout,glyph:String,color:Int,title:String,subtitle:String,on:Boolean,onToggle:(Boolean)->Unit) {
+        if(card.childCount>0)card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())},LinearLayout.LayoutParams(-1,1).apply {leftMargin=dp(64)})
+        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(64);setPadding(dp(16),dp(8),dp(12),dp(8))}
+        line.addView(text(context,glyph,18f,android.graphics.Color.WHITE,true).apply {gravity=Gravity.CENTER;background=rounded(color,dp(10).toFloat())},LinearLayout.LayoutParams(dp(32),dp(32)).apply {rightMargin=dp(14)})
+        val copy=column(context);copy.addView(text(context,title,16f,C.text,true));copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
+        line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
+        val trackOn=0x59fc8613.toInt()
+        val sw=android.widget.Switch(context).apply {
+            isChecked=on
+            thumbTintList=android.content.res.ColorStateList.valueOf(if(on) C.accent else C.disabled)
+            trackTintList=android.content.res.ColorStateList.valueOf(if(on) trackOn else C.surfaceAlt)
+            setOnCheckedChangeListener {_,checked->
+                thumbTintList=android.content.res.ColorStateList.valueOf(if(checked) C.accent else C.disabled)
+                trackTintList=android.content.res.ColorStateList.valueOf(if(checked) trackOn else C.surfaceAlt)
+                onToggle(checked)
+                // After persisting: turning ON buzzes, turning OFF stays silent.
+                tapHaptic(this)
+            }
+        }
+        line.addView(sw,LinearLayout.LayoutParams(-2,-2))
+        line.setOnClickListener {sw.toggle()}
+        // Press-in WITHOUT the down-haptic: the switch's own change callback
+        // buzzes, so every activation (row tap or direct switch tap) buzzes
+        // exactly once.
+        line.pressIn(haptic=false)
+        card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     private fun confirmRemove(device:OwnerDevice) {
         AlertDialog.Builder(context).setTitle("Sign out ${device.label}?").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->

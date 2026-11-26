@@ -65,8 +65,24 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         addView(items, LayoutParams(-1,-1))
         tabs.forEach { (id,label,icon) ->
             val cell = column(context).apply { gravity=Gravity.CENTER; tag=id; contentDescription=label; setOnClickListener { selectedItemId=id } }
-            cell.addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(22),dp(22)))
-            cell.addView(text(context,label,10.5f,C.muted,true), LinearLayout.LayoutParams(-2,-2))
+            // 1.7 (Ezzy, Nov 25: "Fix the bottom bar. Button pressing in."):
+            // the selection pill now hugs the icon+label (an inner column with
+            // its own padding) instead of filling the full-height cell, which
+            // rendered as an oversized ball, and every tab press sinks in with
+            // a haptic via pressIn().
+            val inner = column(context).apply {
+                tag="inner"
+                gravity=Gravity.CENTER
+                setPadding(dp(4),dp(5),dp(4),dp(5))
+            }
+            inner.addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(22),dp(22)))
+            // Whole label always: it follows the system font size in full, and the
+            // nav itself widens with the font scale (MainActivity.navWidthPx).
+            inner.addView(text(context,label,10.5f,C.muted,true).apply {
+                maxLines=1
+            }, LinearLayout.LayoutParams(-2,-2))
+            cell.addView(inner, LinearLayout.LayoutParams(-1,-2).apply {leftMargin=dp(1);rightMargin=dp(1)})
+            cell.pressIn()
             items.addView(cell, LinearLayout.LayoutParams(0,-1,1f))
         }
         updateSelection()
@@ -148,12 +164,13 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             cell.contentDescription=if(count>0) "$label, $count" else label
             val badge=cell.findViewWithTag<TextView>("badge") ?: text(context,"",10.5f,Color.WHITE,true).apply {
                 tag="badge";gravity=Gravity.CENTER;background=rounded(C.accent,dp(8).toFloat());minWidth=dp(16)
-                (cell.getChildAt(0) as ImageView).let { image ->
-                    cell.removeView(image)
+                val inner=innerOf(cell)
+                (inner.getChildAt(0) as ImageView).let { image ->
+                    inner.removeView(image)
                     val frame=FrameLayout(context)
                     frame.addView(image,LayoutParams(dp(24),dp(24),Gravity.CENTER))
                     frame.addView(this,LayoutParams(-2,dp(16),Gravity.TOP or Gravity.RIGHT))
-                    cell.addView(frame,0,LinearLayout.LayoutParams(dp(40),dp(27)))
+                    inner.addView(frame,0,LinearLayout.LayoutParams(dp(40),dp(27)))
                 }
             }
             badge.text=if(id==R.id.nav_settings) "" else if(count>99) "99+" else count.toString()
@@ -162,14 +179,16 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             badge.visibility=if(count>0) VISIBLE else GONE
         }
     }
+    private fun innerOf(cell:LinearLayout)=cell.findViewWithTag<LinearLayout>("inner")!!
     private fun updateSelection() {
         for(i in 0 until items.childCount) {
             val cell=items.getChildAt(i) as LinearLayout
+            val inner=innerOf(cell)
             val selected=cell.tag==selectedItemId
-            cell.background=if(selected) rounded(0x42fc8613,dp(26).toFloat(),0x73fc8613,dp(1).toFloat()) else null
-            val icon=cell.getChildAt(0)
+            inner.background=if(selected) rounded(0x42fc8613,dp(20).toFloat(),0x73fc8613,dp(1).toFloat()) else null
+            val icon=inner.getChildAt(0)
             (if(icon is ImageView) icon else (icon as FrameLayout).getChildAt(0) as ImageView).setColorFilter(if(selected) C.accent else C.muted)
-            (cell.getChildAt(1) as TextView).setTextColor(if(selected) C.accent else C.muted)
+            (inner.getChildAt(1) as TextView).setTextColor(if(selected) C.accent else C.muted)
         }
     }
     private fun capture() {

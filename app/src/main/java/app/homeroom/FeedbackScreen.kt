@@ -59,7 +59,7 @@ class FeedbackScreen(context:Context):Screen(context) {
     /** The exact block shown in the preview; the server receives it minus the "What will be sent:" header. */
     private fun previewOf(msg:String):String {
         val body=if(msg.isBlank()) "(your message)" else msg.trim().take(1000)
-        return "What will be sent:\n"+body+"\nApp version 1.5 · Android "+android.os.Build.VERSION.RELEASE+"\nNothing else: no name, server or account."
+        return "What will be sent:\n"+body+"\nApp version "+BuildConfig.VERSION_NAME+" · Android "+android.os.Build.VERSION.RELEASE+"\nNothing else: no name, server or account."
     }
     private fun composed():String = previewOf(message).removePrefix("What will be sent:\n").trim()
     private fun openGithubIssue() {
