@@ -52,14 +52,15 @@ jobs:
             sleep 5
             adb wait-for-device
             while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
-            MARKER='homeroom-upgrade-marker-8to10'
-            if adb shell "echo $MARKER > /data/data/app.homeroom/files/upgrade-marker.txt" 2>/dev/null && [ "$(adb shell cat /data/data/app.homeroom/files/upgrade-marker.txt 2>/dev/null | tr -d '\r')" = "$MARKER" ]; then MARKER_SEEDED=1; else MARKER_SEEDED=0; echo 'adb root marker seed unavailable - file-level evidence will be limited'; fi
-            adb shell 'ls -la /data/data/app.homeroom/shared_prefs/ 2>/dev/null' | tee prefs-before.txt
+            adb shell "echo homeroom-upgrade-marker-8to10 > /data/data/app.homeroom/files/upgrade-marker.txt" 2>/dev/null || true
+            adb shell cat /data/data/app.homeroom/files/upgrade-marker.txt 2>/dev/null | tr -d '\r' > marker-seeded.txt || true
+            echo "marker seeded pre-upgrade: [$(cat marker-seeded.txt)]"
+            adb shell 'ls -la /data/data/app.homeroom/files/ /data/data/app.homeroom/shared_prefs/ 2>/dev/null' | tee files-before.txt
             adb install -r ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk
             adb shell dumpsys package app.homeroom | grep -E 'firstInstallTime|lastUpdateTime|versionCode|versionName' | tee after-upgrade.txt
-            FIRST_BEFORE=$(grep firstInstallTime before-upgrade.txt)
-            FIRST_AFTER=$(grep firstInstallTime after-upgrade.txt)
-            [ "$FIRST_BEFORE" = "$FIRST_AFTER" ] || { echo 'FAIL: firstInstallTime changed across upgrade - package identity/data NOT retained'; exit 1; }
+            grep firstInstallTime before-upgrade.txt > fb.txt
+            grep firstInstallTime after-upgrade.txt > fa.txt
+            cmp fb.txt fa.txt || { echo 'FAIL: firstInstallTime changed across upgrade - package identity/data NOT retained'; paste fb.txt fa.txt; exit 1; }
             grep -q 'versionCode=8' before-upgrade.txt || { echo 'FAIL: v1.4 baseline versionCode not 8'; cat before-upgrade.txt; exit 1; }
             grep -q 'versionCode=10' after-upgrade.txt || { echo 'FAIL: post-upgrade versionCode not 10'; cat after-upgrade.txt; exit 1; }
             adb shell monkey -p app.homeroom -c android.intent.category.LAUNCHER 1
@@ -70,18 +71,13 @@ jobs:
             for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 15; done
             adb shell pidof app.homeroom || { echo 'process not alive after upgrade - dumping app-focused logcat'; adb logcat -d | grep -iE 'app\.homeroom|AndroidRuntime|FATAL EXCEPTION|am_crash' | tail -80; exit 1; }
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
-            if [ "$MARKER_SEEDED" = 1 ]; then
-              GOT=$(adb shell cat /data/data/app.homeroom/files/upgrade-marker.txt 2>/dev/null | tr -d '\r')
-              [ "$GOT" = "$MARKER" ] || { echo 'FAIL: user-data marker file did not survive in-place upgrade'; exit 1; }
-              echo 'ok: user-data marker file persisted through the in-place upgrade'
-            else
-              echo 'NOTE: file-level data-retention evidence limited; relying on platform firstInstallTime continuity (in-place upgrade, no uninstall/reinstall)'
-            fi
-            adb shell 'ls -la /data/data/app.homeroom/shared_prefs/ 2>/dev/null' | tee prefs-after.txt
+            adb shell cat /data/data/app.homeroom/files/upgrade-marker.txt 2>/dev/null | tr -d '\r' > marker-after.txt || true
+            echo "marker read post-upgrade: [$(cat marker-after.txt)]"
+            if grep -q '^homeroom-upgrade-marker-8to10$' marker-seeded.txt; then grep -q '^homeroom-upgrade-marker-8to10$' marker-after.txt && echo 'ok: user-data marker file persisted through the in-place upgrade' || { echo 'FAIL: user-data marker file lost across the in-place upgrade'; exit 1; }; else echo 'NOTE: adb root unavailable on this image - file-level data-retention evidence limited to platform firstInstallTime continuity (in-place upgrade, no uninstall/reinstall)'; fi
+            adb shell 'ls -la /data/data/app.homeroom/files/ /data/data/app.homeroom/shared_prefs/ 2>/dev/null' | tee files-after.txt
             adb shell screencap -p /data/local/tmp/post-upgrade.png
             adb pull /data/local/tmp/post-upgrade.png post-upgrade.png
-            echo 'ok: v1.4 -> signed 1.5 in-place upgrade keeps firstInstallTime (identity/data retained), versionCode 8 -> 10, app launches post-upgrade, no fatal exception'
-
+            echo 'ok: v1.4 -> signed 1.5 in-place upgrade keeps firstInstallTime, versionCode 8 -> 10, app launches post-upgrade, no fatal exception'
       - name: Upload upgrade evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,8 +89,12 @@ jobs:
             v14-certs.txt
             v15-certs.txt
             apk-sha256.txt
-            prefs-before.txt
-            prefs-after.txt
+            marker-seeded.txt
+            marker-after.txt
+            files-before.txt
+            files-after.txt
+            fb.txt
+            fa.txt
             post-upgrade.png
           if-no-files-found: warn
           retention-days: 5
