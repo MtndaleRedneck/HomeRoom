@@ -37,6 +37,19 @@ class FeedbackScreen(context:Context):Screen(context) {
             val maker=android.os.Build.MANUFACTURER.orEmpty().trim();val model=android.os.Build.MODEL.orEmpty().trim()
             return if(model.startsWith(maker,true)) model else "$maker $model".trim()
         }
+        /** Hard cap on typed text; LengthFilter never splits a surrogate pair, so an emoji at the limit is dropped whole. */
+        fun messageFilter():android.text.InputFilter=android.text.InputFilter.LengthFilter(MAX_MESSAGE)
+        const val PREVIEW_HEADER="What will be sent:\n"
+        /** The exact block shown in the preview. */
+        fun previewBlock(msg:String,appVersion:String,android:String,model:String):String {
+            val body=if(msg.isBlank()) "(your message)" else msg.trim()
+            return PREVIEW_HEADER+body+"\nApp version "+appVersion+" · Android "+android+" · "+model+"\nNothing else: no name, server or account."
+        }
+        /** What GitHub body, Copy-adjacent room payload and preview carry: the preview minus its header. */
+        fun outgoingText(msg:String,appVersion:String,android:String,model:String):String =
+            previewBlock(msg,appVersion,android,model).removePrefix(PREVIEW_HEADER).trim()
+        fun githubUrl(msg:String,appVersion:String,android:String,model:String):String =
+            "https://github.com/MtndaleRedneck/HomeRoom/issues/new?title="+URLEncoder.encode("Feedback","UTF-8")+"&body="+URLEncoder.encode(outgoingText(msg,appVersion,android,model),"UTF-8")
         /** Prefilled viewform address. The reply-email entry is left empty on purpose. */
         fun formUrl(message:String,model:String,android:String,appVersion:String):String =
             FORM_URL+"?usp=pp_url&"+ENTRY_MESSAGE+"="+URLEncoder.encode(message,"UTF-8")+"&"+ENTRY_MODEL+"="+URLEncoder.encode(model,"UTF-8")+
@@ -63,7 +76,7 @@ class FeedbackScreen(context:Context):Screen(context) {
         // TYPE_CLASS_TEXT | TYPE_TEXT_FLAG_MULTI_LINE | TYPE_TEXT_FLAG_CAP_SENTENCES
         edit.inputType=147457
         // Hard cap so the preview, GitHub body, form field, Copy and the private room all carry exactly the typed text (nothing is cut silently).
-        edit.filters=arrayOf(android.text.InputFilter.LengthFilter(MAX_MESSAGE))
+        edit.filters=arrayOf(messageFilter())
         card.addView(edit,LinearLayout.LayoutParams(-1,-2))
         val preview=text(context,previewOf(""),13f,C.muted)
         edit.addTextChangedListener(object:TextWatcher {
@@ -87,10 +100,9 @@ class FeedbackScreen(context:Context):Screen(context) {
     }
     /** The exact block shown in the preview; the server receives it minus the "What will be sent:" header. */
     private fun previewOf(msg:String):String {
-        val body=if(msg.isBlank()) "(your message)" else msg.trim()
-        return "What will be sent:\n"+body+"\nApp version "+BuildConfig.VERSION_NAME+" · Android "+android.os.Build.VERSION.RELEASE+" · "+phoneModel()+"\nNothing else: no name, server or account."
+        return previewBlock(msg,BuildConfig.VERSION_NAME,android.os.Build.VERSION.RELEASE,phoneModel())
     }
-    private fun composed():String = previewOf(message).removePrefix("What will be sent:\n").trim()
+    private fun composed():String = outgoingText(message,BuildConfig.VERSION_NAME,android.os.Build.VERSION.RELEASE,phoneModel())
     private fun guard():Boolean {
         if(message.isBlank()) {snack(this,"Write your message first.");return false}
         return true
@@ -101,7 +113,7 @@ class FeedbackScreen(context:Context):Screen(context) {
     }
     private fun openGithubIssue() {
         if(!guard())return
-        openUrl("https://github.com/MtndaleRedneck/HomeRoom/issues/new?title="+URLEncoder.encode("Feedback","UTF-8")+"&body="+URLEncoder.encode(composed(),"UTF-8"))
+        openUrl(githubUrl(message,BuildConfig.VERSION_NAME,android.os.Build.VERSION.RELEASE,phoneModel()))
     }
     private fun openForm() {
         if(!guard())return
