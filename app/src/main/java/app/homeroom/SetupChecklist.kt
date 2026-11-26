@@ -61,9 +61,12 @@ internal class SetupChecklist(savedConnection:Boolean=false) {
                 // fp66c/Gemini: a 401 from the enroll request itself arrives as a
                 // plain SessionEndedException (not ApiException), so the status
                 // branch above never ran and SERVER would sit on "Checking"
-                // forever. Mark it Not confirmed only when still Checking; a
-                // SERVER already Passed stays Passed. Pre-existing 1.8 gap.
-                if(checks[SetupStep.SERVER]?.state=="Checking")set(SetupStep.SERVER,"Not confirmed","The phone could not confirm a response from the server.","Check your internet connection and server address.")
+                // forever. Throw sites are ambiguous - mostly HTTP 401 responses
+                // (server answered), but ApiClient also throws locally on a blank
+                // saved cookie - so mark Not confirmed with copy that does not
+                // blame the network. Only when still Checking; an already-Passed
+                // SERVER stays Passed. Pre-existing 1.8 gap.
+                if(checks[SetupStep.SERVER]?.state=="Checking")set(SetupStep.SERVER,"Not confirmed","The phone could not confirm the saved sign-in with the server.","Get a fresh connection link.")
             } else if(stage==SetupStep.ROOMS) {
                 set(SetupStep.ROOMS,"Not confirmed","Your sign-in was accepted, but rooms did not load.","Tap Retry room loading. Your link will not be sent again.")
             } else if(api?.code in listOf("enrollment_expired","enrollment_used")) {
