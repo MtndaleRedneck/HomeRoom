@@ -164,8 +164,6 @@ class MainActivity : AppCompatActivity() {
         // Consume (and always clear) the draft kept across a system recreation, whatever the session state.
         val restoredDraft = retained.feedbackDraft
         retained.feedbackDraft = null
-        // A finished token deletion must not leave a re-enrolled session without a token: register again without a restart.
-        PushTokenDeletion.onCompleted = { runOnUiThread { if (session.enrolled) PushRegistration.sync(scope, session, api) } }
         if (session.enrolled) {
             showMain()
             // System recreation (font size change): put the Feedback page and its typed draft back.
@@ -223,7 +221,6 @@ class MainActivity : AppCompatActivity() {
     // the activity really finishes or the process dies. Nothing is written to preferences, files or a saved-state Bundle.
     internal val retained by lazy { androidx.lifecycle.ViewModelProvider(this)[RetainedUiState::class.java] }
     override fun onDestroy() {
-        PushTokenDeletion.onCompleted = null
         if (isChangingConfigurations) (currentPage as? FeedbackScreen)?.let { retained.feedbackDraft = it.draft }
         super.onDestroy()
     }
@@ -544,8 +541,10 @@ class MainActivity : AppCompatActivity() {
 
     /** Enrolled start/enrolment: a failed earlier token deletion is retried first (its completion registers the fresh token); otherwise register now. */
     private fun syncPush() {
-        // retryOnStart reads the persisted flag first (the in-memory one is false after a cold start); its completion callback registers.
-        if (!PushTokenDeletion.retryOnStart(applicationContext)) PushRegistration.sync(scope, session, api)
+        // retryOnStart loads the persisted retry flag and starts (or joins) the deletion; its outcome resyncs from the process (PushTokenDeletion.finish).
+        // While a deletion runs, sync is a no-op; otherwise it registers a fresh token.
+        PushTokenDeletion.retryOnStart(applicationContext)
+        PushRegistration.sync(scope, session, api)
     }
 
     // Enrollment finished while the app was in the background: show Main on the next resume.

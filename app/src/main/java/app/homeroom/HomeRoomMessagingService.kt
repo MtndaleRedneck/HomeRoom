@@ -87,7 +87,7 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
                 .setSmallIcon(R.drawable.ic_chats)
                 .setContentTitle("HomeRoom")
                 .setContentText("New message in HomeRoom")
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setVisibility(genericVisibility(this))
                 .setAutoCancel(true)
                 .setContentIntent(pending)
                 .build()
@@ -142,6 +142,9 @@ class HomeRoomMessagingService : FirebaseMessagingService() {
             val remaining = prefs.all.keys.count { it.startsWith("msgs_") }
             if (remaining == 0) manager.cancel(ID_SUMMARY)
         }
+        /** The generic alert has no content, so it shows on the lock screen unless the user chose to hide lock-screen alerts. */
+        fun genericVisibility(c: Context): Int =
+            if (PrivacyPrefs.hidePreviews(c)) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC
         const val CHANNEL_ID = "messages"
         const val EXTRA_ROOM_ID = "app.homeroom.extra.ROOM_ID"
         const val PREFS_NAME = "homeroom_push"

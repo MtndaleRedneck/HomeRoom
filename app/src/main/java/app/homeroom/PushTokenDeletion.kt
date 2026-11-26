@@ -14,7 +14,7 @@ object PushTokenDeletion {
     /** Test seam (null in production): replaces FirebaseMessaging.deleteToken; reports success. */
     internal var deleteTokenOp:(((Boolean)->Unit)->Unit)?=null
     /** Tests only: forget an unfinished attempt held by a fake. */
-    internal fun resetForTest(){inFlight=false}
+    internal fun resetForTest(){inFlight=false;resync=null}
     private fun prefs(context:Context)=context.getSharedPreferences("push_token_cleanup",Context.MODE_PRIVATE)
     fun request(context:Context) {
         pending=true;prefs(context).edit().putBoolean("pending",true).apply()
@@ -28,23 +28,29 @@ object PushTokenDeletion {
         if(pending)attempt(context)
         return pending
     }
+    /** True while an instance-wide deleteToken call runs: registration waits. The durable [pending] flag is only retry intent, not a barrier. */
+    val busy:Boolean get()=inFlight
+    /** Test seam (null in production): replaces the process-owned resync run after every deletion outcome. */
+    internal var resync:((Context)->Unit)?=null
     private fun attempt(context:Context) {
         synchronized(this){if(inFlight)return;inFlight=true}
+        epoch++ // any FCM fetch or registration already in flight predates this deletion and is discarded
         try {
-            epoch++ // any FCM fetch already in flight predates this deletion and is discarded by its callback
             val op=deleteTokenOp ?: {done:(Boolean)->Unit -> com.google.firebase.messaging.FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener {t->done(t.isSuccessful)}}
-            op {ok ->
-                inFlight=false
-                if(ok) {
-                    // FirebaseMessaging.deleteToken is instance-wide: every token cached before this point is suspect, whichever session it belongs to.
-                    // Drop them all; the completion callback fetches the current token and registers it (never a cached one).
-                    Session(context).let {it.fcmToken=null;it.fcmRegisteredToken=null}
-                    epoch++
-                    prefs(context).edit().remove("pending").apply();pending=false
-                    onCompleted?.invoke()
-                }
-                // Failure stays persisted; an enrolled start/enrolment retries it before registering (see MainActivity.syncPush).
-            }
-        } catch(_:Exception) { inFlight=false /* Keep pending for the next start. */ }
+            op {ok -> finish(context,ok)}
+        } catch(_:Exception) { finish(context,false) }
+    }
+    /**
+     * deleteToken is instance-wide, and a failed or unconfirmed delete does not prove the cached token is still valid,
+     * so after EITHER outcome every cached token is dropped and only a freshly fetched one is registered. On success the
+     * durable retry flag is cleared; on failure it stays so the next start tries again. Runs without any activity.
+     */
+    private fun finish(context:Context,ok:Boolean) {
+        try {Session(context).let {it.fcmToken=null;it.fcmRegisteredToken=null}} catch(_:Exception) {}
+        epoch++
+        if(ok) {prefs(context).edit().remove("pending").apply();pending=false}
+        inFlight=false
+        if(ok) onCompleted?.invoke()
+        try {(resync ?: {c:Context->PushRegistration.syncProcess(c)})(context)} catch(_:Exception) {}
     }
 }

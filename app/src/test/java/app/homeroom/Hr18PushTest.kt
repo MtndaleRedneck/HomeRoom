@@ -27,7 +27,7 @@ class Hr18PushTest {
         val trust=HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
         val session=Session(org.robolectric.RuntimeEnvironment.getApplication());session.clear();session.serverUrl=server.url("/").toString().trimEnd('/')
         val api=ApiClient(session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(1,TimeUnit.SECONDS)}
-        pending(false);PushRegistration.tokenFetcher={done->done(null)} // deterministic: FCM unavailable unless a test says otherwise
+        pending(false);PushTokenDeletion.resync={};PushRegistration.tokenFetcher={done->done(null)} // deterministic: FCM unavailable unless a test says otherwise
         try {block(server,api,session)}finally {PushTokenDeletion.resetForTest();pending(false);PushRegistration.tokenFetcher=null;PushTokenDeletion.deleteTokenOp=null;PushTokenDeletion.onCompleted=null;server.shutdown();session.clear()}
     }
     private fun enroll(s:Session) {s.ownerId="owner";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)}
@@ -66,13 +66,21 @@ class Hr18PushTest {
         assertNull(session.fcmRegisteredToken)
     }
 
-    // A persisted deletion in progress blocks registration; once it completes, the next sync registers with no restart.
-    @Test fun noRegisterWhileDeletionPendingThenRegistersAfter()=fixture {server,api,session ->
+    // While an instance-wide deletion RUNS, registration waits; after it completes the next sync registers with no restart.
+    @Test fun noRegisterWhileDeletionRunsThenRegistersAfter()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
         enroll(session);session.fcmToken="tok-new";server.enqueue(MockResponse().setBody("{}"))
-        pending(true)
+        var held:((Boolean)->Unit)?=null
+        PushTokenDeletion.deleteTokenOp={done->held=done}
+        PushTokenDeletion.request(app)
+        assertTrue(PushTokenDeletion.busy)
+        session.fcmToken="tok-new"
         PushRegistration.sync(scope(),session,api)
+        PushRegistration.register(scope(),session,api)   // the same entry onNewToken uses
         assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
-        pending(false)
+        held!!.invoke(true)
+        assertFalse(PushTokenDeletion.busy)
+        session.fcmToken="tok-new"
         PushRegistration.sync(scope(),session,api)
         assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-new"))
     }
@@ -183,7 +191,7 @@ class Hr18PushTest {
         PushTokenDeletion.deleteTokenOp={done->done(false)}
         PushTokenDeletion.request(app)
         assertTrue(PushTokenDeletion.pending)
-        assertEquals("token untouched on failure","tok-x",session.fcmToken)
+        assertNull("cached token dropped after a failed delete too (validity unproven)",session.fcmToken)
         assertTrue(app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).getBoolean("pending",false))
         app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
     }
@@ -198,5 +206,59 @@ class Hr18PushTest {
         assertNull("retired token dropped",session.fcmToken)
         PushRegistration.sync(scope(),session,api) // fetcher fake reports FCM unavailable
         assertNull("nothing registered",server.takeRequest(400,TimeUnit.MILLISECONDS))
+    }
+
+    // A (held POST): a registration whose POST is in flight when a deletion runs must not write its "registered" marker.
+    @Test fun registrationInFlightDuringDeletionWritesNoMarker()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session);session.fcmToken="t1"
+        server.enqueue(MockResponse().setBody("{}").setHeadersDelay(800,TimeUnit.MILLISECONDS))
+        PushRegistration.register(scope(),session,api)
+        assertNotNull(server.takeRequest(5,TimeUnit.SECONDS))
+        PushTokenDeletion.deleteTokenOp={done->done(true)}
+        PushTokenDeletion.request(app)
+        Thread.sleep(1500)
+        assertNull("no marker for a token a deletion may have invalidated",session.fcmRegisteredToken)
+        assertNull(session.fcmToken)
+    }
+
+    // B (failed delete, enrolled): cached tokens are dropped, the retry flag stays, and the process resync registers ONLY a fresh token.
+    @Test fun failedDeleteStillRegistersFreshTokenFromProcess()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session);session.fcmToken="old";session.fcmRegisteredToken="old"
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().putBoolean("pending",true).commit()
+        server.enqueue(MockResponse().setBody("{}"))
+        PushRegistration.tokenFetcher={done->done("tok-fresh")}
+        PushTokenDeletion.resync={PushRegistration.sync(scope(),session,api)}
+        PushTokenDeletion.deleteTokenOp={done->done(false)}
+        PushTokenDeletion.retryOnStart(app)
+        val body=server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8()
+        assertTrue(body.contains("tok-fresh"));assertFalse(body.contains("old"))
+        assertTrue("retry intent kept for the next start",PushTokenDeletion.pending)
+        assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    // After a failed delete with the fresh fetch failing, the possibly invalid cached token is never the fallback.
+    @Test fun noCachedFallbackWhileDeleteRetryIntentStands()=fixture {server,api,session ->
+        enroll(session);session.fcmToken="stored"
+        pending(true) // FCM unavailable (fixture fetcher reports null)
+        PushRegistration.sync(scope(),session,api)
+        assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
+    }
+
+    // C (completion with no Activity): the process-owned resync registers the fresh token; nothing depends on onCompleted.
+    @Test fun completionWithoutActivityResyncsFromProcess()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session);session.fcmToken="old"
+        PushTokenDeletion.onCompleted=null
+        server.enqueue(MockResponse().setBody("{}"))
+        PushRegistration.tokenFetcher={done->done("tok-fresh")}
+        PushTokenDeletion.resync={PushRegistration.sync(scope(),session,api)}
+        PushTokenDeletion.deleteTokenOp={done->done(true)}
+        PushTokenDeletion.request(app)
+        assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-fresh"))
+        assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
     }
 }
