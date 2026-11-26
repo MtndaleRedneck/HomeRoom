@@ -234,6 +234,9 @@ class Handler(BaseHTTPRequestHandler):
                 {"file_id": "stub-file-1", "name": "synthetic-plan.pdf", "mime_type": "application/pdf", "byte_size": 48213, "uploader": "Stub AI One", "created_at": "2026-11-25T10:00:00Z", "kind": "file"},
                 {"file_id": "stub-file-2", "name": "synthetic-notes.txt", "mime_type": "text/plain", "byte_size": 912, "uploader": "Stub Owner", "created_at": "2026-11-25T11:00:00Z", "kind": "file"},
                 {"file_id": "stub-file-3", "name": "Synthetic link", "mime_type": "", "byte_size": 0, "uploader": "Stub AI One", "created_at": "2026-11-25T12:00:00Z", "kind": "link", "url": "https://example.invalid/synthetic", "title": "Synthetic link"}]})
+        if self.command == "GET" and p == "/repos/MtndaleRedneck/HomeRoom/releases/latest":
+            # SYNTHETIC release response (debug-only update override); no assets so nothing can download.
+            return self._send({"tag_name": "v1.8", "body": "Synthetic release notes.", "assets": []})
         if self.command == "GET" and p == "/owner/team":
             # SYNTHETIC team for populated AI team rendering (1.8 UI evidence only).
             return self._send({"actors": [

@@ -37,8 +37,8 @@ android {
         targetSdk 34
         // 1.7: Settings/bottom-bar alignment release over the live 1.6
         // (versionCode 11). versionCode must be strictly above 11.
-        versionCode 12
-        versionName '1.7'
+        versionCode 13
+        versionName '1.8'
     }
 
     signingConfigs {
@@ -61,8 +61,11 @@ android {
             if (signingReady) {
                 signingConfig signingConfigs.release
             }
+            buildConfigField "String", "UPDATE_API_OVERRIDE", "\"\""
         }
         debug {
+            // Debug-only update lookup override for the CI emulator stub; release keeps the empty default.
+            buildConfigField "String", "UPDATE_API_OVERRIDE", "\"http://10.0.2.2:18080/repos/MtndaleRedneck/HomeRoom/releases/latest\""
             // No applicationIdSuffix: google-services.json only registers
             // 'app.homeroom', and a suffix would fail the gms client match.
         }

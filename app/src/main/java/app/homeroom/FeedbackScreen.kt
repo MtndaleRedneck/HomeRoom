@@ -28,6 +28,7 @@ class FeedbackScreen(context:Context):Screen(context) {
     companion object {
         // HomeRoom's own private feedback form (responses go to the owner's private sheet).
         const val FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSc6II7JLbc_kdHX3ELMnIB_YmfN2Trxh-zUbgqG60lzeUFuvg/viewform"
+        const val MAX_MESSAGE=1000
         const val ENTRY_MESSAGE="entry.1658269790"
         const val ENTRY_MODEL="entry.490457509"
         const val ENTRY_ANDROID="entry.1177615215"
@@ -55,6 +56,8 @@ class FeedbackScreen(context:Context):Screen(context) {
         edit.setPadding(dp(12),dp(10),dp(12),dp(10))
         // TYPE_CLASS_TEXT | TYPE_TEXT_FLAG_MULTI_LINE | TYPE_TEXT_FLAG_CAP_SENTENCES
         edit.inputType=147457
+        // Hard cap so the preview, GitHub body, form field, Copy and the private room all carry exactly the typed text (nothing is cut silently).
+        edit.filters=arrayOf(android.text.InputFilter.LengthFilter(MAX_MESSAGE))
         card.addView(edit,LinearLayout.LayoutParams(-1,-2))
         val preview=text(context,previewOf(""),13f,C.muted)
         edit.addTextChangedListener(object:TextWatcher {
@@ -62,6 +65,9 @@ class FeedbackScreen(context:Context):Screen(context) {
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {}
             override fun afterTextChanged(s:Editable) {message=s.toString();preview.text=previewOf(message)}
         })
+        val counter=text(context,"0 / "+MAX_MESSAGE+" characters",13f,C.muted)
+        edit.addTextChangedListener(object:TextWatcher {override fun beforeTextChanged(s:CharSequence?,a:Int,b:Int,c:Int) {};override fun onTextChanged(s:CharSequence?,a:Int,b:Int,c:Int) {};override fun afterTextChanged(s:Editable) {counter.text=s.length.toString()+" / "+MAX_MESSAGE+" characters"}})
+        card.addView(counter,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
         card.addView(preview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         body.addView(actionButton(context,"Open GitHub issue",true) {openGithubIssue()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
         body.addView(text(context,"Public and easiest to follow up.",13f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
@@ -75,7 +81,7 @@ class FeedbackScreen(context:Context):Screen(context) {
     }
     /** The exact block shown in the preview; the server receives it minus the "What will be sent:" header. */
     private fun previewOf(msg:String):String {
-        val body=if(msg.isBlank()) "(your message)" else msg.trim().take(1000)
+        val body=if(msg.isBlank()) "(your message)" else msg.trim()
         return "What will be sent:\n"+body+"\nApp version "+BuildConfig.VERSION_NAME+" · Android "+android.os.Build.VERSION.RELEASE+" · "+phoneModel()+"\nNothing else: no name, server or account."
     }
     private fun composed():String = previewOf(message).removePrefix("What will be sent:\n").trim()
@@ -89,11 +95,11 @@ class FeedbackScreen(context:Context):Screen(context) {
     }
     private fun openGithubIssue() {
         if(!guard())return
-        openUrl("https://github.com/MtndaleRedneck/HomeRoom/issues/new?title="+URLEncoder.encode("Feedback","UTF-8")+"&body="+URLEncoder.encode(composed().take(1500),"UTF-8"))
+        openUrl("https://github.com/MtndaleRedneck/HomeRoom/issues/new?title="+URLEncoder.encode("Feedback","UTF-8")+"&body="+URLEncoder.encode(composed(),"UTF-8"))
     }
     private fun openForm() {
         if(!guard())return
-        openUrl(formUrl(message.trim().take(1000),phoneModel(),android.os.Build.VERSION.RELEASE,BuildConfig.VERSION_NAME))
+        openUrl(formUrl(message.trim(),phoneModel(),android.os.Build.VERSION.RELEASE,BuildConfig.VERSION_NAME))
     }
     private fun copyMessage() {
         if(!guard())return
