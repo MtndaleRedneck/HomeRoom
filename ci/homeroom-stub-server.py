@@ -155,8 +155,12 @@ FEATURES = {
 }
 
 
+LAST_PREPARED_OPTION = {"id": "opt-a"}
+
+
 def prepare_answer(body):
     option_id = (body or {}).get("option_id", "opt-a")
+    LAST_PREPARED_OPTION["id"] = option_id
     option = next((o for o in CARD["options"] if o["option_id"] == option_id), CARD["options"][0])
     return {
         "state": "confirmation_required",
@@ -176,11 +180,35 @@ def prepare_answer(body):
 
 
 def confirm_answer(body):
+    # SYNTHETIC receipt shaped like the captured server contract (app/src/test/resources/hr15-yesno-captures.json,
+    # "confirmed_receipt"): answer_id, decision_id, version, option_id, option_label, proposal_sha256, confirmed_at, state, replayed,
+    # confirmation_receipt. The confirm body carries no option_id, so the option comes from the last prepare.
+    option_id = LAST_PREPARED_OPTION["id"]
+    option = next((o for o in CARD["options"] if o["option_id"] == option_id), CARD["options"][0])
+    confirmed_at = "2026-11-26T09:00:00.000Z"
     return {
+        "answer_id": "ans_stub_synthetic_0001",
         "decision_id": "stub-decision",
-        "option_id": (body or {}).get("option_id", "opt-a"),
+        "version": 1,
+        "option_id": option["option_id"],
+        "option_label": option["label"],
         "proposal_sha256": CARD_HASH,
+        "confirmed_at": confirmed_at,
         "state": "answered",
+        "replayed": False,
+        "confirmation_receipt": {
+            "receipt_id": "receipt_stub_synthetic_0001",
+            "decision_id": "stub-decision",
+            "decision_version": 1,
+            "option_id": option["option_id"],
+            "content_sha256": CARD_HASH,
+            "action_id": None,
+            "action_sha256": None,
+            "confirmed_at": confirmed_at,
+            "source": "authenticated_owner_session",
+            "external_execution_enabled": False,
+            "message": "Your confirmation was recorded. No outside action has run.",
+        },
         "synthetic_stub": True,
     }
 

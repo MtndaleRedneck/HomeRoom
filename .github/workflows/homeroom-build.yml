@@ -589,6 +589,10 @@ jobs:
             python3 ci/anr-guard.py i-decision-done || exit 1
             adb exec-out screencap -p > i-decision-done.png
             python3 ci/anr-guard.py --check i-decision-done || exit 1
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb pull /sdcard/a.xml ui-dump-decision-done.xml >/dev/null 2>&1
+            grep -qF 'text="Answer recorded"' ui-dump-decision-done.xml || { echo "decision-done frame lacks the Answer recorded card"; exit 1; }
+            grep -q 'Stub option A' ui-dump-decision-done.xml || { echo "decision-done frame lacks the chosen answer text"; exit 1; }
+            grep -q 'ans_stub_synthetic_0001' ui-dump-decision-done.xml || { echo "decision-done frame lacks the server receipt id"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 2
             adb shell input keyevent KEYCODE_BACK
