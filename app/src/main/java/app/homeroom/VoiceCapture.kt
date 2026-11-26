@@ -17,7 +17,7 @@ class VoiceCapture(context:Context,private val room:Room):Screen(context) {
     private val timer=object:Runnable {override fun run() {if(recorder==null)return;seconds++;status.text="Recording: $seconds / 300 seconds";if(seconds>=300)stop(true) else postDelayed(this,1000)}}
     init {
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
-        body.addView(text(context,"Record a voice note",22f,C.text,true));body.addView(status)
+        status.textSize=13f;body.addCard(sectionCard(context).apply {addView(status)})
         body.addStacked(button(context,"Start recording",true) {start()})
         body.addStacked(button(context,"Stop and review",false) {stop(true)})
         body.addStacked(button(context,"Cancel",false) {stop(false);file.delete();host.onBackPressedDispatcher.onBackPressed()})
