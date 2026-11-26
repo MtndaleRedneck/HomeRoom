@@ -110,8 +110,8 @@ class FilesScreen(context:Context):Screen(context) {
             others.forEachIndexed { index,file ->
                 val row=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),0,dp(12),0);setOnClickListener { open(file) };file.eventId?.let { setOnLongClickListener {showInChat(file);true} } }
                 val type=when {file.kind=="link" -> "LINK";file.name.endsWith(".apk",true) -> "APK";file.mimeType=="application/pdf" -> "PDF";else -> "FILE"}
-                val color=when(type) {"APK" -> C.green;"PDF" -> 0xffe5577a.toInt();"LINK" -> C.accent;else -> C.muted}
-                row.addView(text(context,type,11f,color,true).apply {gravity=Gravity.CENTER;background=rounded((color and 0x00ffffff) or 0x2e000000,dp(12).toFloat())},LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
+                val color=C.muted
+                row.addView(text(context,type,12f,C.text,true).apply {gravity=Gravity.CENTER;background=rounded((color and 0x00ffffff) or 0x2e000000,dp(12).toFloat())},LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
                 val copy=column(context)
                 copy.addView(text(context,file.title ?: file.name,15.5f,C.text,true).apply {maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.MIDDLE})
                 copy.addView(text(context,(if(file.kind=="link") "link" else humanSize(file.size))+" · "+file.uploader+" · "+formatRoomTime(file.createdAt),13f,C.muted).apply {maxLines=1})
