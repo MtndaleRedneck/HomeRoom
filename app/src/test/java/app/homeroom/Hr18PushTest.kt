@@ -106,27 +106,42 @@ class Hr18PushTest {
         assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
     }
 
-    // A failed sign-out deletion stays pending; the retry (run at an enrolled start/enrolment) completes, clears only the RETIRED token
-    // (a newer one that arrived meanwhile survives) and reports completion so the fresh token registers with no restart.
-    @Test fun retryCompletesKeepsNewerTokenAndSignalsCompletion()=fixture {server,api,session ->
+    // A failed sign-out deletion is retried first. deleteToken is instance-wide, so on success EVERY cached token is dropped (also one that
+    // arrived mid-deletion), completion is signalled, and the next sync registers only the freshly fetched token.
+    @Test fun retryCompletesDropsAllCachedTokensThenRegistersFreshOnly()=fixture {server,api,session ->
         val app=org.robolectric.RuntimeEnvironment.getApplication()
         enroll(session);session.fcmToken="tok-retired";session.fcmRegisteredToken="tok-retired"
         app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().putBoolean("pending",true).commit()
         var completed=false
         PushTokenDeletion.onCompleted={completed=true}
         PushTokenDeletion.deleteTokenOp={done->
-            session.fcmToken="tok-newer" // FCM issued a new token while the deletion was completing
+            session.fcmToken="tok-arrived-mid-deletion" // cannot be trusted: the deletion is instance-wide
             done(true)
         }
         PushTokenDeletion.retryOnStart(app)
         assertFalse(PushTokenDeletion.pending);assertTrue(completed)
-        assertEquals("newer token survives","tok-newer",session.fcmToken)
-        assertNull("retired registration cleared",session.fcmRegisteredToken)
+        assertNull(session.fcmToken);assertNull(session.fcmRegisteredToken)
         assertFalse(app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).getBoolean("pending",false))
-        // Pending is clear, so sync registers the newer token now.
         server.enqueue(MockResponse().setBody("{}"))
+        PushRegistration.tokenFetcher={done->done("tok-fresh")}
         PushRegistration.sync(scope(),session,api)
-        assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-newer"))
+        assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-fresh"))
+        assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
+    }
+
+    // An FCM fetch that began before a deletion started or finished is discarded when it returns (its token may be the deleted one).
+    @Test fun staleInFlightFetchIsDiscardedAfterDeletion()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session);session.fcmToken="tok-stored"
+        var held:((String?)->Unit)?=null
+        PushRegistration.tokenFetcher={done->held=done}
+        PushRegistration.sync(scope(),session,api)
+        assertNotNull(held)
+        PushTokenDeletion.deleteTokenOp={done->done(true)}
+        PushTokenDeletion.request(app)           // a deletion starts and completes while the fetch is in flight
+        held!!.invoke("tok-deleted-by-instance-wide-delete")
+        assertNull("stale fetch result is not registered",server.takeRequest(400,TimeUnit.MILLISECONDS))
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     // A deletion that fails stays pending (and persisted) for the next retry.
