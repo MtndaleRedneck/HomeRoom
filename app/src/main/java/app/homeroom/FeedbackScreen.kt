@@ -25,11 +25,28 @@ import java.util.UUID
 /** Settings > Feedback & bugs: compose a report; the preview shows exactly what leaves the phone. */
 class FeedbackScreen(context:Context):Screen(context) {
     private var message=""
+    companion object {
+        // HomeRoom's own private feedback form (responses go to the owner's private sheet).
+        const val FORM_URL="https://docs.google.com/forms/d/e/1FAIpQLSc6II7JLbc_kdHX3ELMnIB_YmfN2Trxh-zUbgqG60lzeUFuvg/viewform"
+        const val ENTRY_MESSAGE="entry.1658269790"
+        const val ENTRY_MODEL="entry.490457509"
+        const val ENTRY_ANDROID="entry.1177615215"
+        const val ENTRY_APP_VERSION="entry.954364603"
+        fun phoneModel():String {
+            val maker=android.os.Build.MANUFACTURER.orEmpty().trim();val model=android.os.Build.MODEL.orEmpty().trim()
+            return if(model.startsWith(maker,true)) model else "$maker $model".trim()
+        }
+        /** Prefilled viewform address. The reply-email entry is left empty on purpose. */
+        fun formUrl(message:String,model:String,android:String,appVersion:String):String =
+            FORM_URL+"?usp=pp_url&"+ENTRY_MESSAGE+"="+URLEncoder.encode(message,"UTF-8")+"&"+ENTRY_MODEL+"="+URLEncoder.encode(model,"UTF-8")+
+                "&"+ENTRY_ANDROID+"="+URLEncoder.encode(android,"UTF-8")+"&"+ENTRY_APP_VERSION+"="+URLEncoder.encode(appVersion,"UTF-8")
+    }
     init {
         val body=column(context)
-        body.setPadding(dp(16),dp(12),dp(16),dp(24))
+        body.setPadding(dp(16),dp(12),dp(16),dp(110))
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
-        val card=column(context).apply {background=rounded(C.surface,dp(20).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
+        body.addView(text(context,"Tell us what is on your mind: a bug, an idea, or general feedback. Reports may become public issues on GitHub, so leave out personal details.",13f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(14)})
+        val card=sectionCard(context)
         body.addView(card,LinearLayout.LayoutParams(-1,-2))
         val edit=input(context,"What happened, or what would help?")
         edit.minLines=5
@@ -46,35 +63,46 @@ class FeedbackScreen(context:Context):Screen(context) {
             override fun afterTextChanged(s:Editable) {message=s.toString();preview.text=previewOf(message)}
         })
         card.addView(preview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
-        card.addView(text(context,"GitHub issues are public. Leave out anything private.",12.5f,C.accent),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
-        val row=LinearLayout(context)
-        row.addView(button(context,"GitHub issue",false) {openGithubIssue()},LinearLayout.LayoutParams(0,-2,1f).apply {rightMargin=dp(8)})
-        row.addView(button(context,"Copy message",true) {copyMessage()},LinearLayout.LayoutParams(0,-2,1f))
+        body.addView(actionButton(context,"Open GitHub issue",true) {openGithubIssue()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
+        body.addView(text(context,"Public and easiest to follow up.",12f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+        body.addView(actionButton(context,"Open private form",true) {openForm()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
+        body.addView(text(context,"No name needed. A reply email is optional.",12f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+        body.addView(actionButton(context,"Copy message",false) {copyMessage()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
         if(host.api.hasFeature("owner_room_management")) {
             val clientId=UUID.randomUUID().toString()
-            card.addView(button(context,"Send to private Feedback room",true) {send(edit,clientId)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+            body.addView(actionButton(context,"Send to private Feedback room",false) {send(edit,clientId)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         }
-        card.addView(row,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
     }
     /** The exact block shown in the preview; the server receives it minus the "What will be sent:" header. */
     private fun previewOf(msg:String):String {
         val body=if(msg.isBlank()) "(your message)" else msg.trim().take(1000)
-        return "What will be sent:\n"+body+"\nApp version "+BuildConfig.VERSION_NAME+" · Android "+android.os.Build.VERSION.RELEASE+"\nNothing else: no name, server or account."
+        return "What will be sent:\n"+body+"\nApp version "+BuildConfig.VERSION_NAME+" · Android "+android.os.Build.VERSION.RELEASE+" · "+phoneModel()+"\nNothing else: no name, server or account."
     }
     private fun composed():String = previewOf(message).removePrefix("What will be sent:\n").trim()
-    private fun openGithubIssue() {
-        val url="https://github.com/MtndaleRedneck/HomeRoom/issues/new?title="+URLEncoder.encode("Feedback","UTF-8")+"&body="+URLEncoder.encode(composed().take(1500),"UTF-8")
-        if(url.isBlank()) {snack(this,"Not set up yet.");return}
+    private fun guard():Boolean {
+        if(message.isBlank()) {snack(this,"Write your message first.");return false}
+        return true
+    }
+    private fun openUrl(url:String) {
         try {host.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}
         catch(_:ActivityNotFoundException) {snack(this,"No browser is available.")}
     }
+    private fun openGithubIssue() {
+        if(!guard())return
+        openUrl("https://github.com/MtndaleRedneck/HomeRoom/issues/new?title="+URLEncoder.encode("Feedback","UTF-8")+"&body="+URLEncoder.encode(composed().take(1500),"UTF-8"))
+    }
+    private fun openForm() {
+        if(!guard())return
+        openUrl(formUrl(message.trim().take(1000),phoneModel(),android.os.Build.VERSION.RELEASE,BuildConfig.VERSION_NAME))
+    }
     private fun copyMessage() {
-        if(message.isBlank())return
+        if(!guard())return
         val cm=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("Feedback",message.trim()))
         snack(this,"Message copied.")
     }
     private fun send(edit:EditText,clientId:String) {
+        if(!guard())return
         screenScope.launch {
             try {
                 host.api.sendFeedback(composed(),clientId)

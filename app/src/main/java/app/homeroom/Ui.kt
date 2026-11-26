@@ -261,3 +261,62 @@ fun personColor(actor: String?): Int {
         else -> C.muted
     }
 }
+
+// 1.8 shared components. One header glyph set, one card, one row, one button style
+// for every screen (no text-character icons).
+fun iconView(context: Context, res: Int, tint: Int, sizeDp: Int = 24, desc: String? = null): android.widget.ImageView =
+    android.widget.ImageView(context).apply {
+        setImageResource(res)
+        setColorFilter(tint)
+        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        if (desc != null) contentDescription = desc else importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        layoutParams = LinearLayout.LayoutParams(context.dp(sizeDp), context.dp(sizeDp))
+    }
+
+/** Icon-only button with a 48dp touch target and a spoken label. */
+fun iconButton(context: Context, res: Int, tint: Int, desc: String, onClick: () -> Unit): android.widget.ImageButton =
+    android.widget.ImageButton(context).apply {
+        setImageResource(res)
+        setColorFilter(tint)
+        background = null
+        contentDescription = desc
+        scaleType = android.widget.ImageView.ScaleType.CENTER
+        setOnClickListener { onClick() }
+    }
+
+/** Section card: surface, 16dp corners, 16dp padding. Title is optional (17sp semibold). */
+fun sectionCard(context: Context, title: String? = null): LinearLayout =
+    column(context).apply {
+        background = rounded(C.surface, context.dp(16).toFloat())
+        setPadding(context.dp(16), context.dp(16), context.dp(16), context.dp(16))
+        if (title != null) addView(text(context, title, 17f, C.text, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(8) })
+    }
+
+/** Primary action: accent fill, dark label (the app accent, same as BingeMote's primary buttons). */
+fun actionButton(context: Context, label: CharSequence, primary: Boolean = true, onClick: () -> Unit): TextView =
+    TextView(context).apply {
+        text = label
+        textSize = 14f
+        setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        minHeight = context.dp(48)
+        setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
+        setTextColor(if (primary) Color.parseColor("#1B1B1E") else C.text)
+        background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(14).toFloat())
+        pressIn()
+        setOnClickListener { onClick() }
+    }
+
+/** Navigation row: label (+ optional subtitle) on the left, one 28dp chevron on the right. */
+fun navRow(context: Context, label: String, subtitle: String = "", chevron: Boolean = true, onClick: (() -> Unit)? = null): LinearLayout =
+    LinearLayout(context).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = context.dp(48)
+        setPadding(0, context.dp(4), 0, context.dp(4))
+        val copy = column(context)
+        copy.addView(text(context, label, 14f, C.text, true))
+        if (subtitle.isNotEmpty()) copy.addView(text(context, subtitle, 12.5f, C.muted).apply { maxLines = 2 })
+        addView(copy, LinearLayout.LayoutParams(0, -2, 1f))
+        if (chevron) addView(iconView(context, R.drawable.ic_chevron_right, C.muted, 28), LinearLayout.LayoutParams(context.dp(28), context.dp(28)))
+        if (onClick != null) { pressIn(); setOnClickListener { onClick() } }
+    }

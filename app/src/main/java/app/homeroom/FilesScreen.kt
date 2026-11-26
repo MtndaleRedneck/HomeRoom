@@ -109,14 +109,14 @@ class FilesScreen(context:Context):Screen(context) {
             val card=column(context).apply {background=rounded(C.surface,dp(20).toFloat());clipToOutline=true}
             others.forEachIndexed { index,file ->
                 val row=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),0,dp(12),0);setOnClickListener { open(file) };file.eventId?.let { setOnLongClickListener {showInChat(file);true} } }
-                val type=when {file.kind=="link" -> "↗";file.name.endsWith(".apk",true) -> "APK";file.mimeType=="application/pdf" -> "PDF";else -> "FILE"}
-                val color=when(type) {"APK" -> C.green;"PDF" -> 0xffe5577a.toInt();"↗" -> C.accent;else -> C.muted}
+                val type=when {file.kind=="link" -> "LINK";file.name.endsWith(".apk",true) -> "APK";file.mimeType=="application/pdf" -> "PDF";else -> "FILE"}
+                val color=when(type) {"APK" -> C.green;"PDF" -> 0xffe5577a.toInt();"LINK" -> C.accent;else -> C.muted}
                 row.addView(text(context,type,11f,color,true).apply {gravity=Gravity.CENTER;background=rounded((color and 0x00ffffff) or 0x2e000000,dp(12).toFloat())},LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
                 val copy=column(context)
                 copy.addView(text(context,file.title ?: file.name,15.5f,C.text,true).apply {maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.MIDDLE})
                 copy.addView(text(context,(if(file.kind=="link") "link" else humanSize(file.size))+" · "+file.uploader+" · "+formatRoomTime(file.createdAt),13f,C.muted).apply {maxLines=1})
                 row.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
-                row.addView(text(context,if(file.kind=="link") "↗" else "↓",24f,C.disabled).apply {gravity=Gravity.CENTER;contentDescription=if(file.kind=="link") "Open link" else "Download";setOnClickListener {open(file)}},LinearLayout.LayoutParams(dp(48),dp(48)))
+                row.addView(iconButton(context,if(file.kind=="link") R.drawable.ic_open_link else R.drawable.ic_download,C.muted,if(file.kind=="link") "Open link" else "Download") {open(file)},LinearLayout.LayoutParams(dp(48),dp(48)))
                 card.addView(row,LinearLayout.LayoutParams(-1,dp(68)))
                 if(index<others.lastIndex) card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())})
             }
@@ -143,9 +143,9 @@ class FilesScreen(context:Context):Screen(context) {
                 val dialog=android.app.Dialog(context,android.R.style.Theme_Material_NoActionBar_Fullscreen)
                 val container=column(context).apply {setBackgroundColor(android.graphics.Color.BLACK)}
                 val top=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8))}
-                top.addView(text(context,"‹",26f,C.text).apply {setOnClickListener {dialog.dismiss()}},LinearLayout.LayoutParams(dp(48),dp(48)))
+                top.addView(iconButton(context,R.drawable.ic_arrow_back,C.text,"Back") {dialog.dismiss()},LinearLayout.LayoutParams(dp(48),dp(48)))
                 top.addView(text(context,file.name+"\n"+file.uploader+" · "+formatRoomTime(file.createdAt),13.5f,C.text).apply {maxLines=2},LinearLayout.LayoutParams(0,-2,1f))
-                top.addView(text(context,"↓",24f,C.text).apply {setOnClickListener {open(file)}},LinearLayout.LayoutParams(dp(48),dp(48)))
+                top.addView(iconButton(context,R.drawable.ic_download,C.text,"Download") {open(file)},LinearLayout.LayoutParams(dp(48),dp(48)))
                 container.addView(top);container.addView(image,LinearLayout.LayoutParams(-1,0,1f));dialog.setContentView(container);dialog.show()
             } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {snack(this@FilesScreen,"Couldn't load the preview. Tap to retry.")}
         }
