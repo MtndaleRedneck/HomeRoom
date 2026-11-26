@@ -542,35 +542,42 @@ jobs:
             sleep 2
             adb shell input keyevent KEYCODE_BACK
             sleep 3
+            # Settings rows: look up, scroll once and retry if unusable (missing or under the
+            # nav), and FAIL the step if still unusable, so a bad lookup can never turn into a
+            # screenshot of the wrong screen.
+            settings_tap() {
+              XY=$(python3 ci/ui-tap.py "$1") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "$1") || { echo "settings row not tappable above the nav: $1"; exit 1; }; }
+              adb shell input tap $XY
+            }
             adb shell input tap 792 2242
             sleep 6
             adb exec-out screencap -p > i-settings-rows.png
-            XY=$(python3 ci/ui-tap.py "Needs you") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Needs you"); }; [ -n "$XY" ] && adb shell input tap $XY
+            settings_tap "Needs you"
             sleep 5
             adb exec-out screencap -p > i-settings-needsyou.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "Activity") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Activity"); }; [ -n "$XY" ] && adb shell input tap $XY
+            settings_tap "Activity"
             sleep 5
             adb exec-out screencap -p > i-settings-activity.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "AI team") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI team"); }; [ -n "$XY" ] && adb shell input tap $XY
+            settings_tap "AI team"
             sleep 5
             adb exec-out screencap -p > i-settings-aiteam.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI guide") && adb shell input tap $XY
+            adb shell input swipe 540 1800 540 600 600; sleep 2; settings_tap "AI guide"
             sleep 5
             adb exec-out screencap -p > i-settings-aiguide.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Connection and features") && adb shell input tap $XY
+            adb shell input swipe 540 1800 540 600 600; sleep 2; settings_tap "Connection and features"
             sleep 5
             adb exec-out screencap -p > i-settings-connection.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Unsent attachments") && adb shell input tap $XY
+            adb shell input swipe 540 1800 540 600 600; sleep 2; settings_tap "Unsent attachments"
             sleep 5
             adb exec-out screencap -p > i-settings-unsent.png
             adb shell input keyevent KEYCODE_BACK

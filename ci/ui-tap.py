@@ -96,7 +96,7 @@ def main():
     for node in root.iter("node"):
         b = bounds_of(node)
         if (b and node.get("clickable") == "true"
-                and (node.get("content-desc") or "") in ("Rooms", "Rules", "Files", "Settings")
+                and (node.get("content-desc") or "").split(",")[0] in ("Rooms", "Rules", "Files", "Settings")
                 and b[1] > screen_h * 0.6):
             nav_top = b[1] if nav_top is None else min(nav_top, b[1])
 
