@@ -17,10 +17,10 @@ jobs:
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs ci-inputs/baseline-1.5-private12.apk | tee v15-baseline-certs.txt
-          "$BT/apksigner" verify --print-certs ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee v16-certs.txt
+          "$BT/apksigner" verify --print-certs ci-inputs/homeroom-1.6-release-candidate.apk | tee v16-certs.txt
           grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' v15-baseline-certs.txt
           grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' v16-certs.txt
-          sha256sum ci-inputs/baseline-1.5-private12.apk ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk | tee apk-sha256.txt
+          sha256sum ci-inputs/baseline-1.5-private12.apk ci-inputs/homeroom-1.6-release-candidate.apk | tee apk-sha256.txt
 
       - name: Enable KVM (best effort)
         run: |
@@ -53,7 +53,7 @@ jobs:
             adb shell cat /data/data/app.homeroom/files/upgrade-marker.txt 2>/dev/null | tr -d '\r' > marker-seeded.txt || true
             echo "marker seeded pre-upgrade: [$(cat marker-seeded.txt)]"
             adb shell 'ls -la /data/data/app.homeroom/files/ /data/data/app.homeroom/shared_prefs/ 2>/dev/null' | tee files-before.txt
-            adb install -r ci-inputs/homeroom-1.5-reconstruction-REVIEW-ONLY-NOT-A-RELEASE.apk
+            adb install -r ci-inputs/homeroom-1.6-release-candidate.apk
             adb shell dumpsys package app.homeroom | grep -E 'firstInstallTime|lastUpdateTime|versionCode|versionName' | tee after-upgrade.txt
             grep firstInstallTime before-upgrade.txt > fb.txt
             grep firstInstallTime after-upgrade.txt > fa.txt
