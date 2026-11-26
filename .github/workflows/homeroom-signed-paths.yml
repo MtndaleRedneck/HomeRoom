@@ -87,7 +87,7 @@ jobs:
           profile: pixel_6
           emulator-boot-timeout: 1200
           # The action runs the script line by line; everything is in the script file.
-          script: bash ci/signed-paths.sh
+          script: bash ci/signed-update.sh
 
       - name: Upload evidence (screenshots, UI dumps, synthetic prefs, log)
         if: always()
