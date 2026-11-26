@@ -12,7 +12,9 @@ Rules (no product code involved):
     anr-after-*.png) so the evidence shows what was on screen.
   * After handling, the dialog must be gone and app.homeroom must hold window
     focus; otherwise exit 1.
-Usage: anr-guard.py <label>      exit 0 = clean (or recovered), exit 1 = fail
+Usage: anr-guard.py <label>          before a capture/tap: exit 0 = clean (or recovered), exit 1 = fail
+       anr-guard.py --check <label>  after a capture: NO tap, NO counter; exit 1 if any "isn't responding"
+                                     dialog is on screen (the saved frame is then a failed capture)
 """
 import os
 import re
@@ -41,6 +43,11 @@ def titles(root):
             if "isn't responding" in (n.get("text") or "").replace("\u2019", "'")]
 
 
+def title_nodes(root):
+    return [n for n in root.iter("node")
+            if "isn't responding" in (n.get("text") or "").replace("\u2019", "'")]
+
+
 def shot(path):
     with open(path, "wb") as f:
         f.write(adb("exec-out", "screencap", "-p").stdout)
@@ -54,8 +61,13 @@ def count():
 
 
 def wait_center(root):
-    for n in root.iter("node"):
-        if (n.get("text") or "") == "Wait":
+    # Only the system dialog's own Wait: package must be "android"; the aerr_wait
+    # resource id is preferred, exact text "Wait" in package android is accepted.
+    cands = [n for n in root.iter("node") if (n.get("package") or "") == "android"
+             and ((n.get("resource-id") or "").endswith("aerr_wait") or (n.get("text") or "") == "Wait")]
+    cands.sort(key=lambda n: 0 if (n.get("resource-id") or "").endswith("aerr_wait") else 1)
+    for n in cands:
+        if True:
             m = BOUNDS.match(n.get("bounds") or "")
             if m:
                 x1, y1, x2, y2 = (int(g) for g in m.groups())
@@ -70,13 +82,25 @@ def focus_ok():
     return "app.homeroom" in line
 
 
+def check_only(label):
+    found = titles(dump())
+    if found:
+        shot("anr-in-capture-%s.png" % label)
+        print("anr-guard --check: dialog on screen after capture of %s: %s" % (label, found))
+        return 1
+    return 0
+
+
 def main():
+    if len(sys.argv) > 2 and sys.argv[1] == "--check":
+        return check_only(re.sub(r"[^A-Za-z0-9]+", "-", sys.argv[2]).strip("-"))
     label = re.sub(r"[^A-Za-z0-9]+", "-", sys.argv[1] if len(sys.argv) > 1 else "x").strip("-")
     root = dump()
     found = titles(root)
     if not found:
         return 0
-    if any(t != "Pixel Launcher isn't responding" for t in found):
+    pkgs = {n.get("package") for n in title_nodes(root)}
+    if any(t != "Pixel Launcher isn't responding" for t in found) or pkgs != {"android"}:
         shot("anr-unexpected-%s.png" % label)
         print("anr-guard: unexpected ANR dialog:", found)
         return 1

@@ -203,24 +203,29 @@ jobs:
             sleep 40
             python3 ci/anr-guard.py main-chats || exit 1
             adb exec-out screencap -p > main-chats.png
+            python3 ci/anr-guard.py --check main-chats || exit 1
             # Restored tab order is Rooms, Rules, Files, Settings.
             adb shell input tap 456 2242
             sleep 6
             python3 ci/anr-guard.py main-rules || exit 1
             adb exec-out screencap -p > main-rules.png
+            python3 ci/anr-guard.py --check main-rules || exit 1
             adb shell input tap 624 2242
             sleep 6
             python3 ci/anr-guard.py main-files || exit 1
             adb exec-out screencap -p > main-files.png
+            python3 ci/anr-guard.py --check main-files || exit 1
             adb shell input tap 792 2242
             sleep 6
             python3 ci/anr-guard.py main-settings || exit 1
             adb exec-out screencap -p > main-settings.png
+            python3 ci/anr-guard.py --check main-settings || exit 1
             # Privacy row proof: tap "App lock and privacy", capture the screen it opens.
             adb shell input tap 540 1526
             sleep 4
             python3 ci/anr-guard.py main-privacy || exit 1
             adb exec-out screencap -p > main-privacy.png
+            python3 ci/anr-guard.py --check main-privacy || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             # Scrolled-bottom proof: the whole Updates card + version line must
@@ -231,6 +236,7 @@ jobs:
             sleep 3
             python3 ci/anr-guard.py main-settings-bottom || exit 1
             adb exec-out screencap -p > main-settings-bottom.png
+            python3 ci/anr-guard.py --check main-settings-bottom || exit 1
             adb shell cmd uimode night auto
             echo "ok: seeded session captured main-UI chrome on all four tabs (server unreachable by design; shell + floating nav only, not room data)"
 
@@ -409,18 +415,22 @@ jobs:
             sleep 40
             python3 ci/anr-guard.py i-rooms || exit 1
             adb exec-out screencap -p > i-rooms.png
+            python3 ci/anr-guard.py --check i-rooms || exit 1
             XY=$(python3 ci/ui-tap.py "Stub Room") && adb shell input tap $XY
             sleep 8
             python3 ci/anr-guard.py i-room || exit 1
             adb exec-out screencap -p > i-room.png
+            python3 ci/anr-guard.py --check i-room || exit 1
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
             sleep 4
             python3 ci/anr-guard.py i-menu || exit 1
             adb exec-out screencap -p > i-menu.png
+            python3 ci/anr-guard.py --check i-menu || exit 1
             XY=$(python3 ci/ui-tap.py "Outgoing messages") && adb shell input tap $XY
             sleep 6
             python3 ci/anr-guard.py i-outgoing || exit 1
             adb exec-out screencap -p > i-outgoing.png
+            python3 ci/anr-guard.py --check i-outgoing || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
@@ -429,6 +439,7 @@ jobs:
             sleep 6
             python3 ci/anr-guard.py i-goal || exit 1
             adb exec-out screencap -p > i-goal.png
+            python3 ci/anr-guard.py --check i-goal || exit 1
             python3 ci/ui-tap.py "Stub room goal for the debug-interaction job." >/dev/null || { echo "goal page did not render the stub goal text"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 3
@@ -438,18 +449,21 @@ jobs:
             sleep 6
             python3 ci/anr-guard.py i-askall-dialog || exit 1
             adb exec-out screencap -p > i-askall-dialog.png
+            python3 ci/anr-guard.py --check i-askall-dialog || exit 1
             XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
             sleep 2
             adb shell input text "What%sis%sthe%sstub%splan"
             sleep 2
             python3 ci/anr-guard.py i-askall-filled || exit 1
             adb exec-out screencap -p > i-askall-filled.png
+            python3 ci/anr-guard.py --check i-askall-filled || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 2
             XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
             sleep 8
             python3 ci/anr-guard.py i-askall-answers || exit 1
             adb exec-out screencap -p > i-askall-answers.png
+            python3 ci/anr-guard.py --check i-askall-answers || exit 1
             python3 ci/ui-tap.py "Stub AI One" >/dev/null || { echo "answers page did not render the stub AI card"; exit 1; }
             python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "answers page did not render the stub reply"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
@@ -493,6 +507,7 @@ jobs:
             sleep 3
             python3 ci/anr-guard.py i-askall-blocked || exit 1
             adb exec-out screencap -p > i-askall-blocked.png
+            python3 ci/anr-guard.py --check i-askall-blocked || exit 1
             python3 ci/ui-tap.py "Sending again could post it twice" >/dev/null || { echo "unresolved-ask guard did not block the new send after leave/re-enter"; exit 1; }
             test "$(grep -c '"method": "POST", "path": "/homeroom/v1/owner/rooms/stub-room/ask-all"' stub-log.jsonl)" = "2" || { echo "blocked ask posted a duplicate while the guard was up"; grep 'ask-all' stub-log.jsonl; exit 1; }
             PROBE_ELAPSED=$(( $(date +%s) - PROBE_T0 ))
@@ -527,6 +542,7 @@ jobs:
             sleep 10
             python3 ci/anr-guard.py i-askall-recovered || exit 1
             adb exec-out screencap -p > i-askall-recovered.png
+            python3 ci/anr-guard.py --check i-askall-recovered || exit 1
             python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "accepted ask did not recover into a real answers page on re-entry"; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 3
@@ -536,6 +552,7 @@ jobs:
             sleep 6
             python3 ci/anr-guard.py i-voice || exit 1
             adb exec-out screencap -p > i-voice.png
+            python3 ci/anr-guard.py --check i-voice || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 2
             XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
@@ -544,20 +561,24 @@ jobs:
             sleep 8
             python3 ci/anr-guard.py i-picker || exit 1
             adb exec-out screencap -p > i-picker.png
+            python3 ci/anr-guard.py --check i-picker || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             XY=$(python3 ci/ui-tap.py "Review decision") && adb shell input tap $XY
             sleep 8
             python3 ci/anr-guard.py i-decision || exit 1
             adb exec-out screencap -p > i-decision.png
+            python3 ci/anr-guard.py --check i-decision || exit 1
             XY=$(python3 ci/ui-tap.py "Stub option A") && adb shell input tap $XY
             sleep 8
             python3 ci/anr-guard.py i-decision-confirm || exit 1
             adb exec-out screencap -p > i-decision-confirm.png
+            python3 ci/anr-guard.py --check i-decision-confirm || exit 1
             XY=$(python3 ci/ui-tap.py "Confirm answer") && adb shell input tap $XY
             sleep 8
             python3 ci/anr-guard.py i-decision-done || exit 1
             adb exec-out screencap -p > i-decision-done.png
+            python3 ci/anr-guard.py --check i-decision-done || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 2
             adb shell input keyevent KEYCODE_BACK
@@ -568,48 +589,57 @@ jobs:
             sleep 6
             python3 ci/anr-guard.py i-settings-rows || exit 1
             adb exec-out screencap -p > i-settings-rows.png
+            python3 ci/anr-guard.py --check i-settings-rows || exit 1
             sh ci/settings-tap.sh "Vibrate on press"
             sleep 2
             python3 ci/anr-guard.py i-toggle-off || exit 1
             adb exec-out screencap -p > i-toggle-off.png
+            python3 ci/anr-guard.py --check i-toggle-off || exit 1
             sh ci/settings-tap.sh "Vibrate on press"
             sleep 2
             python3 ci/anr-guard.py i-toggle-on || exit 1
             adb exec-out screencap -p > i-toggle-on.png
+            python3 ci/anr-guard.py --check i-toggle-on || exit 1
             sh ci/settings-tap.sh "Needs you"
             sleep 5
             python3 ci/anr-guard.py i-settings-needsyou || exit 1
             adb exec-out screencap -p > i-settings-needsyou.png
+            python3 ci/anr-guard.py --check i-settings-needsyou || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             sh ci/settings-tap.sh "Activity"
             sleep 5
             python3 ci/anr-guard.py i-settings-activity || exit 1
             adb exec-out screencap -p > i-settings-activity.png
+            python3 ci/anr-guard.py --check i-settings-activity || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             sh ci/settings-tap.sh "AI team"
             sleep 5
             python3 ci/anr-guard.py i-settings-aiteam || exit 1
             adb exec-out screencap -p > i-settings-aiteam.png
+            python3 ci/anr-guard.py --check i-settings-aiteam || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             adb shell input swipe 540 1800 540 600 600; sleep 2; sh ci/settings-tap.sh "AI guide"
             sleep 5
             python3 ci/anr-guard.py i-settings-aiguide || exit 1
             adb exec-out screencap -p > i-settings-aiguide.png
+            python3 ci/anr-guard.py --check i-settings-aiguide || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             adb shell input swipe 540 1800 540 600 600; sleep 2; sh ci/settings-tap.sh "Connection and features"
             sleep 5
             python3 ci/anr-guard.py i-settings-connection || exit 1
             adb exec-out screencap -p > i-settings-connection.png
+            python3 ci/anr-guard.py --check i-settings-connection || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             adb shell input swipe 540 1800 540 600 600; sleep 2; sh ci/settings-tap.sh "Unsent attachments"
             sleep 5
             python3 ci/anr-guard.py i-settings-unsent || exit 1
             adb exec-out screencap -p > i-settings-unsent.png
+            python3 ci/anr-guard.py --check i-settings-unsent || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             # 1.8 evidence: populated Rules/Files (synthetic stub data), pushed-page header, Feedback page.
@@ -617,16 +647,19 @@ jobs:
             sleep 5
             python3 ci/anr-guard.py i-rules-populated || exit 1
             adb exec-out screencap -p > i-rules-populated.png
+            python3 ci/anr-guard.py --check i-rules-populated || exit 1
             XY=$(python3 ci/ui-tap.py "Files") && adb shell input tap $XY
             sleep 5
             python3 ci/anr-guard.py i-files-populated || exit 1
             adb exec-out screencap -p > i-files-populated.png
+            python3 ci/anr-guard.py --check i-files-populated || exit 1
             XY=$(python3 ci/ui-tap.py "Settings") && adb shell input tap $XY
             sleep 4
             sh ci/settings-tap.sh "Send feedback, report a bug, or suggest a feature"
             sleep 4
             python3 ci/anr-guard.py i-feedback-empty || exit 1
             adb exec-out screencap -p > i-feedback-empty.png
+            python3 ci/anr-guard.py --check i-feedback-empty || exit 1
             XY=$(python3 ci/ui-tap.py "What happened") && adb shell input tap $XY
             sleep 1
             adb shell input text "Synthetic%sUI%stest%smessage"
@@ -635,6 +668,7 @@ jobs:
             sleep 2
             python3 ci/anr-guard.py i-feedback-typed || exit 1
             adb exec-out screencap -p > i-feedback-typed.png
+            python3 ci/anr-guard.py --check i-feedback-typed || exit 1
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
