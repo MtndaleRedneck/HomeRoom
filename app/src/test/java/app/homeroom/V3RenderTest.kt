@@ -23,15 +23,15 @@ class V3RenderTest {
     private fun field(o:Any,n:String):java.lang.reflect.Field=o.javaClass.getDeclaredField(n).apply {isAccessible=true}
     private fun call(o:Any,n:String)=o.javaClass.getDeclaredMethod(n).apply {isAccessible=true}.invoke(o)
     private fun rooms():List<Room> {
-        val members="""[{"actor":"owner","display_name":"Owner"},{"actor":"tab","display_name":"Tab"},{"actor":"instinct","display_name":"Instinct"}]"""
-        return listOf("WrenBoard","HomeRoom app","Listen Later","House","Zephyr","BumpLog").mapIndexed { i,name ->
-            Room.from(JSONObject("""{"room_id":"r$i","display_name":"$name","members":$members,"main_thread_key":"main$i","unread_count":${if(i<2)3-i*2 else 0},"pending_rules_count":${if(i==1)1 else 0},"waiting_count":${if(i==0 || i==2)1 else 0},"muted":${i==3},"first_unread_seq":4,"icon":{"kind":"symbol","glyph":"${name.take(1)}","colour":"${listOf("#FC8613","#2AABEE","#3FBF7F","#7B6CF0","#E5577A","#F0A23C")[i]}"},"waiting":${if(i==0) """[{"waiting_on":"tab","event_id":"e5","since":"2026-11-10T14:14:00Z","notified_at":null,"excerpt":"@Tab check the math too?"}]""" else "[]"},"last_post":{"actor":"${if(i==0)"instinct" else if(i==2)"owner" else "tab"}","seq":${20-i},"own":${i==2},"excerpt":"${listOf("1.8 build is up. Measured the keys.","Review done: 2 must-fix, the rest pass.","Ship it once the new icons are in.","Honeywell confirmed: T9 Series 1.","Release candidate 3 passes each check.","Checked. On hold until the review.")[i]}","created_at":"2026-11-10T14:12:00Z"}}"""))
+        val members="""[{"actor":"owner1","display_name":"The owner"},{"actor":"ari","display_name":"Ari"},{"actor":"joss","display_name":"Joss"}]"""
+        return listOf("Project Alpha","HomeRoom app","Reading","Home","Project Beta","Project Gamma").mapIndexed { i,name ->
+            Room.from(JSONObject("""{"room_id":"r$i","display_name":"$name","members":$members,"main_thread_key":"main$i","unread_count":${if(i<2)3-i*2 else 0},"pending_rules_count":${if(i==1)1 else 0},"waiting_count":${if(i==0 || i==2)1 else 0},"muted":${i==3},"first_unread_seq":4,"icon":{"kind":"symbol","glyph":"${name.take(1)}","colour":"${listOf("#FC8613","#2AABEE","#3FBF7F","#7B6CF0","#E5577A","#F0A23C")[i]}"},"waiting":${if(i==0) """[{"waiting_on":"ari","event_id":"e5","since":"2026-11-10T14:14:00Z","notified_at":null,"excerpt":"@Ari check the math too?"}]""" else "[]"},"last_post":{"actor":"${if(i==0)"joss" else if(i==2)"owner1" else "ari"}","seq":${20-i},"own":${i==2},"excerpt":"${listOf("1.8 build is up. Measured the keys.","Review done: 2 must-fix, the rest pass.","Ship it once the new icons are in.","Vendor confirmed: model 1.","Release candidate 3 passes each check.","Checked. On hold until the review.")[i]}","created_at":"2026-11-10T14:12:00Z"}}"""))
         }
     }
     private fun activity():Pair<org.robolectric.android.controller.ActivityController<MainActivity>,MainActivity> {
         val controller=Robolectric.buildActivity(MainActivity::class.java).setup()
         val a=controller.get();field(a,"polling").setBoolean(a,false)
-        a.session.ownerId="owner";a.session.ownerName="Owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
+        a.session.ownerId="owner1";a.session.ownerName="The owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
         a.cacheRooms(rooms())
         return controller to a
     }
@@ -84,25 +84,25 @@ class V3RenderTest {
         val roster=rooms()
         val rooms=RoomsScreen(a)
         @Suppress("UNCHECKED_CAST") val rows=field(rooms,"rows").get(rooms) as MutableList<Room>
-        rows.addAll(roster);field(rooms,"globalPending").set(rooms,1);field(rooms,"serverTime").set(rooms,"2026-11-10T14:26:00Z")
+        rows.addAll(roster);field(rooms,"serverTime").set(rooms,"2026-11-10T14:26:00Z")
         (field(rooms,"adapter").get(rooms) as androidx.recyclerview.widget.RecyclerView.Adapter<*>).notifyDataSetChanged()
         render(a,rooms,"HomeRoom",R.id.nav_chats,"rooms")
         val rules=RulesScreen(a);field(rules,"rooms").set(rules,roster)
-        field(rules,"scope").set(rules,RuleScope.from(JSONObject("""{"pending_count":2,"rereads":{"owner":"2026-11-10T13:02:00Z","tab":"2026-11-10T13:00:00Z"},"rules":[{"rule_id":"one","state":"proposed","version":2,"proposed_by":"instinct","text":"Measure any size on Owner's phone and post the numbers before changing it."},{"rule_id":"two","state":"proposed","version":1,"proposed_by":"tab","text":"No mail, posts or purchases go out without Owner's yes in the room."},{"rule_id":"three","state":"active","version":3,"proposed_by":"tab","decided_by":"owner","text":"Ask before changing the plan."}]}""")))
+        field(rules,"scope").set(rules,RuleScope.from(JSONObject("""{"pending_count":2,"rereads":{"owner1":"2026-11-10T13:02:00Z","ari":"2026-11-10T13:00:00Z"},"rules":[{"rule_id":"one","state":"proposed","version":2,"proposed_by":"joss","text":"Measure any size on the owner's phone and post the numbers before changing it."},{"rule_id":"two","state":"proposed","version":1,"proposed_by":"ari","text":"No mail, posts or purchases go out without the owner's yes in the room."},{"rule_id":"three","state":"active","version":3,"proposed_by":"ari","decided_by":"owner1","text":"Ask before changing the plan."}]}""")))
         call(rules,"buildChips");call(rules,"render");render(a,rules,"Rules",R.id.nav_rules,"rules")
         val files=FilesScreen(a);field(files,"rooms").set(files,roster);field(files,"selected").set(files,roster.first())
         @Suppress("UNCHECKED_CAST")val fileList=field(files,"files").get(files) as MutableList<RoomFile>
-        fileList.addAll(listOf(RoomFile("apk","wrenboard-1.8-b215.apk","application/vnd.android.package-archive",25270682,"Instinct","2026-11-10T14:12:00Z"),RoomFile("pdf","review-notes-1.8.pdf","application/pdf",188416,"Tab","2026-11-10T13:04:00Z"),RoomFile("link","Release page, build 215","",0,"Instinct","2026-11-09T15:00:00Z",kind="link",url="https://example.com")))
+        fileList.addAll(listOf(RoomFile("apk","alpha-1.8-b215.apk","application/vnd.android.package-archive",25270682,"Joss","2026-11-10T14:12:00Z"),RoomFile("pdf","review-notes-1.8.pdf","application/pdf",188416,"Ari","2026-11-10T13:04:00Z"),RoomFile("link","Release page, build 215","",0,"Joss","2026-11-09T15:00:00Z",kind="link",url="https://example.com")))
         call(files,"buildChips");call(files,"render");render(a,files,"Files",R.id.nav_files,"files")
         val settings=SettingsScreen(a);field(settings,"rooms").set(settings,roster);field(settings,"devicesLoaded").set(settings,true);field(settings,"devices").set(settings,listOf(OwnerDevice("phone","This phone",null,null),OwnerDevice("browser","Browser",null,"2026-11-09T15:00:00Z")))
         call(settings,"rebuild");render(a,settings,"Settings",R.id.nav_settings,"settings")
         val chat=RoomScreen(a,roster.first())
         @Suppress("UNCHECKED_CAST")val events=field(chat,"events").get(chat) as MutableList<ChatEvent>
-        listOf("Build 214 of WrenBoard 1.8 is up: one Recents button, no Search.","Checked it: same signing cert, six files changed. Clean.","@Instinct measure the key height on my phone first.","155 px per letter row at the default height. No change needed.","@Tab check the math too?").forEachIndexed {i,body->
-            val actor=listOf("instinct","tab","owner","instinct","owner")[i]
-            events.add(ChatEvent.from(JSONObject("""{"event_id":"e${i+1}","thread_key":"main0","seq":${i+1},"actor":"$actor","own":${actor=="owner"},"text":"$body","created_at":"2026-11-10T14:${listOf("00","04","08","10","14")[i]}:00Z","parent_id":${if(i==3)"\"e3\"" else "null"},"mentions":${if(i==2)"[\"instinct\"]" else if(i==4)"[\"tab\"]" else "[]"},"assistant_statuses":${if(i==2)"[{\"actor\":\"instinct\",\"reply_event_id\":\"e4\",\"notified_at\":null}]" else if(i==4)"[{\"actor\":\"tab\",\"reply_event_id\":null,\"notified_at\":null}]" else "[]"}}""")))
+        listOf("Build 214 of Project Alpha 1.8 is up: one Recents button, no Search.","Checked it: same signing cert, six files changed. Clean.","@Joss measure the key height on my phone first.","155 px per letter row at the default height. No change needed.","@Ari check the math too?").forEachIndexed {i,body->
+            val actor=listOf("joss","ari","owner1","joss","owner1")[i]
+            events.add(ChatEvent.from(JSONObject("""{"event_id":"e${i+1}","thread_key":"main0","seq":${i+1},"actor":"$actor","own":${actor=="owner1"},"text":"$body","created_at":"2026-11-10T14:${listOf("00","04","08","10","14")[i]}:00Z","parent_id":${if(i==3)"\"e3\"" else "null"},"mentions":${if(i==2)"[\"joss\"]" else if(i==4)"[\"ari\"]" else "[]"},"assistant_statuses":${if(i==2)"[{\"actor\":\"joss\",\"reply_event_id\":\"e4\",\"notified_at\":null}]" else if(i==4)"[{\"actor\":\"ari\",\"reply_event_id\":null,\"notified_at\":null}]" else "[]"}}""")))
         }
-        field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild");render(a,chat,"WrenBoard",null,"chat",true)
+        field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild");render(a,chat,"Project Alpha",null,"chat",true)
         c.pause()
     }
     // 1.7 pixel evidence: a REAL pressed nav cell (DOWN dispatched, sink
@@ -177,12 +177,15 @@ class V3RenderTest {
 
     // 1.9 review evidence: Rules scrolled to its true bottom clears the
     // floating nav, same contract as Settings.
-    @Test fun rulesScrolledToBottomClearsNav() {
+    @Test fun rulesScrolledToBottomClearsNav() = rulesBottom("rules-bottom")
+    @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
+    fun rulesScrolledToBottomAtLargeFont() = rulesBottom("rules-bottom-font13")
+    private fun rulesBottom(name:String) {
         val(c,a)=activity()
         val roster=rooms()
         val rules=RulesScreen(a);field(rules,"rooms").set(rules,roster)
-        field(rules,"scope").set(rules,RuleScope.from(JSONObject("""{"pending_count":2,"rereads":{"owner":"2026-11-10T13:02:00Z","tab":"2026-11-10T13:00:00Z"},"rules":[{"rule_id":"one","state":"proposed","version":2,"proposed_by":"instinct","text":"Measure any size on Owner's phone and post the numbers before changing it."},{"rule_id":"two","state":"proposed","version":1,"proposed_by":"tab","text":"No mail, posts or purchases go out without Owner's yes in the room."},{"rule_id":"three","state":"active","version":3,"proposed_by":"tab","decided_by":"owner","text":"Ask before changing the plan."}]}""")))
-        call(rules,"buildChips");call(rules,"render");render(a,rules,"Rules",R.id.nav_rules,"tmp-rules-bottom")
+        field(rules,"scope").set(rules,RuleScope.from(JSONObject("""{"pending_count":2,"rereads":{"owner1":"2026-11-10T13:02:00Z","ari":"2026-11-10T13:00:00Z"},"rules":[{"rule_id":"one","state":"proposed","version":2,"proposed_by":"joss","text":"Measure any size on the owner's phone and post the numbers before changing it."},{"rule_id":"two","state":"proposed","version":1,"proposed_by":"ari","text":"No mail, posts or purchases go out without the owner's yes in the room."},{"rule_id":"three","state":"active","version":3,"proposed_by":"ari","decided_by":"owner1","text":"Ask before changing the plan."}]}""")))
+        call(rules,"buildChips");call(rules,"render");render(a,rules,"Rules",R.id.nav_rules,"tmp-"+name)
         val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         val root=rules.getChildAt(0) as ViewGroup
         val sv=root.getChildAt(2) as ScrollView
@@ -200,7 +203,7 @@ class V3RenderTest {
         assertTrue("last Rules card clears the floating nav when scrolled to bottom: card bottom ${lastLoc[1]+last.height}, nav top ${navLoc[1]}",lastLoc[1]+last.height<=navLoc[1])
         val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
         val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
-        File(previewDir).apply {mkdirs()}.resolve("v3-rules-bottom.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        File(previewDir).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
         c.pause()
     }
 
@@ -211,9 +214,9 @@ class V3RenderTest {
         val roster=rooms()
         val chat=RoomScreen(a,roster.first())
         @Suppress("UNCHECKED_CAST")val events=field(chat,"events").get(chat) as MutableList<ChatEvent>
-        events.add(ChatEvent.from(JSONObject("""{"event_id":"e1","thread_key":"main0","seq":1,"actor":"instinct","own":false,"text":"Build 214 of WrenBoard 1.8 is up.","created_at":"2026-11-10T14:00:00Z"}""")))
+        events.add(ChatEvent.from(JSONObject("""{"event_id":"e1","thread_key":"main0","seq":1,"actor":"joss","own":false,"text":"Build 214 of Project Alpha 1.8 is up.","created_at":"2026-11-10T14:00:00Z"}""")))
         field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild")
-        render(a,chat,"WrenBoard",null,"tmp-member-header",true)
+        render(a,chat,"Project Alpha",null,"tmp-member-header",true)
         a.javaClass.getDeclaredMethod("setHeaderMeta",Room::class.java).apply {isAccessible=true}.invoke(a,roster.first())
         val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
@@ -224,6 +227,32 @@ class V3RenderTest {
         val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
         val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
         File(previewDir).apply {mkdirs()}.resolve("v3-member-header.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        c.pause()
+    }
+
+    // fp66 MUST: an OWN message carrying a reply quote - light ink on the dark
+    // well inside the accent bubble, accent bar. Native render, neutral fixture.
+    @Test fun ownQuoteInkEvidence() {
+        val(c,a)=activity()
+        val roster=rooms()
+        val chat=RoomScreen(a,roster.first())
+        @Suppress("UNCHECKED_CAST")val events=field(chat,"events").get(chat) as MutableList<ChatEvent>
+        events.add(ChatEvent.from(JSONObject("""{"event_id":"e1","thread_key":"main0","seq":1,"actor":"joss","own":false,"text":"Measure the key height on the phone first.","created_at":"2026-11-10T14:00:00Z"}""")))
+        events.add(ChatEvent.from(JSONObject("""{"event_id":"e2","thread_key":"main0","seq":2,"actor":"owner1","own":true,"text":"155 px at the default height.","created_at":"2026-11-10T14:04:00Z","parent_id":"e1"}""")))
+        field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild")
+        render(a,chat,"Project Alpha",null,"ownquote",true)
+        c.pause()
+    }
+
+    // fp66: setup with a FAILED check (Needs attention) gets the danger "!"
+    // glyph and danger state word, distinct from a waiting step.
+    @Test fun failedSetupEvidence() {
+        val(c,a)=activity()
+        val setup=SetupScreen(a)
+        setup.checklist.checks[SetupStep.LINK]=SetupCheck("Needs attention","The full HTTPS connection link is missing or invalid.","Paste a fresh full link, including the part after #.")
+        setup.checklist.checks[SetupStep.SERVER]=SetupCheck("Checking","Waiting for the server to answer.")
+        call(setup,"render")
+        render(a,setup,"Set up HomeRoom",null,"setup-failed")
         c.pause()
     }
     // Capture-under-lock gate (I2, Nov 24): while FLAG_SECURE or the lock
