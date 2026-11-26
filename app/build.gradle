@@ -15,7 +15,7 @@ def signingReady = keystoreFileObj.exists() && passFileObj.exists()
 
 android {
     namespace 'app.homeroom'
-    compileSdk 34
+    compileSdk 36
 
     buildFeatures {
         buildConfig true
@@ -96,28 +96,28 @@ android {
 dependencies {
     // RECONSTRUCTED: required by recovered sources (workers, FCM); version pins are
     // reconstruction choices, the original pins are unknown.
-    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation platform('com.google.firebase:firebase-bom:35.2.0')
     implementation 'com.google.firebase:firebase-messaging'
-    implementation 'androidx.work:work-runtime-ktx:2.9.1'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'com.google.android.material:material:1.12.0'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'androidx.work:work-runtime-ktx:2.12.0'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'com.google.android.material:material:1.14.0'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.2.0'
     // Unit-test deps restored Nov 24, 2026: the app/src/test Robolectric tree
     // existed without testImplementation entries and could not compile. Pins
-    // are reconstruction choices (junit 4.13.2, robolectric 4.11.1 for sdk 34).
+    // are reconstruction choices (junit 4.13.2, robolectric 4.18.1; tests run at targetSdk 34).
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.robolectric:robolectric:4.11.1'
-    // mockwebserver 4.12.0 matches the pinned okhttp 4.12.0: the historical
+    testImplementation 'org.robolectric:robolectric:4.18.1'
+    // mockwebserver 5.5.1 matches the pinned okhttp 5.5.1: the historical
     // RotationHttpTest/SetupHttpTest/V15NetworkTest suites use MockWebServer.
-    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:5.5.1'
     // okhttp-tls holds HeldCertificate/HandshakeCertificates (okhttp3.tls)
     // used by the historical HTTP suites.
-    testImplementation 'com.squareup.okhttp3:okhttp-tls:4.12.0'
+    testImplementation 'com.squareup.okhttp3:okhttp-tls:5.5.1'
     // work-testing matches the pinned work-runtime-ktx: NotificationLockGuardTest
     // observes enqueued unique work via WorkManagerTestInitHelper.
-    testImplementation 'androidx.work:work-testing:2.9.1'
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    testImplementation 'androidx.work:work-testing:2.12.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.5.1'
+    implementation 'com.github.bumptech.glide:glide:5.0.10'
 }
