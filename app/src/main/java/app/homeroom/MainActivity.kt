@@ -157,6 +157,12 @@ class MainActivity : AppCompatActivity() {
 
         if (session.enrolled) {
             showMain()
+            // System recreation (font size change): put the Feedback page and its typed draft back.
+            retained.feedbackDraft?.let {draft ->
+                retained.feedbackDraft=null
+                nav.selectedItemId = R.id.nav_settings
+                openPage("Feedback & bugs", FeedbackScreen(this).also {it.draft=draft})
+            }
             UpdateCheck.checkInBackground(scope)
         } else {
             showSetup(null)
@@ -199,6 +205,13 @@ class MainActivity : AppCompatActivity() {
     // labels keep following the user's font setting and "Settings" stays whole.
     // screenSize/screenLayout are handled without recreating the activity
     // (manifest), so a rotation or split-screen resize must refit the nav.
+    // In-memory only, kept by the ViewModelStore across a configuration recreation (font size) and dropped when
+    // the activity really finishes or the process dies. Nothing is written to preferences, files or a saved-state Bundle.
+    private val retained by lazy { androidx.lifecycle.ViewModelProvider(this)[RetainedUiState::class.java] }
+    override fun onDestroy() {
+        if (isChangingConfigurations) (currentPage as? FeedbackScreen)?.let { retained.feedbackDraft = it.draft }
+        super.onDestroy()
+    }
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         if (::nav.isInitialized) {

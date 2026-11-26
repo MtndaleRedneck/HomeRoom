@@ -182,7 +182,7 @@ class SettingsScreen(context:Context):Screen(context) {
         divide(card)
         val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(48);setPadding(0,dp(4),0,dp(4))}
         val copy=column(context);copy.addView(text(context,title,15f,C.text,true));copy.addView(text(context,subtitle,12.5f,C.muted).apply {maxLines=2})
-        line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
+        line.addView(copy,LinearLayout.LayoutParams(0,-2,1f).apply {rightMargin=dp(12)})
                 val sw=ToggleSwitch(context).apply {
             contentDescription=title
             setCheckedSilently(on)
