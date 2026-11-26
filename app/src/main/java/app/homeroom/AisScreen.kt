@@ -110,7 +110,7 @@ class AisScreen(context:Context):Screen(context) {
         snack(this,"Copied. Paste it to your AI in its own chat.")
     }
     private fun addDialog() {
-        val builder=AlertDialog.Builder(context)
+        val builder=AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
         val form=column(context).apply {setPadding(dp(20),dp(8),dp(20),0)}
         val name=input(builder.context,"Name for this AI")
         form.addView(name)
@@ -119,19 +119,19 @@ class AisScreen(context:Context):Screen(context) {
             .setPositiveButton("Add") {_,_->create(name.text.toString().trim())}.show()
     }
     private fun renameDialog(a:OwnerAi) {
-        val builder=AlertDialog.Builder(context)
+        val builder=AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
         val name=input(builder.context,"Name").apply {setText(a.displayName);setPadding(dp(20),dp(8),dp(20),dp(8))}
         builder.setTitle("Rename AI").setView(name).setNegativeButton("Cancel",null)
             .setPositiveButton("Save") {_,_->rename(a,name.text.toString().trim())}.show()
     }
     private fun pictureDialog(a:OwnerAi) {
         val items=if(a.avatar!=null) arrayOf("Choose a picture","Remove picture") else arrayOf("Choose a picture")
-        AlertDialog.Builder(context).setTitle("Picture for "+a.displayName).setItems(items) {_,which ->
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Picture for "+a.displayName).setItems(items) {_,which ->
             if(which==0) host.pickImage {uri -> if(uri!=null) setPicture(a,uri)} else setPicture(a,null)
         }.setNegativeButton("Cancel",null).show()
     }
     private fun removeDialog(a:OwnerAi) {
-        AlertDialog.Builder(context).setTitle("Remove "+a.displayName+"?")
+        AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Remove "+a.displayName+"?")
             .setMessage(a.displayName+" loses access right away and leaves your rooms. Past messages and rules stay as they are. To bring it back you would add it again as a new AI.")
             .setNegativeButton("Cancel",null).setPositiveButton("Remove") {_,_->unlink(a)}.show()
     }

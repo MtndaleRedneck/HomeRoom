@@ -46,7 +46,7 @@ internal object ActionConfirmation {
         }.apply {tag="action_review_scroll";addView(content)}
         val layout=column(host).apply {addView(scroll)}
         val bar=LinearLayout(host).apply {orientation=LinearLayout.HORIZONTAL;setPadding(host.dp(12),host.dp(8),host.dp(12),host.dp(12))}
-        val dialog=AlertDialog.Builder(host).setTitle("Confirm this exact action?").setView(layout).create()
+        val dialog=AlertDialog.Builder(host,R.style.Theme_HomeRoom_Dialog).setTitle("Confirm this exact action?").setView(layout).create()
         val cancel=button(host,"Cancel",false) {dialog.dismiss()}.apply {tag="action_cancel"}
         val confirm=button(host,"Confirm",true) {}.apply {tag="action_confirm"}
         bar.addView(cancel,LinearLayout.LayoutParams(0,-2,1f).apply {marginEnd=host.dp(8)})

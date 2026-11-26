@@ -183,7 +183,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             // Block the blind resend, but offer explicit user resolution:
             // without an escape, a truly failed ask would lock the room for
             // the rest of the process lifetime.
-            val guard = android.app.AlertDialog.Builder(context)
+            val guard = android.app.AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
                 .setTitle("Ask not confirmed")
                 // Informed override (main 18:54): the user must know the old
                 // ask may already have reached the AIs before choosing this.
@@ -255,7 +255,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         body.addView(text(context, "Only selected AIs already granted this room can answer. No access is added.", 14f, C.muted))
         val askClientId = clientId()
         val createdAt = java.time.Instant.now().toString()
-        val dialog = android.app.AlertDialog.Builder(context)
+        val dialog = android.app.AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
             .setTitle("Ask AIs side by side")
             .setView(body)
             .setNegativeButton("Cancel", null)
@@ -371,7 +371,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         // retained across a session reset, so each dispatch re-proves the
         // session identity captured at menu build AND the server feature flag.
         val launch = host.session.authSnapshot()
-        val dialog = android.app.AlertDialog.Builder(context)
+        val dialog = android.app.AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog)
             .setTitle("Room tools")
             .setItems(entries.map { it.second }.toTypedArray()) { d, which ->
                 d.dismiss()
