@@ -19,12 +19,13 @@ class ThemeTest {
     }
 
     @Test fun forcesDarkUnderLightSystemFlag() {
-        val systemLight = (app.resources.configuration.uiMode and
-            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_NO
-        C.light = systemLight
+        // Precondition pinned (I2 finite read, Nov 25): the palette must be
+        // genuinely light BEFORE applyTo - deriving it from the ambient
+        // Robolectric uiMode could silently start dark and pass vacuously.
+        C.light = true
+        assertTrue("precondition: light palette forced before applyTo", C.light)
         Theme.applyTo(app)
-        assertFalse(C.light)
+        assertFalse("applyTo must force dark even from a light palette", C.light)
     }
 
     @Test fun labelIsDark() {
