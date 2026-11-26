@@ -22,7 +22,7 @@ class MutedRoomsScreen(context:Context):Screen(context) {
                     val row=LinearLayout(context).apply {gravity=android.view.Gravity.CENTER_VERTICAL}
                     row.addView(roomIcon(context,room,host.session.serverUrl,40),LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
                     row.addView(text(context,room.name,16f,C.text),LinearLayout.LayoutParams(0,-2,1f))
-                    row.addView(text(context,"Unmute",14f,C.accent,true).apply {setPadding(dp(8),dp(16),dp(8),dp(16));setOnClickListener {
+                    row.addView(text(context,"Unmute",14f,C.accentText,true).apply {setPadding(dp(8),dp(16),dp(8),dp(16));setOnClickListener {
                         isEnabled=false
                         host.scope.launch {
                             try {host.api.muteRoom(room.id,false);loading=false;load()}

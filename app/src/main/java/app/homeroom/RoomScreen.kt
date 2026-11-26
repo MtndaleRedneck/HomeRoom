@@ -33,6 +33,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     private val layoutManager: LinearLayoutManager
     private val loadOlder = button(context, "Load older messages", primary = false) { loadOlder() }
     private var roomToolsWrap: LinearLayout? = null
+    private var roomToolsButton: ImageButton? = null
     private val composeInput: EditText
     private val sendButton: ImageButton
     private val replyBanner: LinearLayout
@@ -57,20 +58,14 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
         loadOlder.visibility = View.GONE
         val olderWrap = LinearLayout(context)
+        olderWrap.gravity = Gravity.CENTER
         pad(olderWrap, 16, 6)
-        olderWrap.addView(loadOlder, lp())
+        olderWrap.addView(loadOlder, LinearLayout.LayoutParams(-2, -2))
         root.addView(olderWrap)
 
-        // private12 parity (K0/e4:210-227): the release's room screen carries a
-        // "Room tools" button whose entries appear only while the server
-        // advertises the matching feature flag. Hidden when none are on.
-        val toolsWrap = LinearLayout(context)
-        pad(toolsWrap, 16, 6)
-        toolsWrap.addView(button(context, "Room tools · Attach, goals and more", primary = false) { showRoomTools() }, lp())
-        toolsWrap.visibility = View.GONE
-        roomToolsWrap = toolsWrap
-        root.addView(toolsWrap)
-
+        // 1.9 (owner-approved redesign): room tools moved from the old full-width
+        // button above the list into the composer "+" circle; same entries, same
+        // feature-flag gate (refreshRoomToolsVisibility).
         layoutManager = LinearLayoutManager(context).apply { stackFromEnd = true }
         list = RecyclerView(context).apply {
             layoutManager = this@RoomScreen.layoutManager
@@ -80,28 +75,48 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
         replyBanner = column(context)
         pad(replyBanner, 16, 6)
-        replyBanner.setBackgroundColor(C.surface)
+        replyBanner.setBackgroundColor(C.surfaceAlt)
         val replyRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
         replyRow.addView(replyText, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        val clear = text(context, "Cancel", 13f, C.accent)
+        val clear = text(context, "Cancel", 13f, C.accentText)
         clear.setOnClickListener { setReply(null) }
         replyRow.addView(clear)
         replyBanner.addView(replyRow)
         replyBanner.visibility = View.GONE
         root.addView(replyBanner)
 
+        // 1.9 (owner-approved redesign): composer pill - "+" circle for room
+        // tools, rounded input pill, round accent send.
         val composeRow = LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
-            setBackgroundColor(C.surface)
+        }
+        val toolsButton = ImageButton(context).apply {
+            setImageResource(R.drawable.ic_plus)
+            setColorFilter(C.text)
+            background = rounded(C.surfaceAlt, context.dp(22).toFloat())
+            contentDescription = "Room tools"
+            visibility = View.GONE
+            setOnClickListener { showRoomTools() }
+        }
+        roomToolsWrap = null
+        roomToolsButton = toolsButton
+        val toolsSize = context.dp(44)
+        composeRow.addView(toolsButton, LinearLayout.LayoutParams(toolsSize, toolsSize).apply { rightMargin = context.dp(8) })
+        val inputPill = LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = rounded(C.surfaceAlt, context.dp(24).toFloat())
+            setPadding(context.dp(16), 0, context.dp(16), 0)
+            minimumHeight = context.dp(44)
         }
         composeInput = input(context, "Message " + room.name)
         composeInput.maxLines = 4
-        composeRow.addView(composeInput, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        inputPill.addView(composeInput, LinearLayout.LayoutParams(-1, -2))
+        composeRow.addView(inputPill, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         sendButton = ImageButton(context).apply {
             setImageResource(R.drawable.ic_send)
-            setColorFilter(Color.parseColor("#1a1206"))
-            background = rounded(C.accent, context.dp(24).toFloat())
+            setColorFilter(C.onAccent)
+            background = accentFill(context, 24f)
             contentDescription = "Send"
             setOnClickListener { send() }
         }
@@ -149,6 +164,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
     private fun refreshRoomToolsVisibility() {
         roomToolsWrap?.visibility = if (roomToolEntries().isEmpty()) View.GONE else View.VISIBLE
+        roomToolsButton?.visibility = if (roomToolEntries().isEmpty()) View.GONE else View.VISIBLE
     }
 
     // private12 parity: ask-all flow recovered from the exact release build -
@@ -430,6 +446,12 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
 
     override fun poll() = loadNew()
 
+    override fun onAccentChanged() {
+        sendButton.setColorFilter(C.onAccent)
+        sendButton.background = accentFill(context, 24f)
+        rebuild()
+    }
+
     override fun onHide() {
         screenActive = false
         roomToolsDialog?.dismiss()
@@ -706,26 +728,34 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             val event = row.event
             container.gravity = if (row.own) Gravity.END else Gravity.START
 
+            // 1.9 (owner-approved redesign): own messages are accent bubbles on
+            // the right with dark ink; others are card bubbles on the left with
+            // a colored name and a small letter avatar.
             val bubble = column(context)
-            val bubbleColor = if (row.own) C.surfaceAlt else C.surface
-            bubble.background = rounded(bubbleColor, context.dp(14).toFloat())
+            val bubbleColor = if (row.own) C.accent else C.surface
+            bubble.background = if (row.own) accentFill(context, 16f) else rounded(bubbleColor, context.dp(16).toFloat())
             bubble.setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
             val bubbleLp = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
             bubbleLp.gravity = if (row.own) Gravity.END else Gravity.START
             bubbleLp.topMargin = context.dp(2)
             bubbleLp.bottomMargin = context.dp(2)
+            val ink = if (row.own) C.onAccent else C.text
+            val metaInk = if (row.own) C.onAccent else C.muted
 
             if (!row.own) {
-                bubble.addView(text(context, event.actorName, 12f, C.teal, true))
+                bubble.addView(text(context, event.actorName, 12f, personColor(event.actorId), true))
             }
             row.replyPreview?.let {
-                val quote = text(context, it, 12f, C.muted)
+                // fp66: inside an OWN bubble the quote keeps the dark C.bg well,
+                // so it takes a light ink and the true accent bar (the dark
+                // onAccent ink/bar on C.bg read as dark-on-dark).
+                val quote = text(context, it, 12f, if (row.own) C.text else metaInk)
                 quote.background=android.graphics.drawable.LayerDrawable(arrayOf(rounded(C.bg,context.dp(8).toFloat()),rounded(C.accent,context.dp(2).toFloat()))).apply {setLayerInset(1,0,context.dp(3),context.dp(300),context.dp(3));setLayerWidth(1,context.dp(3))}
                 quote.setPadding(context.dp(12), context.dp(4), context.dp(8), context.dp(4))
                 bubble.addView(quote, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)) // release: explicit (-2,-2), K0/N3:777
                 bubble.addView(spacer(context, 4))
             }
-            val body = text(context, event.text, 15f, C.text)
+            val body = text(context, event.text, 15f, ink)
             // Release cap (K0/N3:708 and :750): message text maxWidth is
             // 0.72*display width (0.64 when the row also carries media, :776).
             body.maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
@@ -734,7 +764,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             // bubble in the wrap-content measure chain.
             bubble.addView(body, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
             bubble.addView(spacer(context, 2))
-            val meta = text(context, formatTime(event.createdAt), 11f, C.muted)
+            val meta = text(context, formatTime(event.createdAt), 11f, metaInk)
             meta.gravity = Gravity.END
             bubble.addView(meta)
 
@@ -742,16 +772,37 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 setReply(event)
                 true
             }
-            container.addView(bubble, bubbleLp)
+            if (row.own) {
+                container.addView(bubble, bubbleLp)
+            } else {
+                val withAvatar = LinearLayout(context).apply { gravity = Gravity.BOTTOM }
+                withAvatar.addView(letterAvatar(event), LinearLayout.LayoutParams(dp(28), dp(28)).apply { rightMargin = dp(8) })
+                withAvatar.addView(bubble, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+                container.addView(withAvatar, bubbleLp)
+            }
 
             event.decisionId?.let { did ->
                 // private12 parity (K0/N3:815-830): decision-linked messages get
                 // a "Review decision" entry under the bubble that opens the
-                // decision screen.
-                val review = text(context, "Review decision", 13f, C.accent, true)
-                review.minHeight = context.dp(48); review.gravity = android.view.Gravity.CENTER_VERTICAL
-                review.setOnClickListener { host.openPage("Review decision", DecisionScreen(context, did)) }
-                container.addView(review)
+                // decision screen. 1.9: card styling, SAME label and target (the
+                // CI interaction taps this text verbatim).
+                val card = LinearLayout(context).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = rounded(C.surface, dp(14).toFloat())
+                    setPadding(dp(14), dp(6), dp(14), dp(6))
+                    pressIn()
+                    setOnClickListener { host.openPage("Review decision", DecisionScreen(context, did)) }
+                }
+                card.addView(text(context, "Review decision", 13.5f, C.accentText, true))
+                container.addView(card, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            }
+        }
+
+        private fun letterAvatar(event: ChatEvent): View {
+            val color = personColor(event.actorId)
+            return text(context, event.actorName.trim().firstOrNull()?.uppercase() ?: "?", 12f, android.graphics.Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                background = rounded(color, dp(14).toFloat())
             }
         }
 

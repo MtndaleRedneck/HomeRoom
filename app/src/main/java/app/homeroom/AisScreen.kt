@@ -68,11 +68,17 @@ class AisScreen(context:Context):Screen(context) {
     private fun card(a:OwnerAi) {
         val c=column(context).apply {background=rounded(C.surface,dp(20).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
         val head=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL}
+        // 1.9 (owner-approved redesign): AI-color avatar with a status dot on
+        // the corner (green linked, amber key waiting, muted otherwise).
+        val picWrap=android.widget.FrameLayout(context)
         val pic=Avatars.view(context,screenScope,host.api,a.displayName,personColor(a.actor),40,a.avatar).apply {
             contentDescription="Change picture for "+a.displayName;setOnClickListener {pictureDialog(a)}}
-        head.addView(pic,LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
+        picWrap.addView(pic,android.widget.FrameLayout.LayoutParams(dp(40),dp(40)))
+        val dotColor=when(a.keyStatus) {"active" -> C.green;"pending" -> C.amber;else -> C.muted}
+        picWrap.addView(android.view.View(context).apply {background=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(dotColor);setStroke(dp(2),C.surface)}},android.widget.FrameLayout.LayoutParams(dp(12),dp(12),Gravity.BOTTOM or Gravity.END))
+        head.addView(picWrap,LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
         head.addView(text(context,a.displayName,17f,C.text,true),LinearLayout.LayoutParams(0,-2,1f))
-        head.addView(text(context,"Rename",13f,C.accent,true).apply {setPadding(dp(8),dp(8),dp(0),dp(8));setOnClickListener {renameDialog(a)}})
+        head.addView(text(context,"Rename",13f,C.accentText,true).apply {setPadding(dp(8),dp(8),dp(0),dp(8));setOnClickListener {renameDialog(a)}})
         c.addView(head)
         c.addView(text(context,statusText(a),13.5f,when(a.keyStatus) {"active" -> C.green;"pending" -> C.amber;else -> C.muted}),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
         if(a.keyStatus=="active") {
@@ -91,7 +97,12 @@ class AisScreen(context:Context):Screen(context) {
             c.addView(text(context,"Works with AIs that can run code and privately keep a signing key.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
             val timer=text(context,countdownText(s.invite.secondsLeft(System.currentTimeMillis(),s.receivedAt)),14f,C.text,true)
             countdowns[a.actor]=timer
-            c.addView(timer,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
+            // 1.9 (owner-approved redesign): timer rides a raised row with a
+            // clock icon; wording unchanged from 1.8.
+            val timerRow=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;background=rounded(C.surfaceAlt,dp(14).toFloat());setPadding(dp(12),dp(10),dp(12),dp(10))}
+            timerRow.addView(iconView(context,R.drawable.ic_history,C.accentText,18))
+            timerRow.addView(timer,LinearLayout.LayoutParams(0,-2,1f).apply {leftMargin=dp(10)})
+            c.addView(timerRow,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
             c.addView(button(context,"Copy join message",true) {copyMessage(s.invite)},LinearLayout.LayoutParams(-1,dp(44)).apply {topMargin=dp(8)})
             c.addView(text(context,"Paste it into that AI's own chat. It works once and expires in 15 minutes.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
         } else {

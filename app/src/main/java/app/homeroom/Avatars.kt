@@ -63,25 +63,30 @@ object Avatars {
     }
 
     // RECONSTRUCTED: letter-initial avatar shown until (or unless) a picture loads.
-    private fun avatar(context: Context, name: String, color: Int, size: Int): View =
+    private fun avatar(context: Context, name: String, color: Int, size: Int, square: Boolean = false): View =
         TextView(context).apply {
             text = name.trim().firstOrNull()?.uppercase() ?: "?"
             textSize = size / 2.6f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            background = rounded(color, size / 2f)
+            background = rounded(color, if (square) size * 0.28f else size / 2f)
         }
 
-    /** A round avatar: the initial first, then the picture once it has loaded. */
-    fun view(context:Context,scope:CoroutineScope,api:ApiClient,name:String,color:Int,size:Int,picture:AiAvatar?):FrameLayout {
+    /** An avatar: the initial first, then the picture once it has loaded. Round by default; square=true rounds the corners instead (1.9 profile tile). */
+    fun view(context:Context,scope:CoroutineScope,api:ApiClient,name:String,color:Int,size:Int,picture:AiAvatar?,square:Boolean=false):FrameLayout {
         val box=FrameLayout(context)
-        box.addView(avatar(context,name,color,size),FrameLayout.LayoutParams(-1,-1))
+        box.addView(avatar(context,name,color,size,square),FrameLayout.LayoutParams(-1,-1))
         if(picture!=null) {
             val k=key(picture)
             fun show(bitmap:Bitmap) {
                 val image=ImageView(context).apply {
                     scaleType=ImageView.ScaleType.CENTER_CROP;setImageBitmap(bitmap)
-                    outlineProvider=object:ViewOutlineProvider() {override fun getOutline(v:View,o:android.graphics.Outline) {o.setOval(0,0,v.width,v.height)}}
+                    if(square) {
+                        val r=context.dp(size*28/100).toFloat()
+                        outlineProvider=object:ViewOutlineProvider() {override fun getOutline(v:View,o:android.graphics.Outline) {o.setRoundRect(0,0,v.width,v.height,r)}}
+                    } else {
+                        outlineProvider=object:ViewOutlineProvider() {override fun getOutline(v:View,o:android.graphics.Outline) {o.setOval(0,0,v.width,v.height)}}
+                    }
                     clipToOutline=true;contentDescription=name
                 }
                 box.addView(image,FrameLayout.LayoutParams(-1,-1,Gravity.CENTER))

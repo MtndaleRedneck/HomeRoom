@@ -23,18 +23,32 @@ object C {
 
     private fun themed(darkValue: String, lightValue: String): Int = Color.parseColor(if (light) lightValue else darkValue)
 
-    val bg get() = themed("#0e141b", "#f4f7fa")
-    val surface get() = themed("#18212b", "#ffffff")
-    val surfaceAlt get() = themed("#1e2833", "#e8eff5")
-    val text get() = themed("#e9eef3", "#17232f")
-    val muted get() = themed("#8e9dac", "#536474")
-    val disabled get() = themed("#98a7b6", "#768594")
+    // 1.9 charcoal palette (owner-approved redesign, Nov 26, 2026): the same
+    // charcoal family his other apps use, with the accent carried by AccentStore.
+    val bg get() = themed("#1B1B1E", "#f4f7fa")
+    val surface get() = themed("#26262D", "#ffffff")
+    val surfaceAlt get() = themed("#2E2E36", "#e8eff5")
+    val text get() = themed("#F5F5F7", "#17232f")
+    val muted get() = themed("#9696A0", "#536474")
+    val disabled get() = themed("#6E6E78", "#768594")
+    val divider get() = themed("#33333B", "#d5dde4")
     val amber get() = themed("#f0a23c", "#8a5700")
     val green get() = themed("#3fbf7f", "#167741")
-    val danger get() = themed("#e5484d", "#b82430")
-    /** Destructive text on a card: lightened to clear 4.5:1 on C.surface. */
-    val dangerText get() = themed("#f0646a", "#b82430")
-    val accent get() = themed("#fc8613", "#9a4800")
+    val danger get() = themed("#FF8A8E", "#b82430")
+    /** Destructive text on a card: clears 4.5:1 on C.surface. */
+    val dangerText get() = themed("#FF8A8E", "#b82430")
+    /** The picked accent (default orange F97C02). Dynamic: read per use, never cache. */
+    val accent get() = if (light) Color.parseColor("#9a4800") else AccentStore.current()
+    /**
+     * Legible ink on the accent (near-black; black where the accent is too dark for it).
+     */
+    val onAccent get() = AccentStore.onAccent()
+    /** The accent adjusted for TEXT/icon roles on dark surfaces: the raw swatch
+     *  when it clears 4.5:1, else a lightened shade that does (burnt orange and
+     *  terracotta need it on cards). Fills keep the true swatch via C.accent. */
+    // fp66: computed against the LIGHTER surface (surfaceAlt) so the one value
+    // clears WCAG 4.5:1 on both cards and raised surfaces for all nine swatches.
+    val accentText get() = AccentStore.accentOn(surfaceAlt)
     val teal get() = themed("#35c2c9", "#087b81")
     val violet get() = themed("#a08cff", "#6f48b1")
     val info get() = themed("#2aabee", "#09679d")
@@ -42,6 +56,102 @@ object C {
     // RECONSTRUCTED: the owner accent reuses the accent pair (release personColor
     // maps owner/ezzy to the same accent color).
     val owner get() = accent
+}
+
+/**
+ * 1.9: the accent picker (owner-approved redesign, Nov 26, 2026). Nine
+ * swatches, orange first and default; the pick persists locally and every
+ * themed element (buttons, badges, links, rings) follows it. Display and
+ * wording only - no server involvement.
+ */
+object AccentStore {
+    private const val PREFS = "homeroom_ui"
+    private const val KEY = "accent_color"
+    /** Picker order: row one is the first five, row two the remaining four. */
+    val swatches = listOf(
+        "#F97C02" to "Orange",
+        "#6F9C7E" to "Sage",
+        "#CC5500" to "Burnt orange",
+        "#7BAFDB" to "Dusty blue",
+        "#83A2A4" to "Gray-green",
+        "#B8735C" to "Terracotta",
+        "#B3838F" to "Mauve",
+        "#8C8FC0" to "Indigo",
+        "#A89A8C" to "Taupe",
+    )
+    private var appContext: Context? = null
+    private var cached: Int? = null
+
+    fun init(context: Context) { appContext = context.applicationContext }
+
+    fun current(): Int {
+        cached?.let { return it }
+        val stored = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.getString(KEY, null)
+        val value = runCatching { Color.parseColor(stored ?: swatches[0].first) }
+            .getOrElse { Color.parseColor(swatches[0].first) }
+        cached = value
+        return value
+    }
+
+    fun currentHex(): String {
+        val now = current()
+        return swatches.firstOrNull { Color.parseColor(it.first) == now }?.first ?: swatches[0].first
+    }
+
+    fun set(context: Context, hex: String) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY, hex).apply()
+        cached = Color.parseColor(hex)
+    }
+
+    private fun luminance(c: Int): Double {
+        fun f(v: Int): Double {
+            val s = v / 255.0
+            return if (s <= 0.03928) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * f(Color.red(c)) + 0.7152 * f(Color.green(c)) + 0.0722 * f(Color.blue(c))
+    }
+
+    private fun contrast(a: Int, b: Int): Double {
+        var la = luminance(a); var lb = luminance(b)
+        if (la < lb) { val t = la; la = lb; lb = t }
+        return (la + 0.05) / (lb + 0.05)
+    }
+
+    /**
+     * Ink on accent buttons/badges. Near-black 1B1B1E clears 4.5:1 on every
+     * swatch except burnt orange, which takes pure black (4.8:1).
+     */
+    fun onAccent(): Int {
+        val a = current()
+        val dark = Color.parseColor("#1B1B1E")
+        if (contrast(a, dark) >= 4.5) return dark
+        if (contrast(a, Color.BLACK) >= 4.5) return Color.BLACK
+        return Color.parseColor("#F5F5F7")
+    }
+
+    /** Lighter shade of the accent for the top of primary-button gradients. */
+    fun accentLight(): Int = androidx.core.graphics.ColorUtils.blendARGB(current(), Color.WHITE, 0.2f)
+
+    /**
+     * The accent in a role where it must read against [surface] (text, links,
+     * small icons). If the swatch itself clears WCAG 4.5:1 on that surface it
+     * is used as-is; otherwise it is blended toward the surface's opposite
+     * until it does. Burnt orange and terracotta fail on the charcoal cards.
+     */
+    fun accentOn(surface: Int): Int {
+        val accent = current()
+        if (contrast(accent, surface) >= 4.5) return accent
+        val surfaceDark = luminance(surface) < 0.18
+        val toward = if (surfaceDark) Color.WHITE else Color.BLACK
+        var t = 0.1f
+        while (t <= 0.85f) {
+            val mixed = androidx.core.graphics.ColorUtils.blendARGB(accent, toward, t)
+            if (contrast(mixed, surface) >= 4.5) return mixed
+            t += 0.05f
+        }
+        return if (surfaceDark) Color.parseColor("#F5F5F7") else Color.parseColor("#1B1B1E")
+    }
 }
 
 fun Context.dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -77,8 +187,8 @@ fun button(context: Context, label: CharSequence, primary: Boolean = true, onCli
         minimumHeight = context.dp(48)
         stateListAnimator = null
         setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
-        setTextColor(if (primary) Color.parseColor("#1B1B1E") else C.accent)
-        background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(14).toFloat())
+        setTextColor(if (primary) C.onAccent else C.accentText)
+        background = if (primary) accentFill(context, 14f) else rounded(C.surfaceAlt, context.dp(14).toFloat())
         pressIn()
         setOnClickListener { onClick() }
     }
@@ -135,8 +245,14 @@ fun spacer(context: Context, hDp: Int): View = View(context).apply {
 
 fun divider(context: Context): View = View(context).apply {
     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
-    setBackgroundColor(C.surfaceAlt)
+    setBackgroundColor(C.divider)
 }
+
+/** 1.9: primary-button fill - a soft vertical gradient of the accent (light top, base bottom). */
+fun accentFill(context: Context, radiusDp: Float): GradientDrawable =
+    GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(AccentStore.accentLight(), C.accent)).apply {
+        cornerRadius = context.dp(radiusDp.toInt()).toFloat()
+    }
 
 // 1.7 (Ezzy, Nov 25: "Get haptic feedback. Button pressing in."): shared
 // press feedback, matching the BingeMote spec - taps buzz (gated by the saved
@@ -319,6 +435,14 @@ fun iconButton(context: Context, res: Int, tint: Int, desc: String, onClick: () 
         setOnClickListener { onClick() }
     }
 
+/** 1.9: rounded-square tile holding a small accent-tinted icon, leading a settings row. */
+fun iconTile(context: Context, res: Int, tint: Int = C.accentText): android.widget.FrameLayout =
+    android.widget.FrameLayout(context).apply {
+        background = rounded(C.surfaceAlt, context.dp(10).toFloat())
+        addView(iconView(context, res, tint, 20), android.widget.FrameLayout.LayoutParams(context.dp(20), context.dp(20), Gravity.CENTER))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
 /** Section card: surface, 16dp corners, 16dp padding. Title is optional (17sp semibold). */
 fun sectionCard(context: Context, title: String? = null): LinearLayout =
     column(context).apply {
@@ -336,8 +460,8 @@ fun actionButton(context: Context, label: CharSequence, primary: Boolean = true,
         gravity = Gravity.CENTER
         minHeight = context.dp(48)
         setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
-        setTextColor(if (primary) Color.parseColor("#1B1B1E") else C.accent)
-        background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(14).toFloat())
+        setTextColor(if (primary) C.onAccent else C.accentText)
+        background = if (primary) accentFill(context, 14f) else rounded(C.surfaceAlt, context.dp(14).toFloat())
         pressIn()
         setOnClickListener { onClick() }
     }
@@ -402,7 +526,7 @@ class ToggleSwitch(context: Context) : android.view.View(context) {
         val tw = width.toFloat(); val th = height.toFloat()
         trackPaint.color = androidx.core.graphics.ColorUtils.blendARGB(trackOff, C.accent, fraction)
         c.drawRoundRect(0f, 0f, tw, th, th / 2, th / 2, trackPaint)
-        thumbPaint.color = androidx.core.graphics.ColorUtils.blendARGB(C.text, C.bg, fraction)
+        thumbPaint.color = androidx.core.graphics.ColorUtils.blendARGB(C.text, Color.BLACK, fraction)
         val d = context.dp(24).toFloat(); val pad = context.dp(4).toFloat()
         val left = pad + (tw - pad * 2 - d) * fraction
         c.drawCircle(left + d / 2, th / 2, d / 2, thumbPaint)
