@@ -203,6 +203,8 @@ ensure_unlocked() { # $1=tag; unlock again if the cover is up, then require the 
 }
 sec_6g() { gate 6g; # Updates card with the server unreachable: shows version, check does not crash or invent an update
   ensure_unlocked upd; sleep 2; shot upd-0
+  # real positive control before the Settings/update assertions: unlocked content must be in the accessibility-visible tree again
+  for d in "Rooms" "Search messages"; do has_a11y upd-0 "content-desc=\"$d\"" || fail "6g precondition: content-desc \"$d\" missing from the compressed dump (app not in the unlocked main UI); Settings/update assertions NOT run"; done
   tap_text "Settings" || fail "Settings tab not found after unlock"; sleep 4
   for i in 1 2 3 4 5 6; do adb shell input swipe 360 1300 360 400 300; sleep 1; done
   shot upd-1
