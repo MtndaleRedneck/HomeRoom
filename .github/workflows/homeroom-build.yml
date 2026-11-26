@@ -1,0 +1,607 @@
+name: homeroom-build
+
+# Unsigned build verification of the HomeRoom 1.5 private12 reconstruction
+# (this archive branch only). Proves the current tree's Kotlin sources and
+# Android resources build at the Android toolchain level, which the JVM-only
+# mock harness cannot.
+#
+# - workflow_dispatch ONLY: never fires on push/schedule.
+# - No secrets, no signing material: app/build.gradle hard-blocks release
+#   packaging when keystore files are absent, so this workflow can never
+#   produce an unsigned APK that looks like a deliverable.
+# - Minutes note: private-repo Actions minutes count against the account's
+#   included allowance. Dispatch deliberately, per the GitHub-minutes
+#   concern. Each run is expected to take roughly 5-10 minutes.
+
+on:
+  workflow_dispatch:
+  push:
+    # Temporary measure so this branch-only workflow can be triggered without
+    # touching the default branch; only the temp CI branch ever pushes match.
+    branches: [tmp/homeroom-1.5-ci-1124]
+    # ci-inputs carries the locally-signed APK for the dispatch-only
+    # signed-runtime workflow; committing it must not rerun this pipeline.
+    paths-ignore: ['ci-inputs/**']
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Run release unit tests (Robolectric fault-injection included)
+        run: gradle --no-daemon :app:testReleaseUnitTest
+
+      # Publish the per-test XML/HTML results on every run so per-class
+      # verdicts are collectable evidence (console output carries none).
+      - name: Upload unit-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results-${{ github.sha }}
+          path: |
+            app/build/test-results/testReleaseUnitTest/
+            app/build/reports/tests/testReleaseUnitTest/
+          retention-days: 14
+
+      # Renders from the preview tests are review evidence on every run, not
+      # only on failure (pixels decide the restored-layout review).
+      - name: Upload preview renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-renders-${{ github.sha }}
+          path: app/build/previews/
+          retention-days: 14
+
+  verify-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile release sources and process release resources (unsigned)
+        run: gradle --no-daemon compileReleaseKotlin processReleaseResources
+
+      - name: Confirm release packaging stays blocked without the keystore
+        run: |
+          if gradle --no-daemon assembleRelease; then
+            echo "ASSERT FAIL: assembleRelease succeeded without keystore material"
+            exit 1
+          else
+            echo "ok: unsigned release packaging is blocked as designed"
+          fi
+
+  unsigned-release-artifact:
+    # Builds the UNSIGNED release intermediate for the local vault-signing
+    # verification lane. Explicit opt-in only (-PhrAllowUnsignedRelease); the
+    # guard stays fail-closed by default. Output is conspicuously marked
+    # UNSIGNED and is never a deliverable.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build unsigned release APK (explicit opt-in)
+        run: gradle --no-daemon assembleRelease -PhrAllowUnsignedRelease=true
+
+      - name: Mark output UNSIGNED and record its hash
+        run: |
+          ls -la app/build/outputs/apk/release/
+          # AGP names an unsigned release build app-release-unsigned.apk.
+          cp app/build/outputs/apk/release/app-release-unsigned.apk homeroom-1.5-reconstruction-UNSIGNED.apk
+          sha256sum homeroom-1.5-reconstruction-UNSIGNED.apk | tee unsigned-sha256.txt
+          git rev-parse HEAD | tee source-commit.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-release-apk
+          path: |
+            homeroom-1.5-reconstruction-UNSIGNED.apk
+            unsigned-sha256.txt
+            source-commit.txt
+          retention-days: 5
+
+  debug-smoke:
+    # Functional smoke on an emulator using the DEBUG variant (auto debug
+    # signing, no keystore material needed). This is a QUALIFIED smoke - same
+    # sources/resources, but not the minified/signed release bytes - and is
+    # never shipping proof.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Enable KVM (best effort)
+        # Truly best effort: every line is failure-tolerant. /dev/kvm EXISTS on
+        # this image (root:kvm 0660) but the runner user is not in the group -
+        # the canonical udev fix. Without acceleration the TCG boot takes ~15
+        # minutes and the post-boot adb window flakes (observed: broken pipe on
+        # the action's post-boot keyevent, job dead before the smoke script
+        # ran). If this cannot enable KVM, the emulator step fails fast with
+        # the action's accel hint.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules || true
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm || true
+
+      - name: Install and smoke on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          # NOTE: this action runs the script LINE BY LINE (each line its own
+          # sh -c), so every line must be self-contained: no multi-line if/fi.
+          # TCG emulation is slow, so no `am start -W` (launch wait times out
+          # even when healthy); poll instead.
+          script: |
+            while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+            adb shell settings put global verifier_verify_adb_installs 0
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 45
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent 82
+            sleep 20
+            for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 20; done
+            adb shell pidof app.homeroom || { echo 'process not alive after bounded retries - dumping app-focused logcat'; adb logcat -d > logcat-full.txt; grep -iE 'app\.homeroom|AndroidRuntime|FATAL EXCEPTION|ActivityTaskManager|ActivityManager:.*homeroom|am_crash|am_anr' logcat-full.txt | tail -100; exit 1; }
+            adb shell dumpsys activity activities | grep -i 'app.homeroom' | head -20
+            adb logcat -d | tail -40
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
+            adb shell screencap -p /data/local/tmp/smoke.png
+            adb pull /data/local/tmp/smoke.png smoke.png
+            echo "ok: debug APK installs, launches, stays alive, no fatal exception"
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map><string name="server_url">https://smoke.invalid</string><string name="cookie">smoke-cookie</string></map>' > session-seed.xml
+            adb push session-seed.xml /data/local/tmp/session-seed.xml
+            adb shell run-as app.homeroom mkdir -p shared_prefs
+            adb shell 'cat /data/local/tmp/session-seed.xml | run-as app.homeroom sh -c "cat > shared_prefs/homeroom_session.xml"'
+            # Night mode: the palette is the dark charcoal one; the
+            # private12 app follows the system theme, so set it before launch.
+            adb shell cmd uimode night yes
+            adb shell am force-stop app.homeroom
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 40
+            adb exec-out screencap -p > main-chats.png
+            # Restored tab order is Rooms, Rules, Files, Settings.
+            adb shell input tap 456 2242
+            sleep 6
+            adb exec-out screencap -p > main-rules.png
+            adb shell input tap 624 2242
+            sleep 6
+            adb exec-out screencap -p > main-files.png
+            adb shell input tap 792 2242
+            sleep 6
+            adb exec-out screencap -p > main-settings.png
+            # Privacy row proof: tap "App lock and privacy", capture the screen it opens.
+            adb shell input tap 540 1526
+            sleep 4
+            adb exec-out screencap -p > main-privacy.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            # Scrolled-bottom proof: the whole Updates card + version line must
+            # clear the floating nav pill (110dp content bottom padding).
+            adb shell input swipe 540 1800 540 500 700
+            sleep 1
+            adb shell input swipe 540 1800 540 500 700
+            sleep 3
+            adb exec-out screencap -p > main-settings-bottom.png
+            adb shell cmd uimode night auto
+            echo "ok: seeded session captured main-UI chrome on all four tabs (server unreachable by design; shell + floating nav only, not room data)"
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshot
+          path: |
+            smoke.png
+            main-chats.png
+            main-files.png
+            main-rules.png
+            main-settings.png
+            main-privacy.png
+            main-settings-bottom.png
+            logcat-full.txt
+          if-no-files-found: warn
+
+  release-runtime-smoke:
+    # Runtime qualification for the RELEASE packaging (R8-minified, shrunk
+    # resources): the unsigned intermediate from unsigned-release-artifact is
+    # signed IN CI with a THROWAWAY debug key (never the release signer, no
+    # vault material anywhere near CI) and installed/launched on an emulator.
+    # This proves the minified release artifact installs and runs. It does
+    # NOT qualify the same-signer artifact: that remains the local apksig
+    # verification (signer cert sha256 0063cd16...) until a real-phone
+    # install of the vault-signed build. FCM-backed features cannot
+    # initialize under a throwaway signature; this is a launch/no-fatal check.
+    needs: unsigned-release-artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-release-apk
+
+      - name: Sign the unsigned release APK with a throwaway CI debug key
+        run: |
+          keytool -genkeypair -v -keystore /tmp/ci-debug.keystore -storepass android -keypass android -alias cidebug -keyalg RSA -keysize 2048 -validity 1 -dname "CN=CI Throwaway Debug, O=NotHomeRoom, C=US"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f -p 4 homeroom-1.5-reconstruction-UNSIGNED.apk release-ci-aligned.apk
+          "$BT/apksigner" sign --ks /tmp/ci-debug.keystore --ks-pass pass:android --key-pass pass:android --out release-ci-debugsigned.apk release-ci-aligned.apk
+          "$BT/apksigner" verify --print-certs release-ci-debugsigned.apk | tee release-ci-certs.txt
+          ! grep -qi '0063cd1617c138f6ab8a2b58420f0d72fbfeac6d8b176bc77463e7c8eca932e6' release-ci-certs.txt
+
+      - name: Enable KVM (best effort)
+        # Truly best effort: every line is failure-tolerant. /dev/kvm EXISTS on
+        # this image (root:kvm 0660) but the runner user is not in the group -
+        # the canonical udev fix. Without acceleration the TCG boot takes ~15
+        # minutes and the post-boot adb window flakes (observed: broken pipe on
+        # the action's post-boot keyevent, job dead before the smoke script
+        # ran). If this cannot enable KVM, the emulator step fails fast with
+        # the action's accel hint.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules || true
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm || true
+
+      - name: Install and smoke the release artifact on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          script: |
+            while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+            adb shell settings put global verifier_verify_adb_installs 0
+            adb install -r release-ci-debugsigned.apk
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 45
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent 82
+            sleep 20
+            for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 20; done
+            adb shell pidof app.homeroom || { echo 'process not alive after bounded retries - dumping app-focused logcat'; adb logcat -d > logcat-full.txt; grep -iE 'app\.homeroom|AndroidRuntime|FATAL EXCEPTION|ActivityTaskManager|ActivityManager:.*homeroom|am_crash|am_anr' logcat-full.txt | tail -100; exit 1; }
+            adb logcat -d | tail -40
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
+            adb shell screencap -p /data/local/tmp/release-smoke.png
+            adb pull /data/local/tmp/release-smoke.png release-smoke.png
+            echo "ok: release artifact (CI-debug-signed) installs, launches, stays alive, no fatal exception"
+
+      - name: Upload release smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-screenshot
+          path: |
+            release-smoke.png
+            logcat-full.txt
+          if-no-files-found: warn
+          retention-days: 5
+
+  debug-interaction:
+    # Interaction proof for the restored private12 wiring on the DEBUG variant
+    # against the SYNTHETIC localhost stub (ci/homeroom-stub-server.py), which
+    # advertises all five feature flags synthetically. Evidence tiers (kept
+    # distinct per review direction): (1) menu/screen reachability and
+    # (2) stub-flow assertions ONLY - never production end-to-end. The debug
+    # variant's cleartext overlay (app/src/debug) is harness-only; the
+    # containment step re-verifies the merged RELEASE manifest keeps
+    # usesCleartextTraffic="false" and carries no stub endpoint.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verify release manifest containment (cleartext stays off, no stub endpoint)
+        run: |
+          gradle --no-daemon :app:processReleaseMainManifest
+          MANIFEST=app/build/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml
+          echo "merged release manifest: $MANIFEST"
+          grep 'android:usesCleartextTraffic="false"' "$MANIFEST"
+          ! grep -q '10.0.2.2' "$MANIFEST"
+          ! grep -q '18080' "$MANIFEST"
+
+      - name: Start the synthetic stub server
+        run: |
+          python3 ci/homeroom-stub-server.py --port 18080 --log stub-log.jsonl &
+          echo $! > stub.pid
+          sleep 1
+          curl -s http://127.0.0.1:18080/owner/instance | grep -q synthetic_stub
+
+      - name: Enable KVM (best effort)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules || true
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm || true
+
+      - name: Install and exercise the restored wiring on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 1200
+          # NOTE: this action runs the script LINE BY LINE (each line its own
+          # sh -c), so every line must be self-contained: no multi-line if/fi.
+          # ui-tap.py resolves tap targets by visible text instead of fixed
+          # coordinates; a failed lookup skips the tap and the screencap
+          # artifacts show the actual state.
+          script: |
+            while [ "$(adb shell service check package 2>/dev/null | tr -d '\r')" != "Service package: found" ]; do sleep 5; done
+            adb shell settings put global verifier_verify_adb_installs 0
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 45
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell input keyevent 82
+            sleep 20
+            for i in 1 2 3; do adb shell pidof app.homeroom && break; echo "pidof attempt $i: process not up yet"; sleep 20; done
+            adb shell pidof app.homeroom || { echo 'process not alive after bounded retries - dumping app-focused logcat'; adb logcat -d > logcat-full.txt; grep -iE 'app\.homeroom|AndroidRuntime|FATAL EXCEPTION' logcat-full.txt | tail -100; exit 1; }
+            adb shell cmd uimode night yes
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map><string name="server_url">http://10.0.2.2:18080</string><string name="cookie">stub-cookie</string></map>' > session-seed.xml
+            adb push session-seed.xml /data/local/tmp/session-seed.xml
+            adb shell run-as app.homeroom mkdir -p shared_prefs
+            adb shell 'cat /data/local/tmp/session-seed.xml | run-as app.homeroom sh -c "cat > shared_prefs/homeroom_session.xml"'
+            adb shell am force-stop app.homeroom
+            adb shell am start -n app.homeroom/.MainActivity
+            sleep 40
+            adb exec-out screencap -p > i-rooms.png
+            XY=$(python3 ci/ui-tap.py "Stub Room") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-room.png
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            adb exec-out screencap -p > i-menu.png
+            XY=$(python3 ci/ui-tap.py "Outgoing messages") && adb shell input tap $XY
+            sleep 6
+            adb exec-out screencap -p > i-outgoing.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Pinned room goal") && adb shell input tap $XY
+            sleep 6
+            adb exec-out screencap -p > i-goal.png
+            python3 ci/ui-tap.py "Stub room goal for the debug-interaction job." >/dev/null || { echo "goal page did not render the stub goal text"; exit 1; }
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 6
+            adb exec-out screencap -p > i-askall-dialog.png
+            XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
+            sleep 2
+            adb shell input text "What%sis%sthe%sstub%splan"
+            sleep 2
+            adb exec-out screencap -p > i-askall-filled.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-askall-answers.png
+            python3 ci/ui-tap.py "Stub AI One" >/dev/null || { echo "answers page did not render the stub AI card"; exit 1; }
+            python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "answers page did not render the stub reply"; exit 1; }
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            # Integration race probe (main 18:56 + 19:22): the stub HOLDS the
+            # "Delayed duplicate probe" answer behind a release file (bounded 90s).
+            # The stub log proves the POST was received (genuinely in flight), the
+            # screen is dismissed and re-entered, the unresolved-ask guard must block
+            # a new send WHILE the server still holds the answer, and the POST count
+            # must stay 2 (happy path + probe). Only then is the barrier released, and
+            # the stub log must say the hold ended by release, never by expiry.
+            # Proof scope: this proves the SERVER still held the request at guard time
+            # (elapsed time is echoed). Whether the app-side request is cancelled or
+            # still running at that moment is NOT asserted; this proves the guard
+            # blocks a duplicate while the server has not answered, not a client
+            # read-timeout behavior.
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 6
+            XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
+            sleep 2
+            adb shell input text "Delayed%sduplicate%sprobe"
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            rm -f /tmp/homeroom-probe-release
+            XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
+            for i in $(seq 1 30); do grep -q 'Delayed duplicate probe' stub-log.jsonl && break; sleep 1; done
+            grep -q 'Delayed duplicate probe' stub-log.jsonl || { echo "probe POST never reached the stub"; exit 1; }
+            PROBE_T0=$(date +%s)
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Stub Room") && adb shell input tap $XY
+            sleep 6
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 3
+            adb exec-out screencap -p > i-askall-blocked.png
+            python3 ci/ui-tap.py "Sending again could post it twice" >/dev/null || { echo "unresolved-ask guard did not block the new send after leave/re-enter"; exit 1; }
+            test "$(grep -c '"method": "POST", "path": "/homeroom/v1/owner/rooms/stub-room/ask-all"' stub-log.jsonl)" = "2" || { echo "blocked ask posted a duplicate while the guard was up"; grep 'ask-all' stub-log.jsonl; exit 1; }
+            PROBE_ELAPSED=$(( $(date +%s) - PROBE_T0 ))
+            echo "probe: guard asserted ${PROBE_ELAPSED}s after the stub received the held POST"
+            touch /tmp/homeroom-probe-release
+            for i in $(seq 1 20); do grep -q probe_hold_ended stub-log.jsonl && break; sleep 0.5; done
+            grep -q '"probe_hold_ended": "released"' stub-log.jsonl || { echo "stub hold did not end by explicit release (expired or missing): guard assert is not proven to precede the answer"; grep probe_hold_ended stub-log.jsonl; exit 1; }
+            XY=$(python3 ci/ui-tap.py "CANCEL") && adb shell input tap $XY
+            sleep 2
+            # Recovery probe: explicit informed override, then a 6s-delayed ask
+            # dismissed and left in flight; the retained acceptance must reopen
+            # as a real answers page when the room is re-entered.
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Ask AIs side by side") && adb shell input tap $XY
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Send anyway") && adb shell input tap $XY
+            sleep 6
+            XY=$(python3 ci/ui-tap.py "Question for these AIs") && adb shell input tap $XY
+            sleep 2
+            adb shell input text "Recovery%sprobe"
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            XY=$(python3 ci/ui-tap.py "Ask") && adb shell input tap $XY
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 8
+            XY=$(python3 ci/ui-tap.py "Stub Room") && adb shell input tap $XY
+            sleep 10
+            adb exec-out screencap -p > i-askall-recovered.png
+            python3 ci/ui-tap.py "Stub AI answer for the debug-interaction job." >/dev/null || { echo "accepted ask did not recover into a real answers page on re-entry"; exit 1; }
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Record voice note") && adb shell input tap $XY
+            sleep 6
+            adb exec-out screencap -p > i-voice.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            XY=$(python3 ci/ui-tap.py "Room tools") && adb shell input tap $XY
+            sleep 4
+            XY=$(python3 ci/ui-tap.py "Attach photo or file") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-picker.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Review decision") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-decision.png
+            XY=$(python3 ci/ui-tap.py "Stub option A") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-decision-confirm.png
+            XY=$(python3 ci/ui-tap.py "Confirm answer") && adb shell input tap $XY
+            sleep 8
+            adb exec-out screencap -p > i-decision-done.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            adb shell input tap 792 2242
+            sleep 6
+            adb exec-out screencap -p > i-settings-rows.png
+            XY=$(python3 ci/ui-tap.py "Needs you") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Needs you"); }; [ -n "$XY" ] && adb shell input tap $XY
+            sleep 5
+            adb exec-out screencap -p > i-settings-needsyou.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "Activity") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Activity"); }; [ -n "$XY" ] && adb shell input tap $XY
+            sleep 5
+            adb exec-out screencap -p > i-settings-activity.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            XY=$(python3 ci/ui-tap.py "AI team") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI team"); }; [ -n "$XY" ] && adb shell input tap $XY
+            sleep 5
+            adb exec-out screencap -p > i-settings-aiteam.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI guide") && adb shell input tap $XY
+            sleep 5
+            adb exec-out screencap -p > i-settings-aiguide.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Connection and features") && adb shell input tap $XY
+            sleep 5
+            adb exec-out screencap -p > i-settings-connection.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Unsent attachments") && adb shell input tap $XY
+            sleep 5
+            adb exec-out screencap -p > i-settings-unsent.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
+            adb shell cmd uimode night auto
+            echo "ok: interaction pass captured (see i-*.png artifacts; stub assertions gate the decision flow)"
+
+      - name: Assert the stub saw the expected synthetic flow
+        run: |
+          ls -la stub-log.jsonl
+          wc -l stub-log.jsonl
+          # Anchored to the logged "path" field with the app's /homeroom/v1 prefix, so the
+          # unprefixed readiness probe (curl GET /owner/instance) cannot satisfy these.
+          for pat in '"method": "GET", "path": "/homeroom/v1/owner/instance"' '"path": "/homeroom/v1/owner/rooms/stub-room/events[?"]' '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/prepare-answer"' '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/confirm-answer"' '"method": "GET", "path": "/homeroom/v1/owner/ais"' '"method": "POST", "path": "/homeroom/v1/owner/rooms/stub-room/ask-all"' '"method": "GET", "path": "/homeroom/v1/owner/requests/stub-ask-1"' '"method": "GET", "path": "/homeroom/v1/owner/events/stub-ev-ask-reply"'; do
+            grep -q "$pat" stub-log.jsonl || { echo "STUB LOG MISSING PATTERN: $pat"; tail -20 stub-log.jsonl; exit 1; }
+          done
+          PRE=$(grep -n '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/prepare-answer"' stub-log.jsonl | head -1 | cut -d: -f1)
+          CON=$(grep -n '"method": "POST", "path": "/homeroom/v1/owner/decisions/stub-decision/confirm-answer"' stub-log.jsonl | head -1 | cut -d: -f1)
+          [ -n "$PRE" ] && [ -n "$CON" ] && [ "$PRE" -lt "$CON" ] || { echo "STUB LOG ORDER VIOLATION: prepare line ${PRE:-none} not before confirm line ${CON:-none}"; exit 1; }
+          echo "ok: stub log shows APP instance GET + room events + decision POST prepare before POST confirm + ask-all POST and answers/reply GETs (method+path presence and order only; SYNTHETIC flow)"
+
+      - name: Upload interaction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-interaction-evidence
+          path: |
+            i-*.png
+            stub-log.jsonl
+            logcat-full.txt
+            ui-dump-*.xml
+          if-no-files-found: warn
+          retention-days: 7

@@ -4,222 +4,144 @@ import android.app.AlertDialog
 import android.content.Context
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import android.widget.ScrollView
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-/**
- * Rules tab: the household rules for the whole server and per room. Pending
- * proposals can be approved or rejected, and a re-read can be recorded, the
- * same as the web view.
- */
-class RulesScreen(context: Context) : Screen(context) {
+/** Rules preserve active and proposed versions as separate server facts. */
+class RulesScreen(context:Context):Screen(context) {
+    // RECONSTRUCTED: optional scope handoff when opened from an activity item.
+    private var preparedScope: String? = null
+    fun prepareScope(roomId: String?) { preparedScope = roomId }
 
-    private val chips = LinearLayout(context)
-    private val rules = mutableListOf<Rule>()
-    private val adapter = Adapter()
-    private val empty = text(context, "Loading rules...", 15f, C.muted)
-    private var rooms: List<Room> = emptyList()
-    private var selected: Room? = null  // null = global rules
-    private var loading = false
-
+    private val root=column(context)
+    private val chips=LinearLayout(context)
+    private val cards=column(context)
+    private val note=text(context,"Loading rules",15f,C.muted)
+    private var rooms=listOf<Room>()
+    private var selected:String?=null
+    private var scope=RuleScope(emptyList(),0,emptyMap())
+    private var loading=false
+    private val inFlight=mutableSetOf<String>()
     init {
-        val root = column(context)
-        val chipScroll = android.widget.HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-        }
-        pad(chips, 12, 8)
-        chipScroll.addView(chips)
-        root.addView(chipScroll)
-        root.addView(divider(context))
-        val list = RecyclerView(context).apply {
-            layoutManager = LinearLayoutManager(context)
-            adapter = this@RulesScreen.adapter
-        }
-        root.addView(list, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
-        empty.gravity = Gravity.CENTER
-        root.addView(empty, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(root, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        val aiNames=host.cachedRooms().flatMap { it.members }.distinctBy { it.first }.filter { it.first!=host.session.ownerId }.map { it.second }
+        root.addView(text(context,"What "+aiNames.joinToString(" and ").ifBlank { "your AIs" }+" work by",13f,C.muted).apply { setPadding(dp(16),0,dp(16),dp(12)) })
+        root.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled=false;addView(chips) })
+        val scroll=ScrollView(context);scroll.addView(cards);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        cards.setPadding(dp(16),dp(8),dp(16),dp(110));cards.addView(note)
+        addView(root,LayoutParams(-1,-1))
     }
-
     override fun onShow() {
         host.scope.launch {
-            try {
-                rooms = host.cachedRooms().ifEmpty {
-                    host.api.rooms().objects().map { Room.from(it) }.also { host.cacheRooms(it) }
-                }
-                buildChips()
-                load()
-            } catch (e: SessionEndedException) {
-                host.onSessionEnded(e.reason)
-            } catch (e: Exception) {
-                empty.text = "Couldn't load rules. Reopen this tab to retry."
-            }
+            try { rooms=host.cachedRooms().ifEmpty { host.api.roomRoster().rooms };buildChips();load() }
+            catch(e:SessionEndedException) { host.onSessionEnded(e) }
+            catch(_:Exception) { note.text="Couldn't load rules. Tap to retry.";note.setOnClickListener { onShow() } }
         }
     }
-
+    override fun poll() { load() }
+    fun selectPendingScope(roomId:String?) { selected=roomId;buildChips();load() }
     private fun buildChips() {
-        chips.removeAllViews()
-        val global = button(context, "Global rules", primary = selected == null) {
-            selected = null
-            buildChips()
-            load()
-        }
-        chips.addView(global, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-            rightMargin = context.dp(8)
-        })
-        for (room in rooms) {
-            val chip = button(context, room.name, primary = room == selected) {
-                selected = room
-                buildChips()
-                load()
+        chips.removeAllViews();chips.setPadding(dp(16),0,dp(16),dp(8))
+        val scopes=listOf(null to "Global")+rooms.map { it.id to it.name }
+        for((id,name) in scopes) {
+            val label=name+(if((id==null && scope.pendingCount>0 && selected==null) || rooms.firstOrNull { it.id==id }?.pendingRulesCount?.let { it>0 }==true) " •" else "")
+            val chip=text(context,label,14f,if(id==selected) android.graphics.Color.WHITE else C.text,true).apply {
+                gravity=Gravity.CENTER;background=rounded(if(id==selected) C.accent else C.surfaceAlt,dp(17).toFloat());setPadding(dp(14),0,dp(14),0)
+                setOnClickListener { if(!loading) { selected=id;buildChips();load() } }
             }
-            chips.addView(chip, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = context.dp(8)
-            })
+            chips.addView(chip,LinearLayout.LayoutParams(-2,dp(34)).apply { rightMargin=dp(8) })
         }
     }
-
     private fun load() {
-        if (loading) return
-        loading = true
-        empty.text = "Loading rules..."
-        empty.visibility = View.VISIBLE
+        if(loading)return
+        loading=true
+        val requested=selected
         host.scope.launch {
             try {
-                val data = host.api.rules(selected?.id)
-                val list = (data.optJSONArray("rules") ?: data.optJSONArray("items"))
-                    ?.objects()?.map { Rule.from(it) } ?: emptyList()
-                rules.clear()
-                rules.addAll(list)
-                adapter.notifyDataSetChanged()
-                host.backdropChanged()
-                empty.visibility = if (rules.isEmpty()) View.VISIBLE else View.GONE
-                empty.text = "No rules here yet."
-            } catch (e: SessionEndedException) {
-                host.onSessionEnded(e.reason)
-            } catch (e: Exception) {
-                empty.text = "Couldn't load rules. Tap a tab above to retry."
-            } finally {
-                loading = false
-            }
+                val result=RuleScope.from(host.api.rules(requested))
+                if(requested==selected) { scope=result;render();buildChips() }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
+            catch(_:Exception) {
+                note.text="Couldn't load rules. Tap to retry.";note.setOnClickListener { load() }
+                if(note.parent==null)cards.addView(note,0)
+            } finally { loading=false }
         }
     }
-
-    private fun decide(rule: Rule, decision: String) {
-        val verb = if (decision == "approve") "Approve" else "Reject"
-        AlertDialog.Builder(context)
-            .setTitle(verb + " this rule?")
-            .setMessage(rule.text)
-            .setPositiveButton(verb) { _, _ ->
-                host.scope.launch {
-                    try {
-                        host.api.ruleDecision(rule.ruleId, rule.version, decision)
-                        snack(this@RulesScreen, "Rule " + (if (decision == "approve") "approved." else "rejected."))
-                        load()
-                    } catch (e: SessionEndedException) {
-                        host.onSessionEnded(e.reason)
-                    } catch (e: ApiException) {
-                        snack(this@RulesScreen, if (e.code == "version_conflict")
-                            "This proposal changed. Reloading." else "Couldn't save that decision.")
-                        load()
-                    } catch (e: Exception) {
-                        snack(this@RulesScreen, "Couldn't save that decision.")
-                    }
-                }
+    private fun actorName(actor:String)=if(actor==host.session.ownerId) host.api.sessionData?.optString("owner_display_name")?.ifBlank { "You" } ?: "You" else rooms.flatMap { it.members }.firstOrNull { it.first==actor }?.second ?: actor
+    private fun section(label:String) { cards.addView(text(context,label,13f,C.muted,true),LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(16);bottomMargin=dp(8) }) }
+    private fun card()=column(context).apply { background=rounded(C.surface,dp(20).toFloat());setPadding(dp(16),dp(16),dp(16),dp(16));cards.addView(this,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) }) }
+    private fun render() {
+        cards.removeAllViews()
+        if(scope.pending.isNotEmpty()) section("Needs your yes · ${scope.pending.size}")
+        for(rule in scope.pending) {
+            val cell=card()
+            val header=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
+            header.addView(text(context,"Proposed by "+actorName(rule.proposedBy)+" · v${rule.version}",13.5f,personColor(rule.proposedBy),true),LinearLayout.LayoutParams(0,-2,1f))
+            header.addView(text(context,"↶",20f,C.muted).apply { contentDescription="Version history";setPadding(dp(8),dp(8),dp(8),dp(8));setOnClickListener { history(rule) } })
+            cell.addView(header)
+            scope.active.firstOrNull { it.ruleId==rule.ruleId }?.let { old -> cell.addView(text(context,"Now: "+old.text,14f,C.muted),LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }) }
+            cell.addView(text(context,rule.text,15.5f,C.text))
+            val actions=LinearLayout(context).apply { gravity=Gravity.END }
+            for((label,decision) in listOf("Reject" to "reject","Approve" to "approve")) {
+                val action=button(context,label,decision=="approve") { decide(rule,decision) }.apply { isEnabled=rule.ruleId !in inFlight;textSize=14f;minimumHeight=0;minHeight=0;setPadding(dp(16),0,dp(16),0);background=rounded(if(decision=="approve") C.accent else C.surface,dp(18).toFloat(),if(decision=="approve") null else 0xff3a4856.toInt()) }
+                actions.addView(action,LinearLayout.LayoutParams(-2,dp(36)).apply { leftMargin=dp(8) })
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            cell.addView(actions,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
+        }
+        val reread=card()
+        val rrHeader=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
+        rrHeader.addView(text(context,"Last re-read",13f,C.muted,true),LinearLayout.LayoutParams(0,-2,1f))
+        rrHeader.addView(text(context,"Record my re-read",13.5f,C.accent,true).apply { setPadding(0,dp(12),0,dp(12));setOnClickListener { recordReread() } })
+        reread.addView(rrHeader)
+        val people=linkedSetOf<String>();host.session.ownerId?.let { people.add(it) };rooms.flatMap { it.members }.forEach { people.add(it.first) }
+        for(actor in people) {
+            val row=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
+            row.addView(text(context,actorName(actor),15f,C.text),LinearLayout.LayoutParams(0,dp(40),1f))
+            row.addView(text(context,scope.rereads[actor]?.let { formatRoomTime(it) } ?: "No re-read recorded",13f,if(scope.rereads[actor]==null) C.disabled else C.muted))
+            reread.addView(row)
+        }
+        if(scope.active.isNotEmpty())section("Active · ${scope.active.size}")
+        for(rule in scope.active) {
+            val cell=card();cell.addView(text(context,rule.text,15.5f,C.text))
+            cell.addView(text(context,"v${rule.version} · active · by "+actorName(rule.decidedBy ?: rule.proposedBy),12.5f,C.muted).apply { setPadding(0,dp(8),0,0) })
+            cell.setOnClickListener { history(rule) }
+        }
+        if(scope.versions.isEmpty()) cards.addView(text(context,"No rules here yet.",15f,C.muted))
+        // NOTE: unevidenced backdropChanged() call removed (no backdrop in release evidence).
     }
-
+    private fun decide(rule:Rule,decision:String) {
+        if(!inFlight.add(rule.ruleId))return
+        render()
+        host.scope.launch {
+            try { host.api.ruleDecision(rule.ruleId,rule.version,decision);load() }
+            catch(e:SessionEndedException) { host.onSessionEnded(e) }
+            catch(e:ApiException) { snack(this@RulesScreen,if(e.code=="rule_version_conflict") "This rule changed. Showing the newest version." else "Couldn't save that decision.");load() }
+            catch(_:Exception) { snack(this@RulesScreen,"Couldn't save that decision.") }
+            finally { inFlight.remove(rule.ruleId);render() }
+        }
+    }
     private fun recordReread() {
-        val room = selected ?: return
         host.scope.launch {
-            try {
-                host.api.recordReread(room.id)
-                snack(this@RulesScreen, "Re-read recorded for " + room.name + ".")
-            } catch (e: SessionEndedException) {
-                host.onSessionEnded(e.reason)
-            } catch (e: Exception) {
-                snack(this@RulesScreen, "Couldn't record the re-read.")
-            }
+            try { host.api.recordReread(selected ?: return@launch);load() }
+            catch(e:SessionEndedException) { host.onSessionEnded(e) }
+            catch(_:Exception) { snack(this@RulesScreen,"Couldn't record the re-read.") }
         }
     }
-
-    private fun showHistory(rule: Rule) {
+    private fun history(rule:Rule) {
         host.scope.launch {
             try {
-                val data = host.api.ruleHistory(rule.ruleId)
-                val entries = (data.optJSONArray("history") ?: data.optJSONArray("versions"))
-                    ?.objects() ?: emptyList()
-                val text = if (entries.isEmpty()) "No earlier versions."
-                else entries.joinToString("\n\n") { e: JSONObject ->
-                    "v" + e.optInt("version", 1) + "  " + e.optString("status", "") + "\n" + e.optString("text")
+                val data=host.api.ruleHistory(rule.ruleId)
+                val entries=data.requiredArray("history").objects().sortedBy { it.optInt("version") }
+                val body=entries.joinToString("\n\n") { "v${it.optInt("version")} · proposed by ${actorName(it.optString("proposed_by"))}\n${it.optString("text")}" }
+                com.google.android.material.bottomsheet.BottomSheetDialog(context).apply {
+                    val content=column(context).apply { setPadding(dp(16),dp(20),dp(16),dp(24));background=rounded(C.surface,dp(20).toFloat()) }
+                    content.addView(text(context,"Version history",20f,C.text,true));content.addView(text(context,body.ifBlank { "No earlier versions." },14f,C.text).apply { setTextIsSelectable(true) })
+                    setContentView(ScrollView(context).apply { addView(content) });show()
                 }
-                AlertDialog.Builder(context)
-                    .setTitle("Rule history")
-                    .setMessage(text)
-                    .setPositiveButton("Close", null)
-                    .show()
-            } catch (e: SessionEndedException) {
-                host.onSessionEnded(e.reason)
-            } catch (e: Exception) {
-                snack(this@RulesScreen, "Couldn't load the history.")
-            }
+            } catch(e:SessionEndedException) { host.onSessionEnded(e) }
+            catch(_:Exception) { snack(this@RulesScreen,"Couldn't load the history.") }
         }
-    }
-
-    private inner class Adapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-            val cell = column(context)
-            pad(cell, 16, 12)
-            cell.background = rounded(C.surface, context.dp(14).toFloat())
-            val outer = LinearLayout(context)
-            pad(outer, 16, 6)
-            outer.addView(cell, lp())
-            return object : RecyclerView.ViewHolder(outer) {}
-        }
-
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val rule = rules[position]
-            val cell = (holder.itemView as LinearLayout).getChildAt(0) as LinearLayout
-            cell.removeAllViews()
-
-            val statusLabel = when (rule.status) {
-                "pending", "proposed" -> "Proposed by " + rule.proposedBy + "  ·  v" + rule.version
-                else -> "Active  ·  v" + rule.version
-            }
-            cell.addView(text(context, statusLabel, 12f,
-                if (rule.status == "active") C.muted else C.accent, true))
-            cell.addView(spacer(context, 4))
-            cell.addView(text(context, rule.text, 15f, C.text))
-            cell.addView(spacer(context, 8))
-
-            val actions = LinearLayout(context)
-            if (rule.status == "pending" || rule.status == "proposed") {
-                val approve = button(context, "Approve") { decide(rule, "approve") }
-                val reject = button(context, "Reject", primary = false) { decide(rule, "reject") }
-                actions.addView(approve, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                    rightMargin = context.dp(8)
-                })
-                actions.addView(reject, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                    rightMargin = context.dp(8)
-                })
-            }
-            val history = button(context, "History", primary = false) { showHistory(rule) }
-            actions.addView(history, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = context.dp(8)
-            })
-            if (selected != null) {
-                val reread = button(context, "Record my re-read", primary = false) { recordReread() }
-                actions.addView(reread)
-            }
-            cell.addView(actions)
-        }
-
-        override fun getItemCount() = rules.size
     }
 }

@@ -1,7 +1,9 @@
-out/
+.gradle/
+**/build/
+build/
+local.properties
 *.keystore
 *.pass
+ci/__pycache__/
+out/
 google-services.json
-local.properties
-.gradle/
-build/

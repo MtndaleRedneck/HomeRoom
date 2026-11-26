@@ -1,6 +1,9 @@
 package app.homeroom
 
 import android.content.Context
+import kotlinx.coroutines.sync.withLock
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Local session state: the server URL, the __Host-homeroom session cookie,
@@ -20,7 +23,7 @@ class Session(context: Context) {
             val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
             val legacyUrl = legacy.getString(LEGACY_KEY_START_URL, null)
             if (!legacyUrl.isNullOrBlank()) {
-                prefs.edit().putString(KEY_SERVER_URL, legacyUrl).apply()
+                SetupScreen.normalizeServer(legacyUrl.trim())?.let {prefs.edit().putString(KEY_SERVER_URL, it).apply()}
             }
         }
     }
@@ -33,9 +36,106 @@ class Session(context: Context) {
         get() = prefs.getString(KEY_COOKIE, null)
         set(v) = prefs.edit().putString(KEY_COOKIE, v).apply()
 
+    // Renewal coordination, keyed by the BACKING STORE (I2 be68ed6 finite):
+    // MainActivity, the messaging service and the notification worker each
+    // construct their OWN Session wrapper over the same prefs, so a
+    // per-wrapper holder gave no actual cross-object coordination. All
+    // wrappers over one application share one RenewalState below - the
+    // scope the binary's one-J0-per-session state effectively had.
+    // Process-wide static state across UNRELATED stores would suppress
+    // other sessions' responses (I2 07d27a8 review), hence keyed, not
+    // static.
+    internal val renewal: RenewalState = renewalStateFor(context)
+
+    // Dispatch identity (I2 be68ed6 finite): the credential snapshot and the
+    // rotation epoch must be captured under ONE lock acquisition - reading
+    // them separately lets a renew commit between the reads, sending OLD
+    // credentials stamped with the NEW epoch, whose response Set-Cookie
+    // would then pass the rotation fence.
+    internal suspend fun dispatchSnapshot(initiating: OpAuth?): Pair<OpAuth?, Long> =
+        renewal.mutex.withLock {
+            val a = if (initiating != null)
+                authIfUnchanged(initiating.generation, initiating.serverUrl)
+            else authSnapshot()
+            a to renewal.rotationEpoch
+        }
+
+    internal class RenewalState {
+        val mutex = kotlinx.coroutines.sync.Mutex()
+        @Volatile var inFlight = false
+        var lastForegroundRenew = 0L
+        // Rotation ordering (ChatGPT A2 finite review): bumped at every
+        // completed foreground renew commit. A response's Set-Cookie is
+        // accepted only when the request's DISPATCH-time epoch still matches
+        // - a delayed pre-rotation response must not overwrite the rotated
+        // cookie after the in-flight window closes; the session generation
+        // guard alone cannot order same-generation responses.
+        @Volatile var rotationEpoch = 0L
+    }
+
     var csrf: String?
         get() = prefs.getString(KEY_CSRF, null)
         set(v) = prefs.edit().putString(KEY_CSRF, v).apply()
+
+    // Attributed invalidating teardown (I2): only the session generation that
+    // OBSERVED the 401 may be torn down - a stale response from before
+    // sign-out/re-enroll must not wipe the NEW session. Teardown bumps the
+    // generation under stateLock (via clear()), so in-flight old-generation
+    // responses can no longer restore credentials through the CookieJar.
+    // opGeneration null = locally raised (no network), always current.
+    fun endSession(opGeneration: Long?): Boolean =
+        synchronized(stateLock) {
+            if (opGeneration != null && generation != opGeneration) return false
+            clear()
+            true
+        }
+
+    // Operation identity check (I2 final, operation rebinding): the explicit
+    // recovery path must prove the session it started in still exists before
+    // resending the original body - generation AND destination together,
+    // under the same lock as clear().
+    fun unchangedSince(opGeneration: Long, opServerUrl: String?): Boolean =
+        synchronized(stateLock) {
+            generation == opGeneration && serverUrl == opServerUrl
+        }
+
+    // Immutable operation authorization (I2 4ff0522 verdict): EVERY app
+    // request is built from a snapshot captured atomically under stateLock at
+    // operation entry; nothing reads live session state at dispatch time, so
+    // a clear+re-enroll on any thread can never rebind an in-flight body to
+    // a new destination or new credentials.
+    data class OpAuth(val generation: Long, val serverUrl: String?, val cookie: String?, val csrf: String?)
+
+    fun authSnapshot(): OpAuth = synchronized(stateLock) { OpAuth(generation, serverUrl, cookie, csrf) }
+
+    // Same snapshot, but only if the operation's generation AND destination
+    // are still current - the explicit-recovery retry's authorization.
+    fun authIfUnchanged(opGeneration: Long, opServerUrl: String?): OpAuth? =
+        synchronized(stateLock) {
+            if (generation != opGeneration || serverUrl != opServerUrl) return null
+            OpAuth(generation, serverUrl, cookie, csrf)
+        }
+
+    // Operation-generation boundary (I2 recheck of 93a5b8b): response cookies
+    // are accepted only when the generation captured BEFORE the request still
+    // matches under stateLock - a response from before sign-out cannot restore
+    // dead credentials through the CookieJar, which writes outside the paired
+    // credential commit.
+    fun acceptCookieForGeneration(opGeneration: Long, value: String): Boolean =
+        synchronized(stateLock) {
+            if (generation != opGeneration) return false
+            cookie = value
+            true
+        }
+
+    // RECOVERED Nov 24, 2026 (operator Nov 15 readback): the foreground renew
+    // worker committed rotated credentials durably before later requests ran.
+    // A failed commit is loud (IllegalStateException) - same durability rule as
+    // the staged-record transitions.
+    fun replaceCredentials(newCookie: String?, newCsrf: String?) {
+        if (!prefs.edit().putString(KEY_COOKIE, newCookie).putString(KEY_CSRF, newCsrf).commit())
+            throw IllegalStateException("session_credentials_commit_failed")
+    }
 
     var ownerId: String?
         get() = prefs.getString(KEY_OWNER_ID, null)
@@ -52,11 +152,143 @@ class Session(context: Context) {
     val enrolled: Boolean
         get() = !serverUrl.isNullOrBlank() && !cookie.isNullOrBlank()
 
+    // Shared atomic boundary (I2 review, Nov 24 2026): the generation
+    // comparison + credential write (withinGeneration) and clear() both hold
+    // stateLock, so a renew in flight cannot resurrect old credentials after
+    // sign-out - previously the check and the write were not atomic vs clear.
+    private val stateLock = Any()
+
     fun clear() {
-        val keepUrl = serverUrl
-        prefs.edit().clear().apply()
-        serverUrl = keepUrl
+        // RECONSTRUCTED: the release bumps the session generation on clear so
+        // stale in-flight writes from the old session are dropped.
+        synchronized(stateLock) {
+            val generation = generation
+            val keepUrl = serverUrl
+            prefs.edit().clear().apply()
+            prefs.edit().putLong(KEY_SESSION_GENERATION, generation + 1L).apply()
+            serverUrl = keepUrl
+        }
     }
+
+    // RECONSTRUCTED Nov 23, 2026: generation guard + decision review persistence,
+    // recovered from the exact private12 release build (prefs keys
+    // "session_generation", "decision:<id>"; review writes commit() and fail loudly).
+    val generation: Long
+        get() = prefs.getLong(KEY_SESSION_GENERATION, 0L)
+
+    // Exact release semantics (private12 K0/V4.java s(long, M2.a)): the
+    // comparison and block run inside the session lock, and a stale
+    // generation THROWS CancellationException("Session changed") - the dead
+    // session's write is loud, never silently dropped.
+    fun withinGeneration(generation: Long, block: () -> Unit) {
+        synchronized(stateLock) {
+            if (this.generation == generation) { block(); return }
+            throw kotlinx.coroutines.CancellationException("Session changed")
+        }
+    }
+
+    fun saveDecisionReview(id: String, value: org.json.JSONObject?) {
+        if (!prefs.edit().putString(KEY_DECISION + id, value?.toString()).commit()) {
+            throw IllegalStateException("Check failed.")
+        }
+    }
+
+    fun decisionReview(id: String): org.json.JSONObject? =
+        prefs.getString(KEY_DECISION + id, null)?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+
+    // RECONSTRUCTED: the release persists the last open room under "last_room_id".
+    var lastRoomId: String?
+        get() = prefs.getString(KEY_LAST_ROOM, null)
+        set(v) = prefs.edit().putString(KEY_LAST_ROOM, v).apply()
+
+
+
+
+    // RECONSTRUCTED: private staging records for interrupted uploads (reconstruction
+    // feature surface; persisted locally, removed when the post is sent).
+    // RECONSTRUCTED: last foreground roster cache (background sender names).
+    var roomsCache: String?
+        get() = prefs.getString(KEY_ROOMS_CACHE, null)
+        set(v) = prefs.edit().putString(KEY_ROOMS_CACHE, v).apply()
+
+    // RECONSTRUCTED: pending immutable post bodies, drained by Outbox.
+    fun outboxData(): String? = prefs.getString(KEY_OUTBOX, null)
+    fun saveOutboxData(value: String) { prefs.edit().putString(KEY_OUTBOX, value).apply() }
+
+    // Actual original source (read Nov 15 12:34:08 EST): checked synchronous
+    // commit, same fail-loudly pattern as the staged-upload records.
+    var lastSetupLinkHash: String?
+        get() = prefs.getString("last_setup_link_hash", null)
+        set(value) { check(prefs.edit().putString("last_setup_link_hash", value).commit()) }
+
+    // Historical local_id-keyed scheme (actual source read Nov 15 05:04:13 EST:
+    // filter by local_id, append non-null, null removes, synchronized on
+    // stateLock) reconciled with this session's reviewed fail-closed durability
+    // and the I2 migration constraints: legacy records are normalized to stable
+    // content-derived identities (never index-derived, never merged), and a
+    // malformed store blocks EVERY write including single-record removal so
+    // existing records are never silently overwritten.
+    fun stagedUploads(): List<JSONObject> = synchronized(stateLock) {
+        StagedStore.parse(prefs.getString(KEY_STAGED, null))?.let { StagedStore.normalize(it) } ?: emptyList()
+    }
+
+    // Honest corruption signal for the UI: when true, stagedUploads() shows an
+    // empty view but the raw store is preserved and all writes are blocked.
+    fun stagedUploadsMalformed(): Boolean = synchronized(stateLock) {
+        StagedStore.parse(prefs.getString(KEY_STAGED, null)) == null
+    }
+
+    // DURABILITY (external review 2026-11-24): staged-record transitions gate
+    // irreversible remote side effects, so they use checked synchronous commit(),
+    // the same fail-loudly pattern as saveDecisionReview. A failed commit throws
+    // BEFORE the caller's network op (fail closed). NOTE (I2): commit()==false
+    // may still have advanced the in-memory map, so a throw here means the save
+    // is UNKNOWN, not absent - callers must abort the network operation and let
+    // server status govern any later resume.
+    // Process-wide uncertainty latch (I2): a failed commit may leave the
+    // in-memory preference map ahead of disk, and any LATER save would persist
+    // that unknown state. Once latched, ALL staged writes are blocked for the
+    // life of the process - only a process restart (prefs reloaded from disk)
+    // clears it. Composer instances come and go; the boundary must live here.
+    // The latch lives on the companion: Session is instantiated per callsite
+    // (activities, services, workers), but every instance shares the same
+    // underlying store file (fixed PREFS name), so commit uncertainty on one
+    // instance must block writes from all of them. Process-scoped only: a
+    // process restart re-reads disk and resets it, which is the correct
+    // semantic - the uncertainty is memory-vs-disk divergence.
+    fun stagedUploadsUnknown(): Boolean = stagedStoreUnknown
+    // Test seam: forces the commit outcome in fault tests (null = real commit).
+    internal var stagedCommitHook: ((String) -> Boolean)? = null
+
+    fun saveStagedUpload(id: String, value: JSONObject?) = synchronized(stagedStoreLock) {
+        if (stagedStoreUnknown) {
+            throw IllegalStateException("Staged upload persistence is latched unknown from an earlier unconfirmed commit - writes are blocked until the app restarts.")
+        }
+        val next = try {
+            StagedStore.applySave(prefs.getString(KEY_STAGED, null), id, value)
+        } catch (e: StagedStore.Malformed) {
+            throw IllegalStateException("Staged upload store is damaged; writes (including removals) are blocked to preserve the existing records.")
+        }
+        // Commit failure (false) AND a throwing commit are the same UNKNOWN
+        // outcome: persistence is unconfirmed, so latch either way.
+        val committed = try {
+            stagedCommitHook?.invoke(next)
+                ?: prefs.edit().putString(KEY_STAGED, next).commit()
+        } catch (e: Exception) {
+            stagedStoreUnknown = true
+            throw IllegalStateException("Staged upload persistence unconfirmed (commit threw) - abort the operation and treat remote state as unknown.", e)
+        }
+        if (!committed) {
+            stagedStoreUnknown = true
+            throw IllegalStateException("Staged upload persistence unconfirmed (in-memory state may differ) - abort the operation and treat remote state as unknown.")
+        }
+    }
+
+    // RECONSTRUCTED Nov 24: per-room composer drafts, exact historical Nov 11
+    // shapes (operator model-helper source attachment, parsed as data). Cleared
+    // with the session; per-room keyed.
+    fun composerDraft(roomId: String): String = prefs.getString("composer:" + roomId, "").orEmpty()
+    fun saveComposerDraft(roomId: String, value: String) { prefs.edit().putString("composer:" + roomId, value).apply() }
 
     fun anchor(roomId: String): String? = prefs.getString(KEY_ANCHOR + roomId, null)
 
@@ -65,13 +297,8 @@ class Session(context: Context) {
         else prefs.edit().putString(KEY_ANCHOR + roomId, eventId).apply()
     }
 
-    /** Last rooms roster the app fetched while in the foreground; the push
-     *  worker reads it to resolve member display names without a background
-     *  /owner/rooms call. */
-    var roomsCache: String?
-        get() = prefs.getString(KEY_ROOMS_CACHE, null)
-        set(v) = prefs.edit().putString(KEY_ROOMS_CACHE, v).apply()
-
+    // RECONSTRUCTED Nov 23, 2026: FCM token fields; preference key names recovered
+    // from the exact private12 release build ("fcm_token", "fcm_registered").
     var fcmToken: String?
         get() = prefs.getString(KEY_FCM_TOKEN, null)
         set(v) = prefs.edit().putString(KEY_FCM_TOKEN, v).apply()
@@ -85,6 +312,29 @@ class Session(context: Context) {
         set(v) = prefs.edit().putString(KEY_SKIPPED_TAG, v).apply()
 
     companion object {
+        // One RenewalState per backing store (application): every Session
+        // wrapper over the same prefs coordinates renewals through the same
+        // mutex/marker/epoch. Weak keys so a discarded application context
+        // (tests) does not pin the state.
+        private val renewalStates = java.util.WeakHashMap<Context, RenewalState>()
+        internal fun renewalStateFor(context: Context): RenewalState {
+            val key = context.applicationContext ?: context
+            return synchronized(renewalStates) { renewalStates.getOrPut(key) { RenewalState() } }
+        }
+        /** Test-only: coordination state is store-scoped; reset between tests. */
+        internal fun resetRenewalStateForTests(context: Context) {
+            val key = context.applicationContext ?: context
+            synchronized(renewalStates) { renewalStates.remove(key) }
+        }
+        @Volatile private var stagedStoreUnknown = false
+        // I2: the latch flag alone is not the boundary - check, store write and
+        // latch-set must serialize ACROSS instances (two Session objects could
+        // otherwise both pass the check; one fails/latches, the other still
+        // commits onto unknown state). The lock is companion-level, matching
+        // the single underlying store file.
+        private val stagedStoreLock = Any()
+        /** Test-only: the latch is process-scoped state, reset between tests. */
+        internal fun resetStagedStoreUnknownForTests() { synchronized(stagedStoreLock) { stagedStoreUnknown = false } }
         private const val PREFS = "homeroom_session"
         private const val LEGACY_PREFS = "homeroom"
         private const val LEGACY_KEY_START_URL = "start_url"
@@ -97,7 +347,12 @@ class Session(context: Context) {
         private const val KEY_ANCHOR = "anchor:"
         private const val KEY_SKIPPED_TAG = "skipped_update_tag"
         private const val KEY_FCM_TOKEN = "fcm_token"
-        private const val KEY_ROOMS_CACHE = "rooms_cache"
         private const val KEY_FCM_REGISTERED = "fcm_registered"
+        private const val KEY_SESSION_GENERATION = "session_generation"
+        private const val KEY_DECISION = "decision:"
+        private const val KEY_LAST_ROOM = "last_room_id"
+        private const val KEY_STAGED = "staged_uploads"
+        private const val KEY_OUTBOX = "outbox"
+        private const val KEY_ROOMS_CACHE = "rooms_cache"
     }
 }

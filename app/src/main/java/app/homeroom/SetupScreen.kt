@@ -5,120 +5,105 @@ import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
-import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.ScrollView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/**
- * First-run connection screen: paste the one-use connection link, enroll this
- * device, and start the session. The link is consumed on use; used or expired
- * links get a plain message instead of a dead end.
- */
+/** Connection progress is based on actual enrollment/session and room-list responses, not a probe. */
 class SetupScreen(context: Context) : Screen(context) {
-
-    private val serverInput = input(context, "Server address")
-    private val linkInput = input(context, "Connection link")
-    private val status = text(context, "", 14f, C.muted)
-    private val connectButton: View
-
+    private val linkInput=input(context,"Connection link")
+    internal val checklist=SetupChecklist(host.session.enrolled)
+    private val rows=column(context)
+    private val connectButton=button(context,"Connect") {connect()}
+    private val continueButton=button(context,"Continue to rooms") {if(checklist.ready)host.onEnrolled()}
+    private val alertsButton=button(context,"Allow notifications",false) {
+        if(android.os.Build.VERSION.SDK_INT>=33)host.requestNotificationPermission()
+        else host.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,host.packageName))
+    }
     init {
-        val scroll = ScrollView(context)
-        val col = column(context)
-        pad(col, 24, 16)
-        scroll.addView(col)
-        addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-
-        col.addView(text(context, "HomeRoom", 30f, C.text, true))
-        col.addView(spacer(context, 6))
-        col.addView(text(context, "Your shared household chat, on your own server.", 15f, C.muted))
-        col.addView(spacer(context, 28))
-
-        col.addView(text(context, "Server", 13f, C.muted, true))
-        serverInput.setText(host.session.serverUrl ?: "")
-        serverInput.setSingleLine()
-        col.addView(serverInput, lp())
-        col.addView(spacer(context, 18))
-
-        col.addView(text(context, "Connection link", 13f, C.muted, true))
-        col.addView(text(context, "Ask for a link on the server's connect page, then paste the whole link here. Each link works once, for a short time.", 13f, C.muted))
-        col.addView(spacer(context, 8))
-        linkInput.minLines = 2
-        linkInput.gravity = Gravity.TOP
-        col.addView(linkInput, lp())
-        col.addView(spacer(context, 20))
-
-        connectButton = button(context, "Connect") { connect() }
-        col.addView(connectButton, lp())
-        col.addView(spacer(context, 14))
-        col.addView(status, lp())
+        val body=column(context);pad(body,24,16)
+        addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
+        body.addView(text(context,"HomeRoom",30f,C.text,true))
+        body.addView(text(context,"Connect step by step",18f,C.text,true))
+        body.addView(text(context,"Paste the whole one-use connection link from your server's connect page. Keep the link private.",14f,C.muted))
+        linkInput.minLines=2;linkInput.gravity=Gravity.TOP
+        linkInput.inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        body.addView(linkInput,lp());body.addView(connectButton,lp())
+        body.addView(rows,lp());body.addView(alertsButton,lp());body.addView(continueButton,lp())
+        body.addView(text(context,"Notifications are optional. Allowing alerts does not prove they will arrive.",13f,C.muted))
+        render()
     }
-
-    private fun setBusy(busy: Boolean) {
-        connectButton.isEnabled = !busy
-        connectButton.alpha = if (busy) 0.5f else 1f
+    override fun onShow() {render()}
+    internal fun acceptHandoff(handoff:ConnectionHandoff,auto:Boolean) {
+        if(checklist.busy || checklist.submitted || checklist.accepted)return
+        linkInput.setText(handoff.link)
+        if(auto)connect()
     }
-
+    private fun render() {
+        val allowed=androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        checklist.notifications(allowed)
+        rows.removeAllViews()
+        val labels=listOf("1. Connection link","2. Phone reaches server","3. Sign-in accepted","4. Rooms loaded","5. Notifications allowed")
+        SetupStep.entries.forEachIndexed {i,step ->
+            val check=checklist.checks.getValue(step)
+            rows.addView(text(context,labels[i]+": "+check.state,16f,if(check.state=="Passed")C.text else C.muted,true).apply {setPadding(0,dp(12),0,dp(3))})
+            if(check.detail.isNotEmpty())rows.addView(text(context,check.detail,14f,C.muted))
+            if(check.next.isNotEmpty())rows.addView(text(context,check.next,14f,C.text))
+        }
+        linkInput.visibility=if(checklist.accepted)View.GONE else View.VISIBLE
+        linkInput.isEnabled=!checklist.busy && !checklist.submitted
+        connectButton.text=when {checklist.busy->"Checking...";checklist.accepted && checklist.checks[SetupStep.SIGN_IN]?.state=="Passed"->"Retry room loading";checklist.accepted->"Retry sign-in check";else->"Connect"}
+        connectButton.visibility=if(checklist.ready)View.GONE else View.VISIBLE
+        connectButton.isEnabled=!checklist.busy && (!checklist.submitted || checklist.accepted)
+        continueButton.visibility=if(checklist.ready)View.VISIBLE else View.GONE
+        continueButton.text=if(allowed)"Continue to rooms" else "Continue without notifications"
+        alertsButton.visibility=if(allowed)View.GONE else View.VISIBLE
+        alertsButton.isEnabled=!checklist.busy
+    }
     private fun connect() {
-        val server = serverInput.text.toString().trim().trimEnd('/')
-        val link = linkInput.text.toString().trim()
-        status.text = ""
-        if (server.isEmpty()) {
-            status.text = "Enter your server address first."
-            return
-        }
-        if (link.isEmpty()) {
-            status.text = "Paste the connection link first."
-            return
-        }
-        val token = extractToken(link)
-        if (token == null) {
-            status.text = "That doesn't look like a connection link. Paste the whole link, including the part after #."
-            return
-        }
-        host.session.serverUrl = if (server.startsWith("http")) server else "https://" + server
-        setBusy(true)
-        hideKeyboard()
-        status.text = "Connecting..."
-        host.scope.launch {
-            try {
-                host.api.enroll(token, "HomeRoom Android app")
-                host.onEnrolled()
-            } catch (e: ApiException) {
-                setBusy(false)
-                status.text = when {
-                    e.status == 0 && e.code == "invalid_response" ->
-                        "The server didn't answer as expected. Check the address and try again."
-                    e.status in listOf(401, 403, 404, 410) ->
-                        "This link didn't work. It may be used or expired. Ask for a new one."
-                    else -> "Couldn't connect (" + e.code + "). Try again."
-                }
-            } catch (e: SessionEndedException) {
-                setBusy(false)
-                status.text = "The session ended right after connecting. Ask for a new link and try again."
-            } catch (e: Exception) {
-                setBusy(false)
-                status.text = "Couldn't reach the server. Check your connection and the address."
-            }
+        if(checklist.busy)return
+        val parsed=parseLink(linkInput.text.toString())
+        if(!checklist.accepted && parsed!=null)host.session.serverUrl=parsed.first
+        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(windowToken,0)
+        screenScope.launch {
+            checklist.connect(parsed!=null,
+                enroll={accepted->
+                    val link=parsed ?: throw IllegalArgumentException("invalid_link")
+                    host.api.enroll(link.second,"HomeRoom Android app") {
+                        withContext(Dispatchers.Main) {linkInput.setText("");accepted()}
+                    }
+                },
+                resume={host.api.bootstrap()},
+                rooms={
+                    val roster=host.api.roomRoster()
+                    host.cacheRooms(roster.rooms);host.session.roomsCache=roster.rawRooms.toString()
+                },changed={render()})
         }
     }
-
-    private fun hideKeyboard() {
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(windowToken, 0)
-    }
-
     companion object {
-        /** Connection links carry the one-use token in the URL fragment. */
-        fun extractToken(link: String): String? {
-            val fragment = Uri.parse(link).fragment ?: return null
-            for (part in fragment.split('&')) {
-                val kv = part.split('=', limit = 2)
-                if (kv.size == 2 && (kv[0] == "token" || kv[0] == "connect")) {
-                    return Uri.decode(kv[1]).ifBlank { null }
-                }
+        internal fun parseLink(value:String):Pair<String,String>?=try {
+            val uri=java.net.URI(value.trim())
+            if(uri.scheme!="https" || uri.host.isNullOrBlank() || uri.userInfo!=null || uri.port !in listOf(-1,443))null
+            else {
+                val token=extractToken(value.trim())
+                if(token==null || token.length>200 || token.any {it.isISOControl() || it.isWhitespace()})null
+                else "https://"+uri.host to token
             }
-            return fragment.ifBlank { null }
+        }catch(_:Exception) {null}
+        fun normalizeServer(value:String):String?=try {
+            val uri=java.net.URI(if("://" in value)value else "https://"+value)
+            if(uri.scheme!="https" || uri.host.isNullOrBlank() || uri.userInfo!=null || uri.query!=null || uri.fragment!=null || uri.path !in listOf("","/"))null
+            else java.net.URI("https",null,uri.host,uri.port,null,null,null).toString()
+        }catch(_:Exception) {null}
+        /** Decode the fragment exactly once. Ambiguous duplicate token fields are not accepted. */
+        fun extractToken(link:String):String? {
+            val raw=try {java.net.URI(link).rawFragment}catch(_:Exception) {null} ?: return null
+            if(raw.isBlank())return null
+            val fields=raw.split('&').map {it.split('=',limit=2)}
+            val tokens=fields.filter {it.size==2 && it[0] in listOf("token","connect")}
+            if(tokens.size>1)return null
+            return Uri.decode(if(tokens.size==1)tokens.single()[1] else raw.takeIf {'=' !in it && '&' !in it} ?: return null).ifBlank {null}
         }
     }
 }
