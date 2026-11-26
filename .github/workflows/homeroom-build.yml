@@ -568,6 +568,14 @@ jobs:
             sleep 6
             python3 ci/anr-guard.py i-settings-rows || exit 1
             adb exec-out screencap -p > i-settings-rows.png
+            sh ci/settings-tap.sh "Vibrate on press"
+            sleep 2
+            python3 ci/anr-guard.py i-toggle-off || exit 1
+            adb exec-out screencap -p > i-toggle-off.png
+            sh ci/settings-tap.sh "Vibrate on press"
+            sleep 2
+            python3 ci/anr-guard.py i-toggle-on || exit 1
+            adb exec-out screencap -p > i-toggle-on.png
             sh ci/settings-tap.sh "Needs you"
             sleep 5
             python3 ci/anr-guard.py i-settings-needsyou || exit 1
