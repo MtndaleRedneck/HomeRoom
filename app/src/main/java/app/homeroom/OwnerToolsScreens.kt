@@ -15,8 +15,10 @@ class GuideScreen(context:Context):Screen(context) {
         try {
             val g=OwnerAiGuide.from(host.api.ownerAiGuide())
             body.removeAllViews()
-            body.addView(text(context,"Guide ${g.version} · source: ${g.source}",14f,C.muted))
-            body.addView(text(context,g.text,15f,C.text).apply {setTextIsSelectable(true)})
+            val card=sectionCard(context,"AI guide")
+            card.addView(text(context,"Version ${g.version}"+(if(g.source.isNullOrBlank())"" else " · "+g.source),12.5f,C.muted),android.widget.LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(8)})
+            if(g.text.isBlank())card.addView(text(context,"No guide has been published yet.",13f,C.muted)) else card.addView(text(context,g.text,14f,C.text).apply {setTextIsSelectable(true)})
+            body.addCard(card)
         } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load the AI guide.") {onShow()})}
     }}
 }
@@ -34,18 +36,18 @@ class DashboardScreen(context:Context,private val activityLog:Boolean):Screen(co
             try {
                 val result=if(activityLog)host.api.activity(cursor) else host.api.dashboard(cursor)
                 val items=result.optJSONArray(if(activityLog)"activity" else "items") ?: result.optJSONArray("items") ?: JSONArray()
-                if(items.length()==0 && body.childCount==0)body.addView(text(context,if(activityLog)"No recent activity." else "Nothing needs you right now.",15f,C.muted))
+                if(items.length()==0 && body.childCount==0)body.addCard(emptyState(context,if(activityLog)"No recent activity." else "Nothing needs you right now."))
                 for(i in 0 until items.length()) {
                     val item=items.getJSONObject(i)
-                    val card=column(context).apply {background=rounded(C.surface,dp(16).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
-                    card.addView(text(context,item.optString("kind").replace('_',' '),15f,C.text,true))
-                    card.addView(text(context,item.optString("text").ifBlank {item.optString("ref")},14f,C.muted))
-                    card.addView(text(context,formatTime(item.nullableString("at") ?: item.nullableString("created_at")),12.5f,C.muted))
-                    if(!activityLog)card.addView(button(context,"Review",false) {review(item)})
-                    body.addView(card,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(10)})
+                    val card=sectionCard(context)
+                    card.addView(text(context,item.optString("kind").replace('_',' ').replaceFirstChar {it.uppercase()},15f,C.text,true))
+                    card.addView(text(context,item.optString("text").ifBlank {item.optString("ref")},14f,C.muted),android.widget.LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(2)})
+                    card.addView(text(context,formatTime(item.nullableString("at") ?: item.nullableString("created_at")),12f,C.muted),android.widget.LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+                    if(!activityLog)card.addStacked(button(context,"Review",false) {review(item)})
+                    body.addCard(card)
                 }
                 cursor=result.nullableString(if(activityLog)"next_before" else "next_after")
-                if(result.optBoolean("has_more") && cursor!=null)body.addView(button(context,"Load more",false) {body.removeViewAt(body.childCount-1);load()})
+                if(result.optBoolean("has_more") && cursor!=null)body.addStacked(button(context,"Load more",false) {body.removeViewAt(body.childCount-1);load()})
             } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {body.addView(errorCard(context,"Couldn't load. Tap to retry.") {load()})}
             finally {loading=false}
         }
@@ -64,7 +66,7 @@ class RoomSettingsScreen(context:Context,private var room:Room):Screen(context) 
     private var busy=false
     init {addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))}
     override fun onShow() {render()}
-    private fun action(label:String,fn:()->Unit) {body.addView(button(context,label,false) {if(!busy)fn()},LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(10)})}
+    private fun action(label:String,fn:()->Unit) {body.addStacked(button(context,label,false) {if(!busy)fn()},LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(10)})}
     private fun render() {
         body.removeAllViews()
         body.addView(text(context,room.name,21f,C.text,true))

@@ -53,7 +53,7 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
         val col=column(host).apply {setPadding(host.dp(24),host.dp(24),host.dp(24),host.dp(24));gravity=Gravity.CENTER}
         col.addView(text(host,"HomeRoom is locked",24f,C.text,true))
         col.addView(text(host,"Unlock with your phone's fingerprint or PIN. Nothing is sent.",15f,C.muted))
-        col.addView(button(host,"Unlock",true) {authenticate()})
+        col.addStacked(button(host,"Unlock",true) {authenticate()})
         cover.addView(col,FrameLayout.LayoutParams(-1,-1))
         (host.window.decorView as ViewGroup).addView(cover,ViewGroup.LayoutParams(-1,-1));overlay=cover
         host.invalidateNavBackdrop()
@@ -97,13 +97,13 @@ class PrivacyScreen(context:Context):Screen(context) {
         body.removeAllViews()
         fun setting(title:String,value:Boolean,key:String,description:String) {
             body.addView(text(context,description,14f,C.muted))
-            body.addView(button(context,title+if(value)": On" else ": Off",false) {
+            body.addStacked(button(context,title+if(value)": On" else ": Off",false) {
                 PrivacyPrefs.set(context,key,!value);host.applyPrivacy();render()
             })
         }
         body.addView(text(context,"Privacy",22f,C.text,true))
         body.addView(text(context,"App lock is optional and off by default. It locks whenever you leave HomeRoom. Notification replies are unavailable while app lock is enabled.",14f,C.muted))
-        body.addView(button(context,if(PrivacyPrefs.locked(context))"Turn off app lock" else "Turn on fingerprint or PIN lock",false) {
+        body.addStacked(button(context,if(PrivacyPrefs.locked(context))"Turn off app lock" else "Turn on fingerprint or PIN lock",false) {
             if(PrivacyPrefs.locked(context))host.appLock.disable() else host.appLock.enable()
             render()
         })

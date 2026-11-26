@@ -18,9 +18,9 @@ class VoiceCapture(context:Context,private val room:Room):Screen(context) {
     init {
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
         body.addView(text(context,"Record a voice note",22f,C.text,true));body.addView(status)
-        body.addView(button(context,"Start recording",true) {start()})
-        body.addView(button(context,"Stop and review",false) {stop(true)})
-        body.addView(button(context,"Cancel",false) {stop(false);file.delete();host.onBackPressedDispatcher.onBackPressed()})
+        body.addStacked(button(context,"Start recording",true) {start()})
+        body.addStacked(button(context,"Stop and review",false) {stop(true)})
+        body.addStacked(button(context,"Cancel",false) {stop(false);file.delete();host.onBackPressedDispatcher.onBackPressed()})
     }
     @Suppress("DEPRECATION") private fun start() {
         if(recorder!=null)return

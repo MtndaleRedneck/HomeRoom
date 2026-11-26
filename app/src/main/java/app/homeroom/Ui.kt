@@ -71,11 +71,50 @@ fun button(context: Context, label: CharSequence, primary: Boolean = true, onCli
     Button(context).apply {
         text = label
         isAllCaps = false
-        setTextColor(if (primary) Color.parseColor("#1a1206") else C.text)
-        background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(10).toFloat())
+        textSize = 14f
+        setTypeface(typeface, Typeface.BOLD)
+        minHeight = context.dp(48)
+        minimumHeight = context.dp(48)
+        stateListAnimator = null
+        setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
+        setTextColor(if (primary) Color.parseColor("#1B1B1E") else C.accent)
+        background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(14).toFloat())
         pressIn()
         setOnClickListener { onClick() }
     }
+
+/** Add a child to a vertical page body with the standard 8dp gap above it (or the given params). */
+fun LinearLayout.addStacked(v: View, lp: LinearLayout.LayoutParams? = null) {
+    addView(v, lp ?: LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(8) })
+}
+
+/** Card for a page body, with the standard 12dp gap below it. */
+fun LinearLayout.addCard(card: View) {
+    addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(12) })
+}
+
+/** Centered muted message inside a card, used for empty and loading states. */
+fun emptyState(context: Context, message: String): LinearLayout =
+    sectionCard(context).apply {
+        setPadding(context.dp(16), context.dp(28), context.dp(16), context.dp(28))
+        addView(text(context, message, 13f, C.muted).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+    }
+
+/** One label/value line inside a card: muted label above, value below. */
+fun infoRow(context: Context, label: String, value: String, valueColor: Int = C.text): LinearLayout =
+    column(context).apply {
+        setPadding(0, context.dp(6), 0, context.dp(6))
+        addView(text(context, label, 12f, C.muted))
+        addView(text(context, value, 14f, valueColor), LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(2) })
+    }
+
+/** Text field with a visible outline, for dialogs (hint stays muted, text is full contrast). */
+fun outlinedInput(context: Context, hint: String): EditText = input(context, hint).apply {
+    background = rounded(C.surfaceAlt, context.dp(12).toFloat(), C.muted, 1f)
+    setPadding(context.dp(12), context.dp(10), context.dp(12), context.dp(10))
+    minHeight = context.dp(48)
+    textSize = 15f
+}
 
 fun input(context: Context, hint: String): EditText = EditText(context).apply {
     setHint(hint)

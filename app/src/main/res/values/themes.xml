@@ -6,5 +6,20 @@
         <item name="android:statusBarColor">#1e1d20</item>
         <item name="android:navigationBarColor">#1e1d20</item>
         <item name="android:windowBackground">#1e1d20</item>
+        <item name="android:alertDialogTheme">@style/Theme.HomeRoom.Dialog</item>
+    </style>
+    <!-- Stock dialogs on the app surface: dark card, rounded corners, accent buttons. -->
+    <style name="Theme.HomeRoom.Dialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_surface</item>
+        <item name="android:colorBackground">#18212b</item>
+        <item name="android:textColorPrimary">#e9eef3</item>
+        <item name="android:textColorSecondary">#8e9dac</item>
+        <item name="android:textColorHint">#8e9dac</item>
+        <item name="android:colorAccent">#fc8613</item>
+        <item name="android:buttonBarButtonStyle">@style/Widget.HomeRoom.DialogButton</item>
+    </style>
+    <style name="Widget.HomeRoom.DialogButton" parent="@android:style/Widget.Material.Button.Borderless.Colored">
+        <item name="android:textColor">#fc8613</item>
+        <item name="android:minHeight">48dp</item>
     </style>
 </resources>

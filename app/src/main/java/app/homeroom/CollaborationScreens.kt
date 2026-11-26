@@ -21,14 +21,16 @@ class DecisionScreen(context:Context,private val decisionId:String):Screen(conte
     }}
     private fun render(card:DecisionCard) {
         body.removeAllViews()
-        body.addView(text(context,card.title,22f,C.text,true))
-        body.addView(text(context,card.proposal,16f,C.text).apply {setTextIsSelectable(true)})
-        body.addView(text(context,"State: "+card.state+" · "+card.effect.replace('_',' '),13f,C.muted))
-        body.addView(text(context,"A choice needs a separate confirmation. It does not send messages, spend money or approve keys/rules.",14f,C.amber))
+        val c=sectionCard(context)
+        c.addView(text(context,card.title,18f,C.text,true))
+        c.addView(text(context,card.proposal,15f,C.text).apply {setTextIsSelectable(true)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
+        c.addView(text(context,"State: "+card.state+" · "+card.effect.replace('_',' '),12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
+        body.addCard(c)
+        body.addCard(sectionCard(context).apply {addView(text(context,"A choice needs a separate confirmation. It does not send messages, spend money or approve keys/rules.",13f,C.amber))})
         if(card.state!="open")return
         for(option in card.options) {
             val selectionId=clientId()
-            body.addView(button(context,option.label,false) {if(!busy) {
+            body.addStacked(button(context,option.label,false) {if(!busy) {
                 busy=true
                 screenScope.launch {
                     try {
@@ -58,13 +60,14 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
     private var done=false
     init {
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
-        body.addView(text(context,"Confirm this exact answer",22f,C.text,true))
-        body.addView(text(context,card.title,18f,C.text,true))
-        body.addView(text(context,card.proposal,16f,C.text).apply {setTextIsSelectable(true)})
-        body.addView(text(context,"Your answer: "+choice.label,18f,C.accent,true))
-        body.addView(text(context,"This records your answer in HomeRoom only. It does not execute an outside action. Confirm only if the proposal contains the full action, cost and audience you intend.",14f,C.amber))
-        body.addView(button(context,"Confirm answer",true) {confirm()})
-        body.addView(button(context,"Cancel",false) {host.onBackPressedDispatcher.onBackPressed()})
+        val c=sectionCard(context,"Confirm this exact answer")
+        c.addView(text(context,card.title,16f,C.text,true))
+        c.addView(text(context,card.proposal,15f,C.text).apply {setTextIsSelectable(true)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
+        c.addView(text(context,"Your answer: "+choice.label,16f,C.accent,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        body.addCard(c)
+        body.addCard(sectionCard(context).apply {addView(text(context,"This records your answer in HomeRoom only. It does not execute an outside action. Confirm only if the proposal contains the full action, cost and audience you intend.",13f,C.amber))})
+        body.addStacked(button(context,"Confirm answer",true) {confirm()})
+        body.addStacked(button(context,"Cancel",false) {host.onBackPressedDispatcher.onBackPressed()})
     }
     private fun confirm() {
         if(busy || done)return
@@ -75,9 +78,10 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
                 val receipt=V15Api(host.api).confirm(card,confirmation,actionId)
                 require(receipt.getString("decision_id")==card.id && receipt.getString("option_id")==choice.id && receipt.getString("proposal_sha256")==card.hash && receipt.getString("state")=="answered")
                 done=true;body.removeAllViews()
-                body.addView(text(context,"Answer recorded",22f,C.green,true))
-                body.addView(text(context,choice.label+"\n"+receipt.getString("confirmed_at"),16f,C.text))
-                body.addView(text(context,"Server receipt: "+receipt.getString("answer_id")+". This is not proof that an outside action happened.",14f,C.muted))
+                val done=sectionCard(context,"Answer recorded")
+                done.addView(text(context,choice.label+"\n"+receipt.getString("confirmed_at"),15f,C.text))
+                done.addView(text(context,"Server receipt: "+receipt.getString("answer_id")+". This is not proof that an outside action happened.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
+                body.addCard(done)
             } catch(e:SessionEndedException) {host.onSessionEnded(e)}
             catch(_:Exception) {snack(this@DecisionConfirmScreen,"Answer not confirmed. Retry uses the same answer identity; do not choose again until checked.")}
             finally {busy=false}
@@ -98,18 +102,18 @@ class TeamScreen(context:Context):Screen(context) {
     }}
     internal fun render(data:JSONObject) {
         body.removeAllViews()
-        body.addView(text(context,"Your AI team",22f,C.text,true))
-        body.addView(text(context,"Work status is AI-reported. A check-in is not proof work finished or a message was read.",14f,C.muted))
+        body.addCard(sectionCard(context).apply {addView(text(context,"Work status is AI-reported. A check-in is not proof work finished or a message was read.",13f,C.muted))})
+        if(data.requiredArray("actors").length()==0)body.addCard(emptyState(context,"No AIs are linked yet."))
         for(ai in data.requiredArray("actors").objects()) {
-            val card=column(context).apply {background=rounded(C.surface,dp(16).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
-            card.addView(text(context,ai.optString("display_name").ifBlank {ai.getString("actor")},18f,C.text,true))
-            card.addView(text(context,"Last check-in: "+(ai.nullableString("last_authenticated_at") ?: "Unknown"),13f,C.muted))
+            val card=sectionCard(context)
+            card.addView(text(context,ai.optString("display_name").ifBlank {ai.getString("actor")},17f,C.text,true))
+            card.addView(text(context,"Last check-in: "+(ai.nullableString("last_authenticated_at")?.let {formatTime(it).ifBlank {it}} ?: "Unknown"),12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(2)})
             val state=ai.optJSONObject("work_state")
-            card.addView(text(context,if(ai.optBoolean("stale") || state==null)"AI-reported: stale or unknown" else "AI-reported: "+state.optString("state")+"\n"+state.optString("summary"),15f,C.text))
+            card.addView(text(context,if(ai.optBoolean("stale") || state==null)"AI-reported: stale or unknown" else "AI-reported: "+state.optString("state")+"\n"+state.optString("summary"),14f,C.text),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
             state?.nullableString("waiting_on")?.let {card.addView(text(context,"Waiting on: "+it,14f,C.amber))}
             val ack=ai.optJSONObject("guide_ack")
-            card.addView(text(context,if(ack==null)"Guide: no acknowledgment recorded" else "Guide v"+ack.optInt("version")+" · "+(ack.nullableString("acknowledged_at") ?: "Time unknown")+if(ack.optBoolean("current"))" · current" else " · old",13f,C.muted))
-            body.addView(card,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(12)})
+            card.addView(text(context,if(ack==null)"Guide: no acknowledgment recorded" else "Guide v"+ack.optInt("version")+" · "+(ack.nullableString("acknowledged_at")?.let {formatTime(it).ifBlank {it}} ?: "Time unknown")+if(ack.optBoolean("current"))" · current" else " · old",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
+            body.addCard(card)
         }
     }
 }
@@ -200,12 +204,15 @@ class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
         catch(_:Exception) {body.removeAllViews();body.addView(errorCard(context,"Couldn't load the room goal.") {load()})}
     }}
     private fun render(data:JSONObject) {
-        body.removeAllViews();body.addView(text(context,"Pinned room goal",22f,C.text,true))
+        body.removeAllViews()
         val current=data.getJSONObject("current")
-        body.addView(text(context,current.nullableString("text") ?: "No approved goal yet.",16f,C.text).apply {setTextIsSelectable(true)})
-        body.addView(text(context,"AI proposals stay pending until you approve the exact text. A goal is context, not new permission.",14f,C.muted))
-        body.addView(button(context,"Write a goal proposal",false) {
-            val box=input(context,"Goal").apply {setText(current.nullableString("text").orEmpty())}
+        val gc=sectionCard(context,"Current goal")
+        val goalText=current.nullableString("text")
+        if(goalText==null)gc.addView(text(context,"No approved goal yet.",13f,C.muted)) else gc.addView(text(context,goalText,15f,C.text).apply {setTextIsSelectable(true)})
+        gc.addView(text(context,"AI proposals stay pending until you approve the exact text. A goal is context, not new permission.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+        body.addCard(gc)
+        body.addStacked(button(context,"Write a goal proposal",false) {
+            val box=outlinedInput(context,"Goal").apply {setText(current.nullableString("text").orEmpty())}
             val actionId=clientId()
             AlertDialog.Builder(context).setTitle("Propose room goal").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Propose") {_,_->
                 val value=box.text.toString();if(value.isBlank() || value.length>4000) {snack(this,"Use 1 to 4000 characters.");return@setPositiveButton}
@@ -213,11 +220,13 @@ class RoomGoalScreen(context:Context,private val room:Room):Screen(context) {
             }.show()
         })
         for(proposal in data.requiredArray("pending_proposals").objects()) {
-            body.addView(text(context,"Pending from "+proposal.getString("proposed_by"),14f,C.amber,true))
-            body.addView(text(context,proposal.getString("text"),16f,C.text))
+            val pc=sectionCard(context)
+            body.addCard(pc)
+            pc.addView(text(context,"Pending from "+proposal.getString("proposed_by"),13f,C.amber,true))
+            pc.addView(text(context,proposal.getString("text"),15f,C.text),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
             for(decision in listOf("reject","approve")) {
                 val actionId=clientId()
-                body.addView(button(context,decision.replaceFirstChar {it.uppercase()},false) {
+                pc.addStacked(button(context,decision.replaceFirstChar {it.uppercase()},decision=="approve") {
                     AlertDialog.Builder(context).setTitle(if(decision=="approve")"Make this goal live?" else "Reject this goal?")
                         .setMessage(proposal.getString("text")).setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->change {V15Api(host.api).goalDecision(proposal,decision,actionId)}}.show()
                 })
