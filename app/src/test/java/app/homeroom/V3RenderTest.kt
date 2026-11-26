@@ -156,6 +156,10 @@ class V3RenderTest {
         // that frame before drawing, or the preview shows the PRE-scroll backdrop (the stale
         // Privacy row under the nav seen in the earlier bottom previews).
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(200))
+        // Explicit recapture too: idle alone left a stale pre-scroll backdrop in
+        // the capsule on the 1.9 settings content.
+        (navV as GlassNav).backdropChanged()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
         frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
         val col=sv.getChildAt(0) as ViewGroup
         val last=col.getChildAt(col.childCount-1)
@@ -170,6 +174,58 @@ class V3RenderTest {
     @Test fun settingsScrolledToBottomClearsNav() = settingsBottom("settings-bottom")
     @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
     fun settingsScrolledToBottomAtLargeFont() = settingsBottom("settings-bottom-font13")
+
+    // 1.9 review evidence: Rules scrolled to its true bottom clears the
+    // floating nav, same contract as Settings.
+    @Test fun rulesScrolledToBottomClearsNav() {
+        val(c,a)=activity()
+        val roster=rooms()
+        val rules=RulesScreen(a);field(rules,"rooms").set(rules,roster)
+        field(rules,"scope").set(rules,RuleScope.from(JSONObject("""{"pending_count":2,"rereads":{"ezzy":"2026-11-10T13:02:00Z","tab":"2026-11-10T13:00:00Z"},"rules":[{"rule_id":"one","state":"proposed","version":2,"proposed_by":"instinct","text":"Measure any size on Ezzy's phone and post the numbers before changing it."},{"rule_id":"two","state":"proposed","version":1,"proposed_by":"tab","text":"No mail, posts or purchases go out without Ezzy's yes in the room."},{"rule_id":"three","state":"active","version":3,"proposed_by":"tab","decided_by":"ezzy","text":"Ask before changing the plan."}]}""")))
+        call(rules,"buildChips");call(rules,"render");render(a,rules,"Rules",R.id.nav_rules,"tmp-rules-bottom")
+        val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        val root=rules.getChildAt(0) as ViewGroup
+        val sv=root.getChildAt(2) as ScrollView
+        val navV=field(a,"nav").get(a) as View
+        sv.scrollTo(0,sv.getChildAt(0).height)
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        sv.scrollTo(0,sv.getChildAt(0).height)
+        (navV as GlassNav).backdropChanged()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(200))
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        val cards=sv.getChildAt(0) as ViewGroup
+        val last=cards.getChildAt(cards.childCount-1)
+        val lastLoc=IntArray(2);last.getLocationInWindow(lastLoc)
+        val navLoc=IntArray(2);navV.getLocationInWindow(navLoc)
+        assertTrue("last Rules card clears the floating nav when scrolled to bottom: card bottom ${lastLoc[1]+last.height}, nav top ${navLoc[1]}",lastLoc[1]+last.height<=navLoc[1])
+        val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
+        val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
+        File(previewDir).apply {mkdirs()}.resolve("v3-rules-bottom.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        c.pause()
+    }
+
+    // 1.9 review evidence: the real in-room header with the member-dots
+    // subtitle, driven through MainActivity.setHeaderMeta with fixture members.
+    @Test fun memberHeaderSubtitleEvidence() {
+        val(c,a)=activity()
+        val roster=rooms()
+        val chat=RoomScreen(a,roster.first())
+        @Suppress("UNCHECKED_CAST")val events=field(chat,"events").get(chat) as MutableList<ChatEvent>
+        events.add(ChatEvent.from(JSONObject("""{"event_id":"e1","thread_key":"main0","seq":1,"actor":"instinct","own":false,"text":"Build 214 of WrenBoard 1.8 is up.","created_at":"2026-11-10T14:00:00Z"}""")))
+        field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild")
+        render(a,chat,"WrenBoard",null,"tmp-member-header",true)
+        a.javaClass.getDeclaredMethod("setHeaderMeta",Room::class.java).apply {isAccessible=true}.invoke(a,roster.first())
+        val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        val meta=field(a,"headerMeta").get(a) as View
+        assertEquals("member subtitle visible in a room",View.VISIBLE,meta.visibility)
+        assertTrue("subtitle shows dots and the count",(meta as ViewGroup).childCount>=2)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
+        val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
+        val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
+        File(previewDir).apply {mkdirs()}.resolve("v3-member-header.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        c.pause()
+    }
     // Capture-under-lock gate (I2, Nov 24): while FLAG_SECURE or the lock
     // cover is up, the nav must not capture the content column into retained
     // buffers; transitions drop prior buffers and cancel posted runnables.
