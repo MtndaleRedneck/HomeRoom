@@ -126,13 +126,17 @@ class RoomsScreen(context: Context) : Screen(context) {
             }
             // Member dots + waiting / rule-to-review markers (existing roster data).
             val metaRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-            // fp66: dots alone carried no names for screen readers.
-            metaRow.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
+            // fp66: dots alone carried no names for screen readers. fp66c: the
+            // description sits on the dot group only, so the waiting / rule
+            // text beside it still reads; blank display names fall back to id.
+            val dots = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+            dots.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second.ifBlank { it.first } } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
             for (member in room.members.take(6)) {
-                metaRow.addView(View(context).apply {
+                dots.addView(View(context).apply {
                     background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
                 }, LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(3) })
             }
+            metaRow.addView(dots)
             val badges = mutableListOf<String>()
             if (room.waitingCount > 0) badges.add(room.waitingCount.toString() + " waiting")
             if (room.pendingRulesCount > 0) badges.add("rule to review")

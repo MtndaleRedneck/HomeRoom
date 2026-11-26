@@ -63,11 +63,13 @@ class SetupScreen(context: Context) : Screen(context) {
         steps.forEachIndexed {i,step ->
             val check=checklist.checks.getValue(step)
             if(firstOpen<0 && check.state!="Passed")firstOpen=i
-            // Progress strip segment: accent when passed, dimmed accent for the
-            // step in flight, raised card color for the rest.
+            // Progress strip segment: accent when passed, danger for the failed
+            // states (fp66c: a failed segment read the same as a waiting one),
+            // dimmed accent for the step in flight, raised card color for the rest.
+            val failedSeg=check.state=="Needs attention"||check.state=="Not confirmed"
             strip.addView(View(context).apply {
-                background=rounded(if(check.state=="Passed") C.accent else C.surfaceAlt,dp(2).toFloat())
-                if(check.state!="Passed" && i==firstOpen) background=rounded(androidx.core.graphics.ColorUtils.blendARGB(C.accent,C.surfaceAlt,0.5f),dp(2).toFloat())
+                background=rounded(if(check.state=="Passed") C.accent else if(failedSeg) C.danger else C.surfaceAlt,dp(2).toFloat())
+                if(check.state!="Passed" && !failedSeg && i==firstOpen) background=rounded(androidx.core.graphics.ColorUtils.blendARGB(C.accent,C.surfaceAlt,0.5f),dp(2).toFloat())
             },android.widget.LinearLayout.LayoutParams(0,-1,1f).apply {rightMargin=dp(4)})
             val row=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(10),0,dp(2))}
             // Status dot: green check when passed, danger "!" for the failed
