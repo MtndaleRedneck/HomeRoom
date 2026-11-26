@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity() {
         }
         // 1.9: the floating bar drops to
         // 54dp tall and sits 16dp above the system bar (was 64dp at 28dp).
-        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), dp(54), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) })
+        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), navHeightFor(resources.displayMetrics.density, resources.configuration.fontScale), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) })
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
@@ -239,7 +239,8 @@ class MainActivity : AppCompatActivity() {
         if (::nav.isInitialized) {
             val dm = resources.displayMetrics
             val w = navWidthFor(dm.widthPixels, dm.density, newConfig.fontScale)
-            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { if (it.width != w) { it.width = w; nav.layoutParams = it } }
+            val h = navHeightFor(dm.density, newConfig.fontScale)
+            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { if (it.width != w || it.height != h) { it.width = w; it.height = h; nav.layoutParams = it } }
         }
     }
     private fun navWidthPx():Int = navWidthFor(resources.displayMetrics.widthPixels, resources.displayMetrics.density, resources.configuration.fontScale)
@@ -880,4 +881,16 @@ internal fun navWidthFor(screenPx:Int, density:Float, fontScale:Float):Int {
     val base=(256*density).toInt()
     val wanted=(base*maxOf(1f,fontScale)).toInt()
     return minOf(wanted,screenPx-(24*density).toInt()).coerceAtLeast(minOf(base,screenPx))
+}
+
+/**
+ * Height of the floating nav in px: 54dp at normal font, growing past 1.0 by
+ * the label's extra line height (10.5sp at ~1.2 line factor) so the labels
+ * stay whole at larger system font sizes. The fixed 54dp clipped every label
+ * at the capsule bottom at 1.3x (found on the v3-rules-bottom-font13 pixels).
+ */
+internal fun navHeightFor(density:Float, fontScale:Float):Int {
+    val base=(54*density).toInt()
+    val extra=(10.5f*1.2f*maxOf(0f,fontScale-1f)*density).toInt()
+    return base+extra
 }
