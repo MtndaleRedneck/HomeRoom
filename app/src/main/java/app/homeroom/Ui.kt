@@ -32,6 +32,8 @@ object C {
     val amber get() = themed("#f0a23c", "#8a5700")
     val green get() = themed("#3fbf7f", "#167741")
     val danger get() = themed("#e5484d", "#b82430")
+    /** Destructive text on a card: lightened to clear 4.5:1 on C.surface. */
+    val dangerText get() = themed("#f0646a", "#b82430")
     val accent get() = themed("#fc8613", "#9a4800")
     val teal get() = themed("#35c2c9", "#087b81")
     val violet get() = themed("#a08cff", "#6f48b1")
@@ -236,7 +238,7 @@ fun errorCard(context: Context, message: String, onRetry: () -> Unit): LinearLay
     val card = sectionCard(context)
     card.addView(text(context, message, 15f, C.text, true))
     card.addView(text(context, "Check your connection, then try again.", 12.5f, C.muted), LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(2) })
-    card.addView(actionButton(context, "Retry") { onRetry() }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(12) })
+    card.addView(actionButton(context, "Retry", primary = false) { onRetry() }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(12) })
     return card
 }
 
@@ -295,7 +297,7 @@ fun actionButton(context: Context, label: CharSequence, primary: Boolean = true,
         gravity = Gravity.CENTER
         minHeight = context.dp(48)
         setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
-        setTextColor(if (primary) Color.parseColor("#1B1B1E") else C.text)
+        setTextColor(if (primary) Color.parseColor("#1B1B1E") else C.accent)
         background = rounded(if (primary) C.accent else C.surfaceAlt, context.dp(14).toFloat())
         pressIn()
         setOnClickListener { onClick() }
@@ -314,3 +316,63 @@ fun navRow(context: Context, label: String, subtitle: String = "", chevron: Bool
         if (chevron) addView(iconView(context, R.drawable.ic_chevron_right, C.muted, 28), LinearLayout.LayoutParams(context.dp(28), context.dp(28)))
         if (onClick != null) { pressIn(); setOnClickListener { onClick() } }
     }
+
+/**
+ * Shared settings switch (same geometry and timing as BingeMote/Listen Later SettingToggle):
+ * 52x32dp track, 24dp thumb with 4dp margin, gray track blending into the accent fill, dark thumb on / light thumb off,
+ * 190ms FastOutSlowIn slide. Exposed to accessibility as a Switch.
+ */
+class ToggleSwitch(context: Context) : android.view.View(context) {
+    private val trackPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val thumbPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private var fraction = 0f
+    private var animator: android.animation.ValueAnimator? = null
+    var checked = false
+        private set
+    var onChange: ((Boolean) -> Unit)? = null
+    private val trackOff = 0xff4a4a52.toInt()
+
+    init {
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { toggle() }
+    }
+
+    fun setCheckedSilently(value: Boolean) {
+        checked = value
+        fraction = if (value) 1f else 0f
+        invalidate()
+    }
+
+    fun toggle() {
+        checked = !checked
+        animator?.cancel()
+        animator = android.animation.ValueAnimator.ofFloat(fraction, if (checked) 1f else 0f).apply {
+            duration = 190
+            interpolator = android.view.animation.PathInterpolator(0.4f, 0f, 0.2f, 1f)
+            addUpdateListener { fraction = it.animatedValue as Float; invalidate() }
+            start()
+        }
+        sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_CLICKED)
+        onChange?.invoke(checked)
+    }
+
+    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(context.dp(52), context.dp(32))
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        val tw = width.toFloat(); val th = height.toFloat()
+        trackPaint.color = androidx.core.graphics.ColorUtils.blendARGB(trackOff, C.accent, fraction)
+        c.drawRoundRect(0f, 0f, tw, th, th / 2, th / 2, trackPaint)
+        thumbPaint.color = androidx.core.graphics.ColorUtils.blendARGB(C.text, C.bg, fraction)
+        val d = context.dp(24).toFloat(); val pad = context.dp(4).toFloat()
+        val left = pad + (tw - pad * 2 - d) * fraction
+        c.drawCircle(left + d / 2, th / 2, d / 2, thumbPaint)
+    }
+
+    override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.className = "android.widget.Switch"
+        info.isCheckable = true
+        info.isChecked = checked
+    }
+}

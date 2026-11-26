@@ -44,7 +44,8 @@ class SettingsScreen(context:Context):Screen(context) {
         val line=navRow(context,title,subtitle,chevron=trailing=="›",onClick=click)
         if(trailing=="link") line.addView(iconView(context,R.drawable.ic_open_link,C.muted,24),LinearLayout.LayoutParams(dp(24),dp(24)))
         else if(trailing!=null && trailing!="›") {
-            line.addView(text(context,trailing,12.5f,if(trailing=="Remove") C.danger else C.accent,true).apply {gravity=Gravity.CENTER;minHeight=dp(48);setPadding(dp(12),0,dp(4),0)})
+            if(trailing=="Retry") line.addView(actionButton(context,"Retry",primary=false) {click?.invoke()},LinearLayout.LayoutParams(-2,dp(48)).apply {leftMargin=dp(8)})
+            else line.addView(text(context,trailing,12.5f,if(trailing=="Remove") C.dangerText else C.accent,true).apply {gravity=Gravity.CENTER;minHeight=dp(48);setPadding(dp(12),0,dp(4),0)})
         }
         card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
@@ -104,7 +105,7 @@ class SettingsScreen(context:Context):Screen(context) {
         // bugs card, then the Updates card ALWAYS last. The
         // old order had Sign out below Updates, a known exception to
         // fix on a later update.
-        val signout=text(context,"Sign out",14f,C.danger,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(16).toFloat());pressIn();setOnClickListener {confirmSignOut()}}
+        val signout=text(context,"Sign out",14f,C.dangerText,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(16).toFloat());pressIn();setOnClickListener {confirmSignOut()}}
         col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(14)})
         val feedback=group("Feedback & bugs")
         row(feedback,"Send feedback, report a bug, or suggest a feature","","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
@@ -181,17 +182,9 @@ class SettingsScreen(context:Context):Screen(context) {
         val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(48);setPadding(0,dp(4),0,dp(4))}
         val copy=column(context);copy.addView(text(context,title,15f,C.text,true));copy.addView(text(context,subtitle,12.5f,C.muted).apply {maxLines=2})
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
-        val trackOn=0x59fc8613.toInt()
-        val sw=android.widget.Switch(context).apply {
-            thumbDrawable=android.graphics.drawable.InsetDrawable(android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(android.graphics.Color.WHITE);setSize(dp(24),dp(24))},dp(4))
-            trackDrawable=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.RECTANGLE;cornerRadius=dp(16).toFloat();setColor(android.graphics.Color.WHITE);setSize(dp(52),dp(32))}
-            showText=false
-            isChecked=on
-            thumbTintList=android.content.res.ColorStateList.valueOf(if(on) C.accent else C.disabled)
-            trackTintList=android.content.res.ColorStateList.valueOf(if(on) trackOn else C.surfaceAlt)
-            setOnCheckedChangeListener {_,checked->
-                thumbTintList=android.content.res.ColorStateList.valueOf(if(checked) C.accent else C.disabled)
-                trackTintList=android.content.res.ColorStateList.valueOf(if(checked) trackOn else C.surfaceAlt)
+                val sw=ToggleSwitch(context).apply {
+            setCheckedSilently(on)
+            onChange={checked->
                 onToggle(checked)
                 // After persisting: turning ON buzzes, turning OFF stays silent.
                 tapHaptic(this)
