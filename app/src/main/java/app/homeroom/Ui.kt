@@ -233,16 +233,10 @@ fun formatBubbleTime(iso: String?): String {
 // private12 release build (surface card, message in text color, "Retry" in the
 // info color, 48dp min touch height).
 fun errorCard(context: Context, message: String, onRetry: () -> Unit): LinearLayout {
-    val card = column(context).apply {
-        background = rounded(C.surface, dp(20).toFloat(), null, 12f)
-        setPadding(dp(16), dp(8), dp(16), dp(8))
-    }
-    card.addView(text(context, message, 14f, C.text))
-    card.addView(text(context, "Retry", 14f, C.info, true).apply {
-        minHeight = dp(48)
-        gravity = android.view.Gravity.CENTER
-        setOnClickListener { onRetry() }
-    })
+    val card = sectionCard(context)
+    card.addView(text(context, message, 15f, C.text, true))
+    card.addView(text(context, "Check your connection, then try again.", 12.5f, C.muted), LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(2) })
+    card.addView(actionButton(context, "Retry") { onRetry() }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(12) })
     return card
 }
 
@@ -288,7 +282,7 @@ fun iconButton(context: Context, res: Int, tint: Int, desc: String, onClick: () 
 fun sectionCard(context: Context, title: String? = null): LinearLayout =
     column(context).apply {
         background = rounded(C.surface, context.dp(16).toFloat())
-        setPadding(context.dp(16), context.dp(16), context.dp(16), context.dp(16))
+        setPadding(context.dp(16), context.dp(16), context.dp(16), context.dp(12))
         if (title != null) addView(text(context, title, 17f, C.text, true), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(8) })
     }
 

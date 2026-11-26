@@ -37,7 +37,7 @@ class RulesScreen(context:Context):Screen(context) {
         host.scope.launch {
             try { rooms=host.cachedRooms().ifEmpty { host.api.roomRoster().rooms };buildChips();load() }
             catch(e:SessionEndedException) { host.onSessionEnded(e) }
-            catch(_:Exception) { note.text="Couldn't load rules. Tap to retry.";note.setOnClickListener { onShow() } }
+            catch(_:Exception) { cards.removeAllViews();cards.addView(errorCard(context,"Couldn't load rules.") { onShow() }) }
         }
     }
     override fun poll() { load() }
@@ -64,8 +64,7 @@ class RulesScreen(context:Context):Screen(context) {
                 if(requested==selected) { scope=result;render();buildChips() }
             } catch(e:SessionEndedException) { host.onSessionEnded(e) }
             catch(_:Exception) {
-                note.text="Couldn't load rules. Tap to retry.";note.setOnClickListener { load() }
-                if(note.parent==null)cards.addView(note,0)
+                cards.removeAllViews();cards.addView(errorCard(context,"Couldn't load rules.") { load() })
             } finally { loading=false }
         }
     }

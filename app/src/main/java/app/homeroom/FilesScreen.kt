@@ -43,7 +43,7 @@ class FilesScreen(context:Context):Screen(context) {
                 if(selected==null)selected=rooms.firstOrNull { it.id==host.session.lastRoomId } ?: rooms.firstOrNull()
                 buildChips();selected?.let { load(it) } ?: run { note.text="Nothing shared in this room yet." }
             } catch(e:SessionEndedException) { host.onSessionEnded(e) }
-            catch(_:Exception) { note.text="Couldn't load files. Tap to retry.";note.setOnClickListener { onShow() } }
+            catch(_:Exception) { body.removeAllViews();body.addView(errorCard(context,"Couldn't load files.") { onShow() }) }
         }
     }
     private fun buildChips() {
@@ -68,7 +68,7 @@ class FilesScreen(context:Context):Screen(context) {
                 } while(cursor!=null)
                 files.addAll(all.distinctBy { it.id.ifBlank { it.url.orEmpty() } });render()
             } catch(e:SessionEndedException) { host.onSessionEnded(e) }
-            catch(_:Exception) { if(token==generation) { note.text="Couldn't load files. Tap to retry.";note.setOnClickListener { load(room) } } }
+            catch(_:Exception) { if(token==generation) { body.removeAllViews();body.addView(errorCard(context,"Couldn't load files.") { load(room) }) } }
             finally { if(token==generation)loading=false }
         }
     }
