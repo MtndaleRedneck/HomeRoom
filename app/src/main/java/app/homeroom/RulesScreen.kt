@@ -48,6 +48,7 @@ class RulesScreen(context:Context):Screen(context) {
         for((id,name) in scopes) {
             val label=name+(if((id==null && scope.pendingCount>0 && selected==null) || rooms.firstOrNull { it.id==id }?.pendingRulesCount?.let { it>0 }==true) " •" else "")
             val chip=text(context,label,14f,if(id==selected) android.graphics.Color.WHITE else C.text,true).apply {
+                if(label.endsWith(" •")) contentDescription=name+", a rule is waiting for your yes"
                 gravity=Gravity.CENTER;background=rounded(if(id==selected) C.accent else C.surfaceAlt,dp(17).toFloat());setPadding(dp(14),0,dp(14),0)
                 setOnClickListener { if(!loading) { selected=id;buildChips();load() } }
             }
@@ -92,7 +93,7 @@ class RulesScreen(context:Context):Screen(context) {
         val reread=card()
         val rrHeader=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
         rrHeader.addView(text(context,"Last re-read",13f,C.muted,true),LinearLayout.LayoutParams(0,-2,1f))
-        rrHeader.addView(text(context,"Record my re-read",13.5f,C.accent,true).apply { setPadding(0,dp(12),0,dp(12));setOnClickListener { recordReread() } })
+        rrHeader.addView(text(context,"Record my re-read",13.5f,C.accent,true).apply { gravity=Gravity.CENTER_VERTICAL or Gravity.END;minHeight=dp(48);minimumHeight=dp(48);setPadding(dp(8),0,0,0);setOnClickListener { recordReread() } })
         reread.addView(rrHeader)
         val people=linkedSetOf<String>();host.session.ownerId?.let { people.add(it) };rooms.flatMap { it.members }.forEach { people.add(it.first) }
         for(actor in people) {
