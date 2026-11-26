@@ -643,18 +643,17 @@ jobs:
             adb shell input keyevent KEYCODE_BACK
             sleep 3
             # 1.8 evidence: populated Rules/Files (synthetic stub data), pushed-page header, Feedback page.
-            XY=$(python3 ci/ui-tap.py "Rules") || { rc=$?; echo "ui-tap Rules rc=$rc"; adb exec-out screencap -p > i-rules-tapfail.png; adb shell uiautomator dump /sdcard/f.xml >/dev/null 2>&1; adb pull /sdcard/f.xml ui-dump-rules-tapfail.xml >/dev/null 2>&1; adb shell dumpsys window | grep -E "mCurrentFocus" ; exit 1; }
-            adb shell input tap $XY
+            adb shell input tap 456 2242
             sleep 5
             python3 ci/anr-guard.py i-rules-populated || exit 1
             adb exec-out screencap -p > i-rules-populated.png
             python3 ci/anr-guard.py --check i-rules-populated || exit 1
-            XY=$(python3 ci/ui-tap.py "Files") && adb shell input tap $XY
+            adb shell input tap 624 2242
             sleep 5
             python3 ci/anr-guard.py i-files-populated || exit 1
             adb exec-out screencap -p > i-files-populated.png
             python3 ci/anr-guard.py --check i-files-populated || exit 1
-            XY=$(python3 ci/ui-tap.py "Settings") && adb shell input tap $XY
+            adb shell input tap 792 2242
             sleep 4
             sh ci/settings-tap.sh "Send feedback, report a bug, or suggest a feature"
             sleep 4
