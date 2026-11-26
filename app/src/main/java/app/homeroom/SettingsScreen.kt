@@ -70,6 +70,7 @@ class SettingsScreen(context:Context):Screen(context) {
         val sessions=group("Signed-in devices")
         if(devicesError)row(sessions,"Couldn't load devices","Tap to retry","Retry") {onShow()}
         else if(!devicesLoaded)row(sessions,"Loading devices","Checking signed-in devices")
+        else if(devices.isEmpty())row(sessions,"No devices listed","The server returned no signed-in devices")
         for(device in devices) {
             val current=device.isCurrent(host.session.sessionId)
             row(sessions,(if(current) "This phone" else device.label.ifBlank {"Device"}),if(current) "Active now" else device.lastUsed?.let {"Last used "+formatRoomTime(it)} ?: "Last use not recorded",if(current) null else "Remove",if(current) null else { {confirmRemove(device)} })
