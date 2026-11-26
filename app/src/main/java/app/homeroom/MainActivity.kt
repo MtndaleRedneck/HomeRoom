@@ -172,7 +172,7 @@ class MainActivity : AppCompatActivity() {
                 openPage("Feedback & bugs", FeedbackScreen(this).also {it.draft=draft})
             }
             UpdateCheck.checkInBackground(scope)
-            PushRegistration.sync(scope, session, api)
+            syncPush()
         } else {
             showSetup(null)
             PushTokenDeletion.retryOnStart(applicationContext)
@@ -542,6 +542,12 @@ class MainActivity : AppCompatActivity() {
         showTab(R.id.nav_chats)
     }
 
+    /** Enrolled start/enrolment: a failed earlier token deletion is retried first (its completion registers the fresh token); otherwise register now. */
+    private fun syncPush() {
+        if (PushTokenDeletion.pending) PushTokenDeletion.retryOnStart(applicationContext)
+        else PushRegistration.sync(scope, session, api)
+    }
+
     // Enrollment finished while the app was in the background: show Main on the next resume.
     @Volatile private var pendingShowMain = false
 
@@ -552,7 +558,7 @@ class MainActivity : AppCompatActivity() {
             try { api.renewOnOpen() }
             catch (e: SessionEndedException) { onSessionEnded(e); return@launch }
             catch (_: Exception) { snack(window.decorView, "Connected. Feature status couldn't refresh yet.") }
-            PushRegistration.sync(scope, session, api)
+            syncPush()
             if (!isForeground) { pendingShowMain = true; return@launch }
             showMain()
             UpdateCheck.checkInBackground(scope)

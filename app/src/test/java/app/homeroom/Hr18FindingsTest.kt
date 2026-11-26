@@ -111,7 +111,12 @@ class Hr18FindingsTest {
             while(busyAtInstall==null && n++<100) {shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50));Thread.sleep(20)}
             assertEquals("install() saw busy=false",false,busyAtInstall)
             assertFalse("guard is free afterwards",busy.getBoolean(null))
-        } finally {UpdateCheck.fetchOverride=null;UpdateCheck.installOverride=null;busy.setBoolean(null,false)}
+        } finally {
+            UpdateCheck.fetchOverride=null;UpdateCheck.installOverride=null;busy.setBoolean(null,false)
+            // global singleton state: put it back so other tests see an untouched object
+            UpdateCheck::class.java.getDeclaredField("latestTag").apply {isAccessible=true}.set(null,null)
+            UpdateCheck::class.java.getDeclaredField("state").apply {isAccessible=true}.set(null,UpdateCheck.State.IDLE)
+        }
     }
 
     // 5. Feedback id: same text keeps its id, new text or a confirmed send gets a new one.
