@@ -15,9 +15,13 @@ object PushRegistration {
     fun register(scope: CoroutineScope, session: Session, api: ApiClient) {
         val token = session.fcmToken ?: return
         if (!session.enrolled) return
+        val gen = session.authSnapshot().generation
         scope.launch {
             try {
+                // The session may have ended or been replaced since this call was queued.
+                if (!session.enrolled || session.authSnapshot().generation != gen) return@launch
                 api.registerPushToken(token, "HomeRoom Android app", BuildConfig.VERSION_NAME)
+                if (session.authSnapshot().generation != gen) return@launch
                 session.fcmRegisteredToken = token
             } catch (e: SessionEndedException) {
                 // The session is gone; the next successful enroll re-registers.
@@ -40,9 +44,18 @@ object PushRegistration {
         }
     }
 
+    /** App start and after enrollment: register the stored token and pick up a token FCM issued before enrollment. */
+    fun sync(scope: CoroutineScope, session: Session, api: ApiClient) {
+        if (!session.enrolled || PushTokenDeletion.pending) return
+        register(scope, session, api)
+        try { refreshToken(scope, session, api) } catch (_: Exception) { /* Firebase unavailable: the stored token path above still ran. */ }
+    }
+
     fun refreshToken(scope: CoroutineScope, session: Session, api: ApiClient) {
+        val gen = session.authSnapshot().generation
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
+                if (!session.enrolled || session.authSnapshot().generation != gen || PushTokenDeletion.pending) return@addOnSuccessListener
                 if (!token.isNullOrBlank() && session.fcmToken != token) {
                     session.fcmToken = token
                     // A fresh token is registered right away, not at next start.

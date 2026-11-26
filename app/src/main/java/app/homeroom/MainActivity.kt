@@ -130,7 +130,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
-        setUpdateListener { if (::nav.isInitialized) nav.setUpdateAvailable(UpdateCheck.hasUpdate()) }
+        setUpdateListener {
+            if (::nav.isInitialized) nav.setUpdateAvailable(UpdateCheck.hasUpdate())
+            (tabScreens[R.id.nav_settings] as? SettingsScreen)?.onUpdateChanged()
+        }
         nav.setUpdateAvailable(UpdateCheck.hasUpdate())
 
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
@@ -166,14 +169,18 @@ class MainActivity : AppCompatActivity() {
                 openPage("Feedback & bugs", FeedbackScreen(this).also {it.draft=draft})
             }
             UpdateCheck.checkInBackground(scope)
+            PushRegistration.sync(scope, session, api)
         } else {
             showSetup(null)
+            PushTokenDeletion.retryOnStart(applicationContext)
         }
         startPoller()
         registerConnectivity()
         onConnectIntent(intent)
         onShareIntent(intent)
         onRoomIntent(intent)
+        // A share queued behind the lock survives a recreation (memory only; the Uri, never bytes or names).
+        if (retained.pendingShare != null && session.enrolled) { appLock.gate(); runWhenUnlocked { deliverPendingShare() } }
     }
 
     // RECONSTRUCTED from the exact private12 release build (MainActivity.K /
@@ -209,7 +216,7 @@ class MainActivity : AppCompatActivity() {
     // (manifest), so a rotation or split-screen resize must refit the nav.
     // In-memory only, kept by the ViewModelStore across a configuration recreation (font size) and dropped when
     // the activity really finishes or the process dies. Nothing is written to preferences, files or a saved-state Bundle.
-    private val retained by lazy { androidx.lifecycle.ViewModelProvider(this)[RetainedUiState::class.java] }
+    internal val retained by lazy { androidx.lifecycle.ViewModelProvider(this)[RetainedUiState::class.java] }
     override fun onDestroy() {
         if (isChangingConfigurations) (currentPage as? FeedbackScreen)?.let { retained.feedbackDraft = it.draft }
         super.onDestroy()
@@ -265,22 +272,32 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (uri != null && uri.scheme == "content") {
-            val rooms = roomCache.filter { !it.archived }
-            if (rooms.isEmpty()) {
-                android.widget.Toast.makeText(this, "Open your room list before sharing a file.", android.widget.Toast.LENGTH_LONG).show()
-                return
-            }
-            val names = rooms.map { it.name }.toTypedArray()
-            android.app.AlertDialog.Builder(this,R.style.Theme_HomeRoom_Dialog)
-                .setTitle("Review shared file in room")
-                .setItems(names) { _, which ->
-                    openPage("Review shared file in room", AttachmentComposer(this, rooms[which], uri))
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+            // Queue the Uri only; the room picker is built after unlock (and dropped on a session reset).
+            retained.pendingShare = uri
+            appLock.gate()
+            runWhenUnlocked { deliverPendingShare() }
         } else {
             android.widget.Toast.makeText(this, "This shared file couldn't be read.", android.widget.Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun deliverPendingShare() {
+        val uri = retained.pendingShare ?: return
+        retained.pendingShare = null
+        if (!session.enrolled) return
+        val rooms = roomCache.filter { !it.archived }
+        if (rooms.isEmpty()) {
+            android.widget.Toast.makeText(this, "Open your room list before sharing a file.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = rooms.map { it.name }.toTypedArray()
+        android.app.AlertDialog.Builder(this,R.style.Theme_HomeRoom_Dialog)
+            .setTitle("Review shared file in room")
+            .setItems(names) { _, which ->
+                openPage("Review shared file in room", AttachmentComposer(this, rooms[which], uri))
+            }
+            .setNegativeButton("Cancel", null)
+            .showTracked()
     }
 
     private fun onConnectIntent(intent: android.content.Intent?) {
@@ -322,7 +339,7 @@ class MainActivity : AppCompatActivity() {
             .setMessage(host.toString() + "\n\nOnly continue if this is your intended HomeRoom server.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Connect") { _, _ -> fillHandoff(handoff) }
-            .show()
+            .showTracked()
     }
 
     private fun fillHandoff(handoff: ConnectionHandoff) {
@@ -478,6 +495,8 @@ class MainActivity : AppCompatActivity() {
         transientDialog?.dismiss()
         transientDialog = null
         synchronized(afterUnlockActions) { afterUnlockActions.clear() }
+        retained.pendingShare = null
+        pendingShowMain = false
         // Reset contract (I2 76e trace): entering Setup discards pushed pages
         // too - an unconsumed Back on SetupScreen falls to closePage(), which
         // must NOT re-show a pre-reset page (old room/page over a new or
@@ -515,6 +534,9 @@ class MainActivity : AppCompatActivity() {
         showTab(R.id.nav_chats)
     }
 
+    // Enrollment finished while the app was in the background: show Main on the next resume.
+    @Volatile private var pendingShowMain = false
+
     fun onEnrolled() {
         // RECOVERED Nov 24, 2026 (operator Nov 15 readback, pre-checklist
         // signature): the release renewed features/session before showing main.
@@ -522,7 +544,8 @@ class MainActivity : AppCompatActivity() {
             try { api.renewOnOpen() }
             catch (e: SessionEndedException) { onSessionEnded(e); return@launch }
             catch (_: Exception) { snack(window.decorView, "Connected. Feature status couldn't refresh yet.") }
-            if (!isForeground) return@launch
+            PushRegistration.sync(scope, session, api)
+            if (!isForeground) { pendingShowMain = true; return@launch }
             showMain()
             UpdateCheck.checkInBackground(scope)
         }
@@ -644,6 +667,8 @@ class MainActivity : AppCompatActivity() {
         // transient dialog before the cover goes up.
         transientDialog?.dismiss()
         transientDialog = null
+        // Every other dialog of this app has its own window above the cover too: with the lock on, close them before the cover goes up.
+        if (PrivacyPrefs.locked(this)) DialogRegistry.dismissAll()
         // Capture-under-lock (I2, Nov 24): backgrounding drops the retained
         // backdrop buffers; AppLock.onPause re-locks so the cover - and the
         // capture block - are up before the next resume. The callback review
@@ -651,6 +676,12 @@ class MainActivity : AppCompatActivity() {
         captureSuspended = true
         if (::nav.isInitialized) nav.invalidateBackdrop()
         appLock.onPause()
+    }
+
+    override fun onStop() {
+        // Background means stopped, not paused: a biometric, permission or picker prompt pauses the activity while it stays visible.
+        isForeground = false
+        super.onStop()
     }
 
     override fun onResume() {
@@ -674,6 +705,11 @@ class MainActivity : AppCompatActivity() {
     // until the next onResume.
     private fun resumeContent() {
         isForeground = true
+        if (pendingShowMain && session.enrolled) {
+            pendingShowMain = false
+            showMain()
+            UpdateCheck.checkInBackground(scope)
+        }
         startPoller()
         val screen = roomScreen ?: tabScreens[currentTab]
         screen?.poll()

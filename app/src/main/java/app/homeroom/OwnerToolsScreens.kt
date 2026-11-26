@@ -73,11 +73,11 @@ class RoomSettingsScreen(context:Context,private var room:Room):Screen(context) 
         body.addView(text(context,"Reading access includes the preceding 30 days of room messages.",13f,C.muted))
         action("Rename room") {
             val box=input(context,"Room name").apply {setText(room.name);filters=arrayOf(android.text.InputFilter.LengthFilter(40))}
-            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Rename room").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Save") {_,_->mutate("rename",JSONObject().put("display_name",box.text.toString().trim()))}.show()
+            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Rename room").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Save") {_,_->mutate("rename",JSONObject().put("display_name",box.text.toString().trim()))}.showTracked()
         }
         action("Add AIs") {host.openPage("Add AIs",AddToChatScreen(context,room))}
         for((actor,name) in room.members.filter {it.first.startsWith("ai_")}) action("Remove $name from this room") {
-            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Remove $name?").setMessage("Removes room access immediately. The AI stays linked and room history is kept.").setNegativeButton("Cancel",null).setPositiveButton("Remove") {_,_->runChange {host.api.removeRoomMember(room.id,actor,room.metadataVersion)}}.show()
+            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle("Remove $name?").setMessage("Removes room access immediately. The AI stays linked and room history is kept.").setNegativeButton("Cancel",null).setPositiveButton("Remove") {_,_->runChange {host.api.removeRoomMember(room.id,actor,room.metadataVersion)}}.showTracked()
         }
         // RECONSTRUCTED from release evidence (K0/p3,q3,r3): mute duration choices
         // write mute_mode off/until/forever via the preferences PUT.
@@ -90,11 +90,11 @@ class RoomSettingsScreen(context:Context,private var room:Room):Screen(context) 
                     else -> body.put("mute_mode","forever")
                 }
                 runChange {host.api.roomMutation(room.id,"mute",body)}
-            }.show()
+            }.showTracked()
         }
         action(if(room.archived)"Unarchive for everyone" else "Archive for everyone") {
             // RECONSTRUCTED: release copy (K0/q3) - archive is shared, stops new posts, keeps history.
-            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle(if(room.archived)"Unarchive for everyone?" else "Archive for everyone?").setMessage(if(room.archived)"Allows new posts again; keeps history." else "Stops new posts; keeps history.").setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->mutate("archive",JSONObject().put("archived",!room.archived))}.show()
+            AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle(if(room.archived)"Unarchive for everyone?" else "Archive for everyone?").setMessage(if(room.archived)"Allows new posts again; keeps history." else "Stops new posts; keeps history.").setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->mutate("archive",JSONObject().put("archived",!room.archived))}.showTracked()
         }
         action("Export retained room history") {export()}
         body.addView(text(context,"Export includes retained messages, rules and file metadata. File bytes are not embedded. Permissions and retention are checked on every page.",13f,C.muted))

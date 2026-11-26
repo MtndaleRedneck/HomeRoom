@@ -94,8 +94,7 @@ class FeedbackScreen(context:Context):Screen(context) {
         body.addView(text(context,"No name needed. A reply email is optional.",13f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
         body.addView(actionButton(context,"Copy message",false) {copyMessage()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
         if(host.api.hasFeature("owner_room_management")) {
-            val clientId=UUID.randomUUID().toString()
-            body.addView(actionButton(context,"Send to private Feedback room",false) {send(edit,clientId)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
+            body.addView(actionButton(context,"Send to private Feedback room",false) {send(edit)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         }
     }
     /** The exact block shown in the preview; the server receives it minus the "What will be sent:" header. */
@@ -125,11 +124,21 @@ class FeedbackScreen(context:Context):Screen(context) {
         cm.setPrimaryClip(ClipData.newPlainText("Feedback",message.trim()))
         snack(this,"Message copied.")
     }
-    private fun send(edit:EditText,clientId:String) {
+    /** One id per report: the same text after an unconfirmed send keeps its id (a retry replays); new text or a confirmed send gets a fresh one. Kept in memory across a recreation. */
+    private fun clientIdFor(text:String):String {
+        val r=host.retained
+        val kept=r.feedbackClientId
+        if(kept!=null && r.feedbackSentText==text)return kept
+        return UUID.randomUUID().toString().also {r.feedbackClientId=it;r.feedbackSentText=text}
+    }
+    private fun send(edit:EditText) {
         if(!guard())return
+        val text=composed()
+        val clientId=clientIdFor(text)
         screenScope.launch {
             try {
-                host.api.sendFeedback(composed(),clientId)
+                host.api.sendFeedback(text,clientId)
+                host.retained.feedbackClientId=null;host.retained.feedbackSentText=null
                 edit.setText("")
                 snack(this@FeedbackScreen,"Saved in your private Feedback room.")
             } catch(e:SessionEndedException) {host.onSessionEnded(e)

@@ -68,7 +68,7 @@ internal object ActionConfirmation {
                 catch(_:Exception) {snack(content,"Confirmation not verified. Check status before choosing again. Retry uses only the same confirmation ID.");confirm.isEnabled=true}
             }
         }
-        dialog.show()
+        dialog.showTracked()
     }
 }
 internal fun verifiedActionConfirmation(card:DecisionCard,response:JSONObject):ActionApproval {

@@ -415,3 +415,15 @@ class ToggleSwitch(context: Context) : android.view.View(context) {
         info.isChecked = checked
     }
 }
+
+/** Dialogs of this app that must not outlive the lock cover: each has its own window above it. */
+object DialogRegistry {
+    private val dialogs = java.util.Collections.newSetFromMap(java.util.WeakHashMap<android.app.Dialog, Boolean>())
+    fun track(d: android.app.Dialog) { synchronized(dialogs) { dialogs.add(d) } }
+    fun dismissAll() {
+        val open = synchronized(dialogs) { dialogs.toList().also { dialogs.clear() } }
+        open.forEach { try { if (it.isShowing) it.dismiss() } catch (_: Exception) {} }
+    }
+}
+fun <T : android.app.Dialog> T.showTracked(): T { DialogRegistry.track(this); show(); return this }
+fun android.app.AlertDialog.Builder.showTracked(): android.app.AlertDialog = create().also { DialogRegistry.track(it); it.show() }

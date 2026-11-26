@@ -24,13 +24,13 @@ class RoomPreferencesScreen(context:Context,private val room:Room):Screen(contex
                 val mode=listOf("off","until","forever")[which]
                 val until=if(which==1)java.time.Instant.now().plusSeconds(3600).toString() else null
                 change(state,mode,until,state.getBoolean("pinned"),state.getBoolean("archived"))
-            }.show()
+            }.showTracked()
         })
         body.addView(text(context,"Archive is shared, not a private hide. It stops new posts for everyone and keeps history.",14f,C.amber))
         body.addStacked(button(context,if(state.getBoolean("archived"))"Unarchive for everyone" else "Archive for everyone",false) {
             AlertDialog.Builder(context,R.style.Theme_HomeRoom_Dialog).setTitle(if(state.getBoolean("archived"))"Unarchive for everyone?" else "Archive for everyone?")
                 .setMessage(if(state.getBoolean("archived"))"Allows new posts again; keeps history." else "Stops new posts; keeps history.")
-                .setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->change(state,state.getString("mute_mode"),state.nullableString("muted_until"),state.getBoolean("pinned"),!state.getBoolean("archived"))}.show()
+                .setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->change(state,state.getString("mute_mode"),state.nullableString("muted_until"),state.getBoolean("pinned"),!state.getBoolean("archived"))}.showTracked()
         })
     }
     private fun change(state:JSONObject,mode:String,until:String?,pinned:Boolean,archived:Boolean) {

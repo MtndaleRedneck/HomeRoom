@@ -21,7 +21,7 @@ object InlineFilePreview {
                 col.addView(button(host,"Close preview",false) {dialog.dismiss()})
                 col.addView(text(host,file.name,15f,C.text))
                 col.addView(image,LinearLayout.LayoutParams(-1,0,1f))
-                dialog.setContentView(col);dialog.show()
+                dialog.setContentView(col);dialog.showTracked()
             } catch(e:SessionEndedException) {host.onSessionEnded(e)} catch(_:Exception) {android.widget.Toast.makeText(host,"Couldn't load the image.",android.widget.Toast.LENGTH_LONG).show()}
         }
     }
