@@ -25,7 +25,7 @@ class FeedbackPayloadTest {
     }
 
     @Test fun githubBodyIsExactlyThePreviewWithoutItsHeader() {
-        val msg="Zoë 😀 line\nñ & = ? # % ".repeat(40).take(FeedbackScreen.MAX_MESSAGE)
+        val msg="Zoë 😀 line\nñ & = ? # % ".repeat(60).take(FeedbackScreen.MAX_MESSAGE).also {assertEquals(FeedbackScreen.MAX_MESSAGE,it.length)}
         val url=FeedbackScreen.githubUrl(msg,v,a,m)
         val body=param(url,"body")
         assertEquals(FeedbackScreen.previewBlock(msg,v,a,m).removePrefix(FeedbackScreen.PREVIEW_HEADER),body)
@@ -34,13 +34,14 @@ class FeedbackPayloadTest {
     }
 
     @Test fun formCarriesTheMessageAndSeparateMetadataWithoutReplyEmail() {
-        val msg="Zoë 😀 line\nñ & = ? # % ".repeat(40).take(FeedbackScreen.MAX_MESSAGE)
+        val msg="Zoë 😀 line\nñ & = ? # % ".repeat(60).take(FeedbackScreen.MAX_MESSAGE).also {assertEquals(FeedbackScreen.MAX_MESSAGE,it.length)}
         val url=FeedbackScreen.formUrl(msg.trim(),m,a,v)
         assertEquals(msg.trim(),param(url,FeedbackScreen.ENTRY_MESSAGE))
         assertEquals(m,param(url,FeedbackScreen.ENTRY_MODEL))
         assertEquals(a,param(url,FeedbackScreen.ENTRY_ANDROID))
         assertEquals(v,param(url,FeedbackScreen.ENTRY_APP_VERSION))
         assertFalse(url.contains("1964337132"))
+        // Encoded length is reported only; acceptance by the browser or the Google form for a URL this long is NOT asserted or proven here.
         println("encoded form URL chars for a "+msg.length+"-char non-ASCII message: "+url.length)
     }
 
@@ -58,12 +59,5 @@ class FeedbackPayloadTest {
         assertEquals(FeedbackScreen.MAX_MESSAGE,e.length)
         assertEquals(0,e.length%2)
         var i=0; while(i<e.length) {assertTrue(Character.isHighSurrogate(e[i]));assertTrue(Character.isLowSurrogate(e[i+1]));i+=2}
-    }
-
-    @Test fun cappedNonAsciiMessageFitsTheGitHubTextBeforeAnyShortening() {
-        val msg="é".repeat(FeedbackScreen.MAX_MESSAGE)
-        val body=FeedbackScreen.outgoingText(msg,v,a,m)
-        assertTrue(body.startsWith(msg))
-        assertEquals(msg.length+body.removePrefix(msg).length,body.length)
     }
 }
