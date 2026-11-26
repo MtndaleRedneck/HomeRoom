@@ -111,6 +111,9 @@ class V3RenderTest {
         val(c,a)=activity()
         // The REAL main shell on the Files tab (not the Connect screen).
         a.javaClass.getDeclaredMethod("showMain").apply {isAccessible=true}.invoke(a)
+        // Really open the Files tab (title, header and content), as a tab tap does.
+        a.javaClass.getDeclaredMethod("showTab",Int::class.javaPrimitiveType).apply {isAccessible=true}.invoke(a,R.id.nav_files)
+        assertEquals("Files tab is showing","Files",(field(a,"headerTitle").get(a) as TextView).text.toString())
         val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         val nav=field(a,"nav").get(a) as GlassNav
         nav.visibility=View.VISIBLE

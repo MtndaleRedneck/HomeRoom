@@ -86,6 +86,23 @@ def main():
             pass
         sys.exit(1)
 
+    # The floating bottom nav sits over scrolling content. A row whose centre is
+    # under it would be hit by a tab instead (the 00:10 failure: "Activity"
+    # tapped Files). Treat such a match as not usable yet, so the caller
+    # scrolls and retries; if it never clears the bar, the step fails loudly
+    # instead of tapping the wrong control.
+    screen_h = max((bounds_of(n)[3] for n in root.iter("node") if bounds_of(n)), default=0)
+    nav_top = None
+    for node in root.iter("node"):
+        b = bounds_of(node)
+        if (b and node.get("clickable") == "true"
+                and (node.get("content-desc") or "") in ("Rooms", "Rules", "Files", "Settings")
+                and b[1] > screen_h * 0.6):
+            nav_top = b[1] if nav_top is None else min(nav_top, b[1])
+
+    def under_nav(b):
+        return nav_top is not None and center(b)[1] >= nav_top
+
     # Prefer the nearest clickable ancestor of any match.
     best = None
     for node, b in matches:
@@ -94,17 +111,21 @@ def main():
             if cur.get("clickable") == "true":
                 cb = bounds_of(cur)
                 if cb is not None:
-                    cand = center(cb)
-                    if best is None or area(cb) < area(best[1]):
-                        best = (cand, cb)
+                    if not under_nav(cb):
+                        cand = center(cb)
+                        if best is None or area(cb) < area(best[1]):
+                            best = (cand, cb)
                     break
             cur = parent.get(cur)
     if best is not None:
         print(*best[0])
         return
 
-    # Fallback: largest matching node.
-    node, b = max(matches, key=lambda nb: area(nb[1]))
+    # Fallback: largest matching node (never one under the nav).
+    usable = [nb for nb in matches if not under_nav(nb[1])]
+    if not usable:
+        sys.exit(1)
+    node, b = max(usable, key=lambda nb: area(nb[1]))
     print(*center(b))
 
 
