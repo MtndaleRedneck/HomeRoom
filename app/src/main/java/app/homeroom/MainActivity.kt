@@ -202,6 +202,16 @@ class MainActivity : AppCompatActivity() {
     // The floating nav is 256dp wide at normal font. It widens in step with the
     // system font size (never past the screen minus 12dp each side) so the
     // labels keep following the user's font setting and "Settings" stays whole.
+    // screenSize/screenLayout are handled without recreating the activity
+    // (manifest), so a rotation or split-screen resize must refit the nav.
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::nav.isInitialized) {
+            val dm = resources.displayMetrics
+            val w = navWidthFor(dm.widthPixels, dm.density, newConfig.fontScale)
+            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { if (it.width != w) { it.width = w; nav.layoutParams = it } }
+        }
+    }
     private fun navWidthPx():Int = navWidthFor(resources.displayMetrics.widthPixels, resources.displayMetrics.density, resources.configuration.fontScale)
     private fun onRoomIntent(intent: android.content.Intent?) {
         val roomId = intent?.getStringExtra(HomeRoomMessagingService.EXTRA_ROOM_ID) ?: return
