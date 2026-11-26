@@ -131,6 +131,25 @@ class V3BehaviorTest {
         assertEquals(1f,cell.alpha,0.001f)
         c.pause()
     }
+    @Test fun pressReleaseRestoresThePreviousAlphaAndDisabledNeverSinks() {
+        val ctx=RuntimeEnvironment.getApplication() as Context
+        val looper=Shadows.shadowOf(android.os.Looper.getMainLooper())
+        // A view that rests at 0.6 must come back to 0.6, not 1.0.
+        val dim=android.view.View(ctx).apply {alpha=0.6f;pressIn(haptic=false)}
+        val d1=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,1f,1f,0)
+        dim.dispatchTouchEvent(d1);d1.recycle();looper.idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(0.94f,dim.scaleX,0.001f)
+        val u1=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_UP,1f,1f,0)
+        dim.dispatchTouchEvent(u1);u1.recycle();looper.idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(1f,dim.scaleX,0.001f)
+        assertEquals("alpha returns to its resting value",0.6f,dim.alpha,0.001f)
+        // A disabled view neither sinks nor dims.
+        val off=android.view.View(ctx).apply {isEnabled=false;pressIn()}
+        val d2=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,1f,1f,0)
+        off.dispatchTouchEvent(d2);d2.recycle();looper.idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(1f,off.scaleX,0.001f)
+        assertEquals(1f,off.alpha,0.001f)
+    }
     @Test fun vibrateOnPressDefaultsOnAndPersists() {
         val ctx=RuntimeEnvironment.getApplication() as Context
         ctx.getSharedPreferences("homeroom_ui",Context.MODE_PRIVATE).edit().clear().commit()

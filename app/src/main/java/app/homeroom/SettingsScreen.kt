@@ -35,12 +35,12 @@ class SettingsScreen(context:Context):Screen(context) {
     }
     private fun row(card:LinearLayout,glyph:String,color:Int,title:String,subtitle:String,trailing:String?=null,click:(()->Unit)?=null) {
         if(card.childCount>0)card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())},LinearLayout.LayoutParams(-1,1).apply {leftMargin=dp(64)})
-        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),0,dp(12),0);click?.let {action->pressIn();setOnClickListener {action()}}}
+        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(64);setPadding(dp(16),dp(8),dp(12),dp(8));click?.let {action->pressIn();setOnClickListener {action()}}}
         line.addView(text(context,glyph,18f,android.graphics.Color.WHITE,true).apply {gravity=Gravity.CENTER;background=rounded(color,dp(10).toFloat())},LinearLayout.LayoutParams(dp(32),dp(32)).apply {rightMargin=dp(14)})
         val copy=column(context);copy.addView(text(context,title,16f,C.text,true));if(subtitle.isNotEmpty()) copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
         trailing?.let {label ->line.addView(text(context,label,13f,if(label=="Remove") C.danger else C.accent,true).apply {gravity=Gravity.CENTER;setPadding(dp(12),0,dp(12),0);background=rounded(C.surfaceAlt,dp(16).toFloat());click?.let {action->setOnClickListener {action()}}},LinearLayout.LayoutParams(-2,dp(32)))}
-        card.addView(line,LinearLayout.LayoutParams(-1,dp(64)))
+        card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     private fun rebuild() {
         col.removeAllViews()
@@ -176,7 +176,7 @@ class SettingsScreen(context:Context):Screen(context) {
     }
     private fun toggleRow(card:LinearLayout,glyph:String,color:Int,title:String,subtitle:String,on:Boolean,onToggle:(Boolean)->Unit) {
         if(card.childCount>0)card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())},LinearLayout.LayoutParams(-1,1).apply {leftMargin=dp(64)})
-        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),0,dp(12),0)}
+        val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;minimumHeight=dp(64);setPadding(dp(16),dp(8),dp(12),dp(8))}
         line.addView(text(context,glyph,18f,android.graphics.Color.WHITE,true).apply {gravity=Gravity.CENTER;background=rounded(color,dp(10).toFloat())},LinearLayout.LayoutParams(dp(32),dp(32)).apply {rightMargin=dp(14)})
         val copy=column(context);copy.addView(text(context,title,16f,C.text,true));copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
@@ -188,8 +188,9 @@ class SettingsScreen(context:Context):Screen(context) {
             setOnCheckedChangeListener {_,checked->
                 thumbTintList=android.content.res.ColorStateList.valueOf(if(checked) C.accent else C.disabled)
                 trackTintList=android.content.res.ColorStateList.valueOf(if(checked) trackOn else C.surfaceAlt)
-                tapHaptic(this)
                 onToggle(checked)
+                // After persisting: turning ON buzzes, turning OFF stays silent.
+                tapHaptic(this)
             }
         }
         line.addView(sw,LinearLayout.LayoutParams(-2,-2))
@@ -198,7 +199,7 @@ class SettingsScreen(context:Context):Screen(context) {
         // buzzes, so every activation (row tap or direct switch tap) buzzes
         // exactly once.
         line.pressIn(haptic=false)
-        card.addView(line,LinearLayout.LayoutParams(-1,dp(64)))
+        card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     private fun confirmRemove(device:OwnerDevice) {
         AlertDialog.Builder(context).setTitle("Sign out ${device.label}?").setNegativeButton("Cancel",null).setPositiveButton("Sign out") {_,_->

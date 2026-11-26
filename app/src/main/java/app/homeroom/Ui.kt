@@ -121,20 +121,38 @@ fun tapHaptic(view: View) {
  * PressTile. Returns false from the touch listener so clicks still land.
  */
 fun View.pressIn(haptic:Boolean=true) {
+    // The alpha a view had before the press (a disabled button sits at 0.6), so
+    // release restores THAT, not a hard-coded 1f.
+    var baseAlpha=1f
+    var pressed=false
+    fun release(v:View) {
+        if(!pressed) return
+        pressed=false
+        v.animate().scaleX(1f).scaleY(1f).alpha(baseAlpha).setDuration(120).start()
+    }
     setOnTouchListener { v, ev ->
-        // The framework already skips touch listeners on disabled views; gate
-        // explicitly so a disabled (busy) button never buzzes or sinks.
-        if (!v.isEnabled) return@setOnTouchListener false
         when (ev.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> {
-                if (haptic) tapHaptic(v)
-                v.animate().scaleX(0.94f).scaleY(0.94f).alpha(0.85f).setDuration(90).start()
+                // Disabled (busy) views never buzz or sink.
+                if (v.isEnabled) {
+                    pressed=true
+                    baseAlpha=v.alpha
+                    if (haptic) tapHaptic(v)
+                    v.animate().scaleX(0.94f).scaleY(0.94f).alpha(baseAlpha*0.85f).setDuration(90).start()
+                }
             }
-            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
-                v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(120).start()
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> release(v)
         }
         false
     }
+    // A view that is rebuilt, hidden or detached mid-hold never gets its UP:
+    // snap it back so it cannot stay shrunk or dimmed.
+    addOnAttachStateChangeListener(object: View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v:View) {}
+        override fun onViewDetachedFromWindow(v:View) {
+            if(pressed) {pressed=false;v.animate().cancel();v.scaleX=1f;v.scaleY=1f;v.alpha=baseAlpha}
+        }
+    })
 }
 
 fun snack(host: View, msg: CharSequence) {
