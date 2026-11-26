@@ -46,6 +46,7 @@ class Hr18FindingsTest {
     @Test fun backgroundEnrollShowsMainOnResume() {
         val c=start()
         val a=c.get()
+        a.session.serverUrl="https://127.0.0.1:1" // refused at once: the renew fails fast and offline, never a real server
         c.pause().stop()
         a.onEnrolled()
         val flag=field(a,"pendingShowMain")
@@ -144,6 +145,7 @@ class Hr18FindingsTest {
             val c=start();val a=c.get()
             a.session.serverUrl=server.url("/").toString().trimEnd('/')
             MainActivity::class.java.getDeclaredField("api").apply {isAccessible=true}.set(a,ApiClient(a.session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(5,java.util.concurrent.TimeUnit.SECONDS)})
+            a.api.sessionData=JSONObject() // no bootstrap GET: the first request is the feedback POST
             server.enqueue(okhttp3.mockwebserver.MockResponse().setBody("{}").setBodyDelay(600,java.util.concurrent.TimeUnit.MILLISECONDS))
             val s=FeedbackScreen(a)
             val edit=field(s,"editRef").get(s) as android.widget.EditText
