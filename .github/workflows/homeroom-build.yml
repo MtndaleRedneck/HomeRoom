@@ -590,13 +590,17 @@ jobs:
             python3 ci/anr-guard.py i-settings-rows || exit 1
             adb exec-out screencap -p > i-settings-rows.png
             python3 ci/anr-guard.py --check i-settings-rows || exit 1
+            # Haptic feasibility probe (evidence only, no assertion): vibrator service state before and after each toggle tap.
+            adb shell dumpsys vibrator_manager > ui-dump-haptic-0-before.xml 2>&1; adb shell settings get system haptic_feedback_enabled >> ui-dump-haptic-0-before.xml 2>&1
             sh ci/settings-tap.sh "Vibrate on press"
             sleep 2
+            adb shell dumpsys vibrator_manager > ui-dump-haptic-1-after-tap1.xml 2>&1
             python3 ci/anr-guard.py i-toggle-after-tap1 || exit 1
             adb exec-out screencap -p > i-toggle-after-tap1.png
             python3 ci/anr-guard.py --check i-toggle-after-tap1 || exit 1
             sh ci/settings-tap.sh "Vibrate on press"
             sleep 2
+            adb shell dumpsys vibrator_manager > ui-dump-haptic-2-after-tap2.xml 2>&1
             python3 ci/anr-guard.py i-toggle-after-tap2 || exit 1
             adb exec-out screencap -p > i-toggle-after-tap2.png
             python3 ci/anr-guard.py --check i-toggle-after-tap2 || exit 1
@@ -675,14 +679,16 @@ jobs:
             # Larger text (system font scale 1.3): Feedback, then Settings. Always reset to 1.0.
             adb shell settings put system font_scale 1.3
             sleep 6
-            python3 ci/anr-guard.py i-feedback-large || exit 1
+            python3 ci/anr-guard.py i-feedback-large || { adb shell settings put system font_scale 1.0; exit 1; }
             adb exec-out screencap -p > i-feedback-large.png
-            python3 ci/anr-guard.py --check i-feedback-large || exit 1
+            python3 ci/anr-guard.py --check i-feedback-large || { adb shell settings put system font_scale 1.0; exit 1; }
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -q 'Feedback &amp; bugs' || { echo "Feedback page not on screen at font scale 1.3"; adb shell settings put system font_scale 1.0; exit 1; }
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            python3 ci/anr-guard.py i-settings-large || exit 1
+            python3 ci/anr-guard.py i-settings-large || { adb shell settings put system font_scale 1.0; exit 1; }
             adb exec-out screencap -p > i-settings-large.png
-            python3 ci/anr-guard.py --check i-settings-large || exit 1
+            python3 ci/anr-guard.py --check i-settings-large || { adb shell settings put system font_scale 1.0; exit 1; }
+            adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1; adb shell cat /sdcard/a.xml | grep -o 'text="Settings"' | awk 'END{exit NR<2}' || { echo "Settings tab not on screen at font scale 1.3"; adb shell settings put system font_scale 1.0; exit 1; }
             adb shell settings put system font_scale 1.0
             sleep 3
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
