@@ -30,29 +30,34 @@ class SettingsScreen(context:Context):Screen(context) {
             catch(_:Exception) {devicesError=true;rebuild()}
         }
     }
+    // 1.9 (owner-approved redesign): section labels sit OUTSIDE the cards in
+    // small capitals (display-only caps; the underlying text keeps its locked wording).
     private fun group(title:String?):LinearLayout {
-        val card=sectionCard(context,title)
-        card.tag=if(title!=null) 1 else 0
-        col.addView(card,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
+        if(title!=null) col.addView(text(context,title,12f,C.muted,true).apply {setAllCaps(true);letterSpacing=0.08f},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(18);bottomMargin=dp(6);leftMargin=dp(4)})
+        val card=sectionCard(context)
+        card.tag=0
+        col.addView(card,LinearLayout.LayoutParams(-1,-2).apply {if(title==null)topMargin=dp(14)})
         return card
     }
     private fun divide(card:LinearLayout) {
         val titled=(card.tag as? Int) ?: 0
-        if(card.childCount>titled)card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())},LinearLayout.LayoutParams(-1,1))
+        if(card.childCount>titled)card.addView(divider(context),LinearLayout.LayoutParams(-1,1))
     }
-    private fun row(card:LinearLayout,title:String,subtitle:String,trailing:String?=null,click:(()->Unit)?=null) {
+    private fun row(card:LinearLayout,title:String,subtitle:String,trailing:String?=null,icon:Int?=null,click:(()->Unit)?=null) {
         divide(card)
         val line=navRow(context,title,subtitle,chevron=trailing=="›",onClick=click)
+        if(icon!=null) line.addView(iconTile(context,icon),0,LinearLayout.LayoutParams(dp(36),dp(36)).apply {rightMargin=dp(12)})
         if(trailing=="link") line.addView(iconView(context,R.drawable.ic_open_link,C.muted,24),LinearLayout.LayoutParams(dp(24),dp(24)))
         else if(trailing!=null && trailing!="›") {
             if(trailing=="Retry") line.addView(actionButton(context,"Retry",primary=false) {click?.invoke()},LinearLayout.LayoutParams(-2,dp(48)).apply {leftMargin=dp(8)})
-            else line.addView(text(context,trailing,12.5f,if(trailing=="Remove") C.dangerText else C.accent,true).apply {gravity=Gravity.CENTER;minHeight=dp(48);setPadding(dp(12),0,dp(4),0)})
+            else line.addView(text(context,trailing,12.5f,if(trailing=="Remove") C.dangerText else C.accentText,true).apply {gravity=Gravity.CENTER;minHeight=dp(48);setPadding(dp(12),0,dp(4),0)})
         }
         card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     /** Update state changed (check finished, download progress or failure): redraw the Updates card while visible. */
     private var renderedState:UpdateCheck.State?=null
     private var updateBtn:TextView?=null
+    override fun onAccentChanged() {post {if(isAttachedToWindow) rebuild()}}
     fun onUpdateChanged() {post {
         if(!isAttachedToWindow)return@post
         // Redraw only on a state transition; download progress just retexts the button (no scroll or focus reset).
@@ -63,7 +68,8 @@ class SettingsScreen(context:Context):Screen(context) {
         col.removeAllViews()
         val owner=host.session.ownerName ?: "You"
         val ownerCard=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;background=rounded(C.surface,dp(16).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
-        ownerCard.addView(text(context,owner.take(1),22f,C.bg,true).apply {gravity=Gravity.CENTER;background=rounded(C.owner,dp(22).toFloat())},LinearLayout.LayoutParams(dp(44),dp(44)).apply {rightMargin=dp(12)})
+        // 1.9: square avatar tile (rounded corners) instead of the circle.
+        ownerCard.addView(text(context,owner.take(1),22f,C.onAccent,true).apply {gravity=Gravity.CENTER;background=rounded(C.owner,dp(12).toFloat())},LinearLayout.LayoutParams(dp(44),dp(44)).apply {rightMargin=dp(12)})
         val ownerCopy=column(context)
         ownerCopy.addView(text(context,owner+" · Owner",18f,C.text,true))
         val server=try {java.net.URI(host.session.serverUrl.orEmpty()).host ?: "HomeRoom"} catch(_:Exception) {"HomeRoom"}
@@ -72,28 +78,34 @@ class SettingsScreen(context:Context):Screen(context) {
         val notifications=group("Notifications")
         val enabled=androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
         val push=when { !enabled -> "Off in Android settings";host.session.fcmRegisteredToken==null -> "Not set up";else -> "On · stacked per room" }
-        row(notifications,"Push notifications",push,"link") {
+        row(notifications,"Push notifications",push,"link",R.drawable.ic_notification) {
             try {host.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,context.packageName))} catch(_:android.content.ActivityNotFoundException) {snack(this,"Notification settings aren't available.")}
         }
         val muted=rooms.filter {it.muted}
-        row(notifications,"Muted rooms",if(muted.isEmpty()) "None" else "${muted.size} rooms","›") {host.openMutedRooms()}
+        row(notifications,"Muted rooms",if(muted.isEmpty()) "None" else "${muted.size} rooms","›",R.drawable.ic_muted) {host.openMutedRooms()}
         val sessions=group("Signed-in devices")
         if(devicesError)row(sessions,"Couldn't load devices","Tap to retry","Retry") {onShow()}
         else if(!devicesLoaded)row(sessions,"Loading devices","Checking signed-in devices")
         else if(devices.isEmpty())row(sessions,"No devices listed","The server returned no signed-in devices")
         for(device in devices) {
             val current=device.isCurrent(host.session.sessionId)
-            row(sessions,(if(current) "This phone" else device.label.ifBlank {"Device"}),if(current) "Active now" else device.lastUsed?.let {"Last used "+formatRoomTime(it)} ?: "Last use not recorded",if(current) null else "Remove",if(current) null else { {confirmRemove(device)} })
+            row(sessions,(if(current) "This phone" else device.label.ifBlank {"Device"}),if(current) "Active now" else device.lastUsed?.let {"Last used "+formatRoomTime(it)} ?: "Last use not recorded",if(current) null else "Remove",R.drawable.ic_phone,if(current) null else { {confirmRemove(device)} })
         }
         // Restored from d5.java: the Privacy section row opens App lock and
         // privacy (the screen and gate machinery already exist; only the
         // entry was missing from Settings).
         val privacy=group("Privacy")
-        row(privacy,"App lock and privacy","Fingerprint or PIN, lock screen and recent apps","›") {host.openPage("App lock and privacy",PrivacyScreen(context))}
+        row(privacy,"App lock and privacy","Fingerprint or PIN, lock screen and recent apps","›",R.drawable.ic_lock) {host.openPage("App lock and privacy",PrivacyScreen(context))}
         // 1.7: shared Feel section (BingeMote wording "Vibrate on press");
         // gates every press haptic in the app.
         val feel=group("Feel")
         toggleRow(feel,"Vibrate on press","A small buzz when buttons and tabs are tapped",Haptics.on(context)) {on->Haptics.set(context,on)}
+        (feel.getChildAt(feel.childCount-1) as? LinearLayout)?.addView(iconTile(context,R.drawable.ic_vibrate),0,LinearLayout.LayoutParams(dp(36),dp(36)).apply {rightMargin=dp(12)})
+        // 1.9 (owner-approved redesign): the accent picker. Nine swatches, five
+        // over four with the short row centered; the pick themes the whole app.
+        val accentSection=group("Accent color")
+        accentSection.addView(buildAccentPicker(),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+        accentSection.addView(text(context,"Pick any. Buttons, badges and links follow it.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         val app=group("App")
         // private12 parity, settings rows verified against the release's own
         // targets (K0/Y4 handlers): "Activity" -> D1(true), "Needs you" ->
@@ -102,13 +114,13 @@ class SettingsScreen(context:Context):Screen(context) {
         // [GuideScreen]; "Connection and features" -> u5 [strings match
         // StatusScreen]; "Unsent attachments" -> T0 mode 4 (K0/Y4:215)
         // [StagedUploadsScreen]; "Outgoing messages" (K0/A3:61) [OutboxScreen].
-        row(app,"Needs you","Decisions and requests waiting on you","›") {host.openPage("Needs you",DashboardScreen(context,false))}
-        row(app,"Activity","Recent activity across your rooms","›") {host.openPage("Activity",DashboardScreen(context,true))}
-        row(app,"AI team","What your AIs are working on","›") {host.openPage("AI team",TeamScreen(context))}
-        row(app,"AI guide","The guide your AIs follow","›") {host.openPage("AI guide",GuideScreen(context))}
-        row(app,"Connection and features","Server connection, alerts and feature report","›") {host.openPage("Connection and features",StatusScreen(context))}
-        row(app,"Outgoing messages","Queued sends still waiting to go out","›") {host.openPage("Outgoing messages",OutboxScreen(context))}
-        row(app,"Unsent attachments","Staged uploads you can resume or remove","›") {host.openPage("Unsent attachments",StagedUploadsScreen(context))}
+        row(app,"Needs you","Decisions and requests waiting on you","›",R.drawable.ic_check) {host.openPage("Needs you",DashboardScreen(context,false))}
+        row(app,"Activity","Recent activity across your rooms","›",R.drawable.ic_history) {host.openPage("Activity",DashboardScreen(context,true))}
+        row(app,"AI team","What your AIs are working on","›",R.drawable.ic_people) {host.openPage("AI team",TeamScreen(context))}
+        row(app,"AI guide","The guide your AIs follow","›",R.drawable.ic_book) {host.openPage("AI guide",GuideScreen(context))}
+        row(app,"Connection and features","Server connection, alerts and feature report","›",R.drawable.ic_info) {host.openPage("Connection and features",StatusScreen(context))}
+        row(app,"Outgoing messages","Queued sends still waiting to go out","›",R.drawable.ic_send) {host.openPage("Outgoing messages",OutboxScreen(context))}
+        row(app,"Unsent attachments","Staged uploads you can resume or remove","›",R.drawable.ic_upload) {host.openPage("Unsent attachments",StagedUploadsScreen(context))}
         // Release rows "Add room" and "Archived rooms" have no reconstructed
         // flow and are intentionally not offered (tracked gaps, not wired).
         // 1.7 (Ezzy, Nov 25: bring the Settings list in line with his other
@@ -119,7 +131,7 @@ class SettingsScreen(context:Context):Screen(context) {
         val signout=text(context,"Sign out",14f,C.dangerText,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(16).toFloat());pressIn();setOnClickListener {confirmSignOut()}}
         col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(14)})
         val feedback=group("Feedback & bugs")
-        row(feedback,"Send feedback, report a bug, or suggest a feature","","›") {host.openPage("Feedback & bugs",FeedbackScreen(context))}
+        row(feedback,"Send feedback, report a bug, or suggest a feature","","›",R.drawable.ic_chats) {host.openPage("Feedback & bugs",FeedbackScreen(context))}
         // Locked Updates card (shared cross-app design): rounded surface card
         // with a bold "Updates" header, a state-machine button (accent,
         // rounded 12dp, disabled at 60% alpha while busy), an optional centered
@@ -137,9 +149,9 @@ class SettingsScreen(context:Context):Screen(context) {
             update -> "Update ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""}"
             else -> "Check for updates"
         }
-        val checkBtn=text(context,btnLabel,14f,android.graphics.Color.parseColor("#1B1B1E"),true).apply {
+        val checkBtn=text(context,btnLabel,14f,C.onAccent,true).apply {
             gravity=Gravity.CENTER
-            background=rounded(C.accent,dp(14).toFloat())
+            background=accentFill(context,14f)
             isEnabled=!busy
             alpha=if(isEnabled) 1.0f else 0.6f
             pressIn()
@@ -189,6 +201,45 @@ class SettingsScreen(context:Context):Screen(context) {
         col.addView(updatesCard,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
         // NOTE: an earlier reconstruction called a backdrop refresh here; no
         // backdrop exists in the exact release build evidence, so it was removed.
+    }
+    /** 1.9: the accent picker grid - five swatches on row one, four centered
+     *  on row two (half a cell in from each side), selected gets a ring with a gap. */
+    private fun buildAccentPicker():LinearLayout {
+        val grid=column(context)
+        fun swatchCell(hex:String,name:String):LinearLayout {
+            val cell=LinearLayout(context).apply {gravity=Gravity.CENTER}
+            val frame=android.widget.FrameLayout(context)
+            val selected=AccentStore.currentHex().equals(hex,ignoreCase=true)
+            val ring=android.view.View(context).apply {
+                background=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(android.graphics.Color.TRANSPARENT);setStroke(dp(2),C.text)}
+                visibility=if(selected) android.view.View.VISIBLE else android.view.View.GONE
+            }
+            frame.addView(ring,android.widget.FrameLayout.LayoutParams(dp(42),dp(42),Gravity.CENTER))
+            val dot=android.view.View(context).apply {
+                background=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(android.graphics.Color.parseColor(hex))}
+            }
+            frame.addView(dot,android.widget.FrameLayout.LayoutParams(dp(32),dp(32),Gravity.CENTER))
+            frame.contentDescription=name+if(selected) ", selected" else ""
+            frame.pressIn()
+            frame.setOnClickListener {
+                if(!AccentStore.currentHex().equals(hex,ignoreCase=true)) {
+                    AccentStore.set(context,hex)
+                    host.onAccentChanged()
+                    rebuild()
+                }
+            }
+            cell.addView(frame,LinearLayout.LayoutParams(dp(48),dp(48)))
+            return cell
+        }
+        val rowOne=LinearLayout(context)
+        for(i in 0 until 5) rowOne.addView(swatchCell(AccentStore.swatches[i].first,AccentStore.swatches[i].second),LinearLayout.LayoutParams(0,-2,1f))
+        grid.addView(rowOne,LinearLayout.LayoutParams(-1,-2))
+        val rowTwo=LinearLayout(context)
+        rowTwo.addView(android.view.View(context),LinearLayout.LayoutParams(0,1,0.5f))
+        for(i in 5 until 9) rowTwo.addView(swatchCell(AccentStore.swatches[i].first,AccentStore.swatches[i].second),LinearLayout.LayoutParams(0,-2,1f))
+        rowTwo.addView(android.view.View(context),LinearLayout.LayoutParams(0,1,0.5f))
+        grid.addView(rowTwo,LinearLayout.LayoutParams(-1,-2))
+        return grid
     }
     private fun toggleRow(card:LinearLayout,title:String,subtitle:String,on:Boolean,onToggle:(Boolean)->Unit) {
         divide(card)

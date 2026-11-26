@@ -49,7 +49,7 @@ class FilesScreen(context:Context):Screen(context) {
     private fun buildChips() {
         chips.removeAllViews();chips.setPadding(dp(16),0,dp(16),dp(8))
         rooms.forEach { room ->
-            val chip=text(context,room.name,14f,if(room.id==selected?.id) android.graphics.Color.WHITE else C.text,true).apply { gravity=Gravity.CENTER;setPadding(dp(14),0,dp(14),0);background=rounded(if(room.id==selected?.id) C.accent else C.surfaceAlt,dp(17).toFloat());setOnClickListener { if(room.id!=selected?.id) {selected=room;buildChips();load(room)} } }
+            val chip=text(context,room.name,14f,if(room.id==selected?.id) C.onAccent else C.text,true).apply { gravity=Gravity.CENTER;setPadding(dp(14),0,dp(14),0);background=rounded(if(room.id==selected?.id) C.accent else C.surfaceAlt,dp(17).toFloat());setOnClickListener { if(room.id!=selected?.id) {selected=room;buildChips();load(room)} } }
             chips.addView(chip,LinearLayout.LayoutParams(-2,dp(34)).apply { rightMargin=dp(8) })
         }
     }
