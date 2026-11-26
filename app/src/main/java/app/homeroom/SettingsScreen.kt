@@ -184,6 +184,7 @@ class SettingsScreen(context:Context):Screen(context) {
         val copy=column(context);copy.addView(text(context,title,15f,C.text,true));copy.addView(text(context,subtitle,12.5f,C.muted).apply {maxLines=2})
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
                 val sw=ToggleSwitch(context).apply {
+            contentDescription=title
             setCheckedSilently(on)
             onChange={checked->
                 onToggle(checked)

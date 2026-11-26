@@ -749,6 +749,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
                 // a "Review decision" entry under the bubble that opens the
                 // decision screen.
                 val review = text(context, "Review decision", 13f, C.accent, true)
+                review.minHeight = context.dp(48); review.gravity = android.view.Gravity.CENTER_VERTICAL
                 review.setOnClickListener { host.openPage("Review decision", DecisionScreen(context, did)) }
                 container.addView(review)
             }
