@@ -85,9 +85,10 @@ SEC6="$EV/signed-paths.log"; : > "$SEC6"
 s6() { echo "$*" | tee -a "$SEC6" | tee -a "$EV/proof.log" >/dev/null; }
 no_label() { if grep -qF "text=\"$2\"" "$EV/$1.a11y.xml"; then fail "$1: label \"$2\" must NOT be in the accessibility-visible tree"; fi; if grep -qF "text=\"$2\"" "$EV/$1.xml"; then s6 "NOTE $1: \"$2\" present only in the full (include-not-important) dump, absent from the accessibility-visible dump"; fi; }
 
+no_desc() { if grep -qF "content-desc=\"$2\"" "$EV/$1.a11y.xml"; then fail "$1: content-desc \"$2\" must NOT be in the accessibility-visible tree"; fi; if grep -qF "content-desc=\"$2\"" "$EV/$1.xml"; then s6 "NOTE $1: content-desc \"$2\" present only in the full (include-not-important) dump"; fi; }
 nolocked_leak() { # $1=shot name: no toast, no share dialog, no room/error body, focus stays in HomeRoom
   for t in "Open your room list before sharing a file." "Connect HomeRoom before sharing a file."; do no_label "$1" "$t"; done
-  if grep -qiE 'Review shared|Share|Send to|Couldn.t|error|Try again|Rooms|Settings' "$EV/$1.a11y.xml"; then fail "$1: share dialog / room or error body text exposed under the cover"; fi
+  if grep -qiE 'Review shared|Share|Send to|Couldn.t|error|Try again|Rooms|Settings|Search messages' "$EV/$1.a11y.xml"; then fail "$1: share dialog / room or error body text exposed under the cover"; fi
   adb shell dumpsys window | tr -d '\r' | grep -m1 mCurrentFocus > "$EV/$1-focus.txt" || true
   grep -q "$PKG" "$EV/$1-focus.txt" || fail "$1: focus is not HomeRoom ($(cat "$EV/$1-focus.txt"))"
 }
@@ -105,15 +106,15 @@ adb shell "cp /data/local/tmp/app_privacy.xml /data/data/$PKG/shared_prefs/app_p
 adb logcat -b crash -c
 # 6a lock on at cold start: cover shown, app content hidden
 qlaunch; shot lock-cold
-has_label lock-cold "HomeRoom is locked"; no_label lock-cold "Rooms"; nolocked_leak lock-cold
+has_label lock-cold "HomeRoom is locked"; no_label lock-cold "Rooms"; no_desc lock-cold "Rooms"; no_desc lock-cold "Search messages"; nolocked_leak lock-cold
 s6 "6a PASS: lock=true cold start shows cover 'HomeRoom is locked', tab label Rooms hidden"
 # 6b unlock with the emulator PIN: cover gone, content back
 unlock_app; shot lock-unlocked
-no_label lock-unlocked "HomeRoom is locked"; has_label lock-unlocked "Rooms"; grep -qF 'text="Rooms"' "$EV/lock-unlocked.a11y.xml" || fail "positive control: Rooms missing from the compressed dump when unlocked (compressed dump does not discriminate)"
+no_label lock-unlocked "HomeRoom is locked"; has_label lock-unlocked "Rooms"; for d in "Rooms" "Search messages"; do grep -qF "content-desc=\"$d\"" "$EV/lock-unlocked.a11y.xml" || fail "positive control: content-desc \"$d\" missing from the compressed dump when unlocked (compressed dump does not discriminate)"; done
 s6 "6b PASS: PIN unlock removes the cover and shows Rooms"
 # 6c background then return: relocks
 adb shell input keyevent KEYCODE_HOME; sleep 3; qlaunch; shot lock-relock
-has_label lock-relock "HomeRoom is locked"; no_label lock-relock "Rooms"; nolocked_leak lock-relock
+has_label lock-relock "HomeRoom is locked"; no_label lock-relock "Rooms"; no_desc lock-relock "Rooms"; no_desc lock-relock "Search messages"; nolocked_leak lock-relock
 s6 "6c PASS: HOME then return shows the cover again"
 # 6d share while LOCKED: cover stays, nothing delivered before unlock
 adb shell am start -a android.intent.action.SEND -t text/plain --eu android.intent.extra.STREAM content://media/external/file/1 -n "$PKG/.MainActivity" >/dev/null; sleep 6
