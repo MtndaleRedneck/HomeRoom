@@ -85,7 +85,7 @@ class RulesScreen(context:Context):Screen(context) {
             val actions=LinearLayout(context).apply { gravity=Gravity.END }
             for((label,decision) in listOf("Reject" to "reject","Approve" to "approve")) {
                 val action=button(context,label,decision=="approve") { decide(rule,decision) }.apply { isEnabled=rule.ruleId !in inFlight;textSize=14f;minimumHeight=0;minHeight=0;setPadding(dp(16),0,dp(16),0);background=rounded(if(decision=="approve") C.accent else C.surface,dp(18).toFloat(),if(decision=="approve") null else 0xff3a4856.toInt()) }
-                actions.addView(action,LinearLayout.LayoutParams(-2,dp(36)).apply { leftMargin=dp(8) })
+                actions.addView(action,LinearLayout.LayoutParams(-2,dp(48)).apply { leftMargin=dp(8) })
             }
             cell.addView(actions,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
         }

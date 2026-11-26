@@ -101,11 +101,11 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         sendButton = ImageButton(context).apply {
             setImageResource(R.drawable.ic_send)
             setColorFilter(Color.parseColor("#1a1206"))
-            background = rounded(C.accent, context.dp(20).toFloat())
+            background = rounded(C.accent, context.dp(24).toFloat())
             contentDescription = "Send"
             setOnClickListener { send() }
         }
-        val sendSize = context.dp(40)
+        val sendSize = context.dp(48)
         val sendLp = LinearLayout.LayoutParams(sendSize, sendSize).apply { leftMargin = context.dp(10) }
         composeRow.addView(sendButton, sendLp)
         root.addView(composeRow)
