@@ -86,6 +86,58 @@ class V3BehaviorTest {
         assertTrue("vibrate toggle present",texts.contains("Vibrate on press"))
         c.pause()
     }
+    @Test fun headerBoundsIdenticalAcrossRealTabSwitches() {
+        // The exact-header requirement: the
+        // whole app shares ONE header container. Measure its ACTUAL laid-out
+        // bounds after driving REAL tab switches (nav setter -> showTab), not
+        // a dp constant. The header is never resized or animated by a switch,
+        // so identical bounds after every switch is the transition proof.
+        val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()
+        field(a,"polling").setBoolean(a,false)
+        a.javaClass.getDeclaredMethod("showMain").apply {isAccessible=true}.invoke(a)
+        val frame=a.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
+        val nav=field(a,"nav").get(a) as GlassNav
+        val header=field(a,"header").get(a) as android.view.View
+        val seen=java.util.LinkedHashMap<String,String>()
+        for((tab,name) in listOf(R.id.nav_chats to "Rooms",R.id.nav_rules to "Rules",R.id.nav_files to "Files",R.id.nav_settings to "Settings")) {
+            nav.selectedItemId=tab
+            frame.measure(android.view.View.MeasureSpec.makeMeasureSpec(360,android.view.View.MeasureSpec.EXACTLY),android.view.View.MeasureSpec.makeMeasureSpec(780,android.view.View.MeasureSpec.EXACTLY))
+            frame.layout(0,0,360,780)
+            assertEquals("header stays visible on $name",android.view.View.VISIBLE,header.visibility)
+            seen[name]=listOf(header.left,header.top,header.right,header.bottom).joinToString(",")
+        }
+        assertEquals("one shared header with identical laid-out bounds on every tab: $seen",1,seen.values.toSet().size)
+        c.pause()
+    }
+    @Test fun navPressSinksInAndReleases() {
+        // Wiring proof for 1.7 press feedback (a real device proves the
+        // physical buzz; this proves the view wiring): DOWN sinks the tab
+        // cell to 0.94/dim, UP restores it.
+        val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()
+        field(a,"polling").setBoolean(a,false)
+        a.javaClass.getDeclaredMethod("showMain").apply {isAccessible=true}.invoke(a)
+        val nav=field(a,"nav").get(a) as GlassNav
+        val items=field(nav,"items").get(nav) as android.widget.LinearLayout
+        val cell=items.getChildAt(2) as android.view.View // Files tab
+        val down=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,10f,10f,0)
+        cell.dispatchTouchEvent(down);down.recycle()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+        assertEquals("pressed cell sinks to 0.94",0.94f,cell.scaleX,0.001f)
+        assertTrue("pressed cell dims",cell.alpha<0.9f)
+        val up=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_UP,10f,10f,0)
+        cell.dispatchTouchEvent(up);up.recycle()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(1f,cell.scaleX,0.001f)
+        assertEquals(1f,cell.alpha,0.001f)
+        c.pause()
+    }
+    @Test fun vibrateOnPressDefaultsOnAndPersists() {
+        val ctx=RuntimeEnvironment.getApplication() as Context
+        ctx.getSharedPreferences("homeroom_ui",Context.MODE_PRIVATE).edit().clear().commit()
+        assertTrue("default is on",Haptics.on(ctx))
+        Haptics.set(ctx,false);assertFalse(Haptics.on(ctx))
+        Haptics.set(ctx,true);assertTrue(Haptics.on(ctx))
+    }
     @Test fun falseOwnIsNotInferredFromActorString() {
         val event=ChatEvent.from(JSONObject("""{"actor":"owner","own":false}"""))
         assertFalse(event.own)

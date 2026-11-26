@@ -37,7 +37,7 @@ class SettingsScreen(context:Context):Screen(context) {
         if(card.childCount>0)card.addView(divider(context).apply {setBackgroundColor(0xff24303c.toInt())},LinearLayout.LayoutParams(-1,1).apply {leftMargin=dp(64)})
         val line=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),0,dp(12),0);click?.let {action->pressIn();setOnClickListener {action()}}}
         line.addView(text(context,glyph,18f,android.graphics.Color.WHITE,true).apply {gravity=Gravity.CENTER;background=rounded(color,dp(10).toFloat())},LinearLayout.LayoutParams(dp(32),dp(32)).apply {rightMargin=dp(14)})
-        val copy=column(context);copy.addView(text(context,title,16f,C.text,true));copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
+        val copy=column(context);copy.addView(text(context,title,16f,C.text,true));if(subtitle.isNotEmpty()) copy.addView(text(context,subtitle,13.5f,C.muted).apply {maxLines=2})
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
         trailing?.let {label ->line.addView(text(context,label,13f,if(label=="Remove") C.danger else C.accent,true).apply {gravity=Gravity.CENTER;setPadding(dp(12),0,dp(12),0);background=rounded(C.surfaceAlt,dp(16).toFloat());click?.let {action->setOnClickListener {action()}}},LinearLayout.LayoutParams(-2,dp(32)))}
         card.addView(line,LinearLayout.LayoutParams(-1,dp(64)))
@@ -159,7 +159,15 @@ class SettingsScreen(context:Context):Screen(context) {
             // The 5-second rule, made visible: UpdateCheck flips back to IDLE
             // on its own timer (which only refreshes the nav dot), so repaint
             // just after to actually drop the line while the screen stays open.
-            postDelayed({ if(isAttachedToWindow && UpdateCheck.state!=UpdateCheck.State.UP_TO_DATE) rebuild() },5100)
+            // Bounded re-checks cover the timer landing a beat late; a fresh
+            // check rebuilds through its own callback and ends the loop.
+            var checks=0
+            val revertCheck=object:Runnable { override fun run() {
+                if(!isAttachedToWindow) return
+                if(UpdateCheck.state!=UpdateCheck.State.UP_TO_DATE) {rebuild();return}
+                if(checks++<6) postDelayed(this,250)
+            } }
+            postDelayed({ if(isAttachedToWindow) revertCheck.run() },5100)
         }
         updatesCard.addView(versionRow,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
         col.addView(updatesCard,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(20)})
@@ -186,7 +194,10 @@ class SettingsScreen(context:Context):Screen(context) {
         }
         line.addView(sw,LinearLayout.LayoutParams(-2,-2))
         line.setOnClickListener {sw.toggle()}
-        line.pressIn()
+        // Press-in WITHOUT the down-haptic: the switch's own change callback
+        // buzzes, so every activation (row tap or direct switch tap) buzzes
+        // exactly once.
+        line.pressIn(haptic=false)
         card.addView(line,LinearLayout.LayoutParams(-1,dp(64)))
     }
     private fun confirmRemove(device:OwnerDevice) {

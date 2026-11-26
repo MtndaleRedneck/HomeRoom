@@ -120,11 +120,14 @@ fun tapHaptic(view: View) {
  * back on release or cancel. The haptic fires on the down, like BingeMote's
  * PressTile. Returns false from the touch listener so clicks still land.
  */
-fun View.pressIn() {
+fun View.pressIn(haptic:Boolean=true) {
     setOnTouchListener { v, ev ->
+        // The framework already skips touch listeners on disabled views; gate
+        // explicitly so a disabled (busy) button never buzzes or sinks.
+        if (!v.isEnabled) return@setOnTouchListener false
         when (ev.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> {
-                tapHaptic(v)
+                if (haptic) tapHaptic(v)
                 v.animate().scaleX(0.94f).scaleY(0.94f).alpha(0.85f).setDuration(90).start()
             }
             android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
