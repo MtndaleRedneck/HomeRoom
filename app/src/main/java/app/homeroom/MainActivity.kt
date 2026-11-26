@@ -131,7 +131,7 @@ class MainActivity : AppCompatActivity() {
             captureSuspended || appLock.coverShowing ||
                 (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
         }
-        root.addView(nav, FrameLayout.LayoutParams(dp(256), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
+        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
@@ -199,6 +199,14 @@ class MainActivity : AppCompatActivity() {
     // retries the pending open, which is the refresh completion point.
     private var pendingOpenRoomId: String? = null
 
+    // The floating nav is 256dp wide at normal font. It widens in step with the
+    // system font size (never past the screen minus 12dp each side) so the
+    // labels keep following the user's font setting and "Settings" stays whole.
+    private fun navWidthPx():Int {
+        val screen=resources.displayMetrics.widthPixels
+        val wanted=(dp(256)*maxOf(1f,resources.configuration.fontScale)).toInt()
+        return minOf(wanted,screen-dp(24)).coerceAtLeast(minOf(dp(256),screen))
+    }
     private fun onRoomIntent(intent: android.content.Intent?) {
         val roomId = intent?.getStringExtra(HomeRoomMessagingService.EXTRA_ROOM_ID) ?: return
         intent.removeExtra(HomeRoomMessagingService.EXTRA_ROOM_ID)
