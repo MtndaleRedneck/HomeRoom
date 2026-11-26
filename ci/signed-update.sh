@@ -116,12 +116,13 @@ shot upd-pre
 has_label upd-pre "Version 1.8"; has_label upd-pre "Check for updates"
 PRE=$(classify "$EV/upd-pre.xml"); [ "$PRE" = IDLE ] || fail "precondition: updates card not IDLE before the tap (state $PRE)"
 s6 "CONTROL PASS: Settings updates card shows Version 1.8 and the idle button before the tap (state $PRE)"
-adb logcat -c
+adb logcat -b main -b system -c   # NOT the crash buffer: it keeps everything since the baseline clear above
 tap_text "Check for updates" || fail "Check for updates button not found"
 T0=$(date +%s.%N); : > "$EV/upd-poll.log"
 SEEN=""; LAST=""; TERM=""; REVERTED=0
 for i in $(seq 1 30); do
   adb shell uiautomator dump /sdcard/p.xml >/dev/null 2>&1 && adb pull /sdcard/p.xml "$EV/upd-poll-$i.xml" >/dev/null 2>&1 || { echo "poll $i: dump failed" >> "$EV/upd-poll.log"; continue; }
+  if grep -q "isn't responding" "$EV/upd-poll-$i.xml"; then adb exec-out screencap -p > "$EV/upd-anr-$i.png"; cp "$EV/upd-poll-$i.xml" "$EV/upd-anr-$i.xml"; adb logcat -d -b main,system -t 600 > "$EV/upd-anr-$i-logcat.txt" 2>/dev/null || true; s6 "STOP: system 'isn't responding' dialog at poll $i, NO RESULT (upd-anr-$i.*)"; exit 4; fi
   S=$(classify "$EV/upd-poll-$i.xml"); T=$(awk -v a="$(date +%s.%N)" -v b="$T0" 'BEGIN{printf "%.1f",a-b}')
   echo "poll $i t=${T}s state=$S" >> "$EV/upd-poll.log"
   if [ "$S" != "$LAST" ]; then adb exec-out screencap -p > "$EV/upd-state-$i-$S.png"; SEEN="$SEEN $S"; LAST=$S; else rm -f "$EV/upd-poll-$i.xml"; fi
@@ -134,7 +135,7 @@ s6 "POLL states in order:$SEEN (details upd-poll.log, frames upd-state-*.png)"
 adb logcat -d -b crash > "$EV/crash-signed-update.txt" 2>/dev/null || true
 grep -q "Process: $PKG" "$EV/crash-signed-update.txt" && { s6 "CRASH of $PKG recorded (crash-signed-update.txt)"; exit 1; }
 case "$TERM" in
-  UP_TO_DATE) s6 "RESULT UP_TO_DATE observed after the real tap; auto-hide to IDLE within the window: $([ $REVERTED = 1 ] && echo yes || echo not-observed). Release lookup reached GitHub; no update flow started.";;
+  UP_TO_DATE) s6 "RESULT UP_TO_DATE observed after the real tap; auto-hide to IDLE within the window: $([ $REVERTED = 1 ] && echo yes || echo not-observed). The app reported up to date, i.e. its lookup returned a release not newer than 1.8 (host tag above is context only, not emulator proof). No update flow started.";;
   CHECK_FAILED) s6 "RESULT CHECK_FAILED observed: the app reported 'Couldn't check' (fetch returned null: no network/DNS, non-2xx, bad JSON or no tag). Environment evidence emu-ping.txt / host tag above. Not labelled an app defect."; exit 1;;
   AVAILABLE) s6 "RESULT AVAILABLE observed (a release newer than 1.8 exists); the app starts its own download flow; no Update/Install tap made by this script. See upd-state-*.png.";;
   DOWNLOAD_FAILED) s6 "RESULT DOWNLOAD_FAILED observed after an AVAILABLE flow; see frames."; exit 1;;
