@@ -18,8 +18,10 @@ import org.robolectric.annotation.Config
 class Hr18PrivacyTest {
     private fun enrolled():Session {
         val app=RuntimeEnvironment.getApplication()
-        val s=Session(app);s.clear();s.ownerId="owner";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)
+        val s=Session(app);s.clear();s.serverUrl="https://127.0.0.1:1";s.ownerId="owner";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)
         PrivacyPrefs.set(app,"hide_previews",false)
+        // Static flag may be left true by activity tests in this JVM: pushes only show while the app is NOT in the foreground.
+        MainActivity::class.java.getDeclaredField("isForeground").apply {isAccessible=true}.setBoolean(null,false)
         return s
     }
     private fun manager()=RuntimeEnvironment.getApplication().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
