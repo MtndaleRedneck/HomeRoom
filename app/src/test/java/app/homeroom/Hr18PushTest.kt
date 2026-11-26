@@ -27,7 +27,7 @@ class Hr18PushTest {
         val trust=HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
         val session=Session(org.robolectric.RuntimeEnvironment.getApplication());session.clear();session.serverUrl=server.url("/").toString().trimEnd('/')
         val api=ApiClient(session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(1,TimeUnit.SECONDS)}
-        api.sessionData=org.json.JSONObject() // skip the session bootstrap GET: the first request on the wire is the push POST under test
+        ApiClient::class.java.getDeclaredField("sessionData").apply {isAccessible=true}.set(api,org.json.JSONObject()) // skip the session bootstrap GET: the first request on the wire is the push POST under test
         pending(false);PushTokenDeletion.resync={};PushRegistration.tokenFetcher={done->done(null)} // deterministic: FCM unavailable unless a test says otherwise
         try {block(server,api,session)}finally {PushTokenDeletion.resetForTest();pending(false);PushRegistration.tokenFetcher=null;PushTokenDeletion.deleteTokenOp=null;PushTokenDeletion.onCompleted=null;server.shutdown();session.clear()}
     }
