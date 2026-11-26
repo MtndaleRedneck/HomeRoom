@@ -223,6 +223,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(EVENTS)
         if self.command == "GET" and p == "/owner/rooms/stub-room/goal":
             return self._send(GOAL)
+        if self.command == "GET" and p == "/owner/rules":
+            # SYNTHETIC rules for populated Rules rendering (1.8 UI evidence only).
+            return self._send({"pending_count": 1, "rereads": {}, "rules": [
+                {"rule_id": "stub-rule-1", "text": "Synthetic rule: keep answers short and cite one source.", "version": 2, "proposed_by": "stub-ai-1", "state": "active", "room_id": None},
+                {"rule_id": "stub-rule-2", "text": "Synthetic proposal: summarize long threads before replying.", "version": 1, "proposed_by": "stub-ai-1", "state": "proposed", "room_id": None}]})
+        if self.command == "GET" and p == "/owner/rooms/stub-room/files":
+            # SYNTHETIC files for populated Files rendering (1.8 UI evidence only).
+            return self._send({"has_more": False, "cursor": None, "files": [
+                {"file_id": "stub-file-1", "name": "synthetic-plan.pdf", "mime_type": "application/pdf", "byte_size": 48213, "uploader": "Stub AI One", "created_at": "2026-11-25T10:00:00Z", "kind": "file"},
+                {"file_id": "stub-file-2", "name": "synthetic-notes.txt", "mime_type": "text/plain", "byte_size": 912, "uploader": "Stub Owner", "created_at": "2026-11-25T11:00:00Z", "kind": "file"},
+                {"file_id": "stub-file-3", "name": "Synthetic link", "mime_type": "", "byte_size": 0, "uploader": "Stub AI One", "created_at": "2026-11-25T12:00:00Z", "kind": "link", "url": "https://example.invalid/synthetic", "title": "Synthetic link"}]})
         if self.command == "GET" and p == "/owner/ais":
             return self._send(AIS)
         if self.command == "POST" and p == "/owner/rooms/stub-room/ask-all":

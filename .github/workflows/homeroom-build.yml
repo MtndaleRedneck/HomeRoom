@@ -604,6 +604,31 @@ jobs:
             adb exec-out screencap -p > i-settings-unsent.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
+            # 1.8 evidence: populated Rules/Files (synthetic stub data), pushed-page header, Feedback page.
+            XY=$(python3 ci/ui-tap.py "Rules") && adb shell input tap $XY
+            sleep 5
+            python3 ci/anr-guard.py i-rules-populated || exit 1
+            adb exec-out screencap -p > i-rules-populated.png
+            XY=$(python3 ci/ui-tap.py "Files") && adb shell input tap $XY
+            sleep 5
+            python3 ci/anr-guard.py i-files-populated || exit 1
+            adb exec-out screencap -p > i-files-populated.png
+            XY=$(python3 ci/ui-tap.py "Settings") && adb shell input tap $XY
+            sleep 4
+            sh ci/settings-tap.sh "Send feedback, report a bug, or suggest a feature"
+            sleep 4
+            python3 ci/anr-guard.py i-feedback-empty || exit 1
+            adb exec-out screencap -p > i-feedback-empty.png
+            XY=$(python3 ci/ui-tap.py "What happened") && adb shell input tap $XY
+            sleep 1
+            adb shell input text "Synthetic%sUI%stest%smessage"
+            sleep 2
+            adb shell input keyevent KEYCODE_BACK
+            sleep 2
+            python3 ci/anr-guard.py i-feedback-typed || exit 1
+            adb exec-out screencap -p > i-feedback-typed.png
+            adb shell input keyevent KEYCODE_BACK
+            sleep 3
             ! adb logcat -d | grep -E 'FATAL EXCEPTION.*app.homeroom'
             adb shell cmd uimode night auto
             echo "ok: interaction pass captured (see i-*.png artifacts; stub assertions gate the decision flow)"
