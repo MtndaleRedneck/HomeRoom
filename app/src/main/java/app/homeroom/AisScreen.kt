@@ -68,9 +68,15 @@ class AisScreen(context:Context):Screen(context) {
     private fun card(a:OwnerAi) {
         val c=column(context).apply {background=rounded(C.surface,dp(20).toFloat());setPadding(dp(16),dp(12),dp(16),dp(12))}
         val head=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL}
+        // 1.9 (owner-approved redesign): AI-color avatar with a status dot on
+        // the corner (green linked, amber key waiting, muted otherwise).
+        val picWrap=android.widget.FrameLayout(context)
         val pic=Avatars.view(context,screenScope,host.api,a.displayName,personColor(a.actor),40,a.avatar).apply {
             contentDescription="Change picture for "+a.displayName;setOnClickListener {pictureDialog(a)}}
-        head.addView(pic,LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
+        picWrap.addView(pic,android.widget.FrameLayout.LayoutParams(dp(40),dp(40)))
+        val dotColor=when(a.keyStatus) {"active" -> C.green;"pending" -> C.amber;else -> C.muted}
+        picWrap.addView(android.view.View(context).apply {background=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(dotColor);setStroke(dp(2),C.surface)}},android.widget.FrameLayout.LayoutParams(dp(12),dp(12),Gravity.BOTTOM or Gravity.END))
+        head.addView(picWrap,LinearLayout.LayoutParams(dp(40),dp(40)).apply {rightMargin=dp(12)})
         head.addView(text(context,a.displayName,17f,C.text,true),LinearLayout.LayoutParams(0,-2,1f))
         head.addView(text(context,"Rename",13f,C.accentText,true).apply {setPadding(dp(8),dp(8),dp(0),dp(8));setOnClickListener {renameDialog(a)}})
         c.addView(head)
