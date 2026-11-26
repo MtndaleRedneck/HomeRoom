@@ -46,18 +46,20 @@ class OutboxScreen(context:Context):Screen(context) {
     override fun onShow() {render()}
     override fun poll() {render()}
     private fun render() {
-        body.removeAllViews();body.addView(text(context,"Outgoing messages",22f,C.text,true))
-        body.addView(text(context,"Queued messages send when HomeRoom is open and connected. Not confirmed means the server may have recorded it. Retry sends the exact same message ID and body, never an edited copy.",14f,C.muted))
+        body.removeAllViews()
+        body.addCard(sectionCard(context).apply {addView(text(context,"Queued messages send when HomeRoom is open and connected. Not confirmed means the server may have recorded it. Retry sends the exact same message ID and body, never an edited copy.",13f,C.muted))})
         val entries=Outbox(host.session).entries()
-        if(entries.isEmpty())body.addView(text(context,"No outgoing messages.",15f,C.muted))
+        if(entries.isEmpty())body.addCard(emptyState(context,"No outgoing messages."))
         entries.asReversed().forEach {entry->
             val room=host.cachedRooms().firstOrNull {it.id==entry.getString("room")}
             val state=entry.getString("state")
-            body.addView(text(context,(room?.name ?: "Room")+" · "+state.replace('_',' '),16f,C.text,true))
-            body.addView(text(context,entry.getJSONObject("body").optString("text").ifBlank {"Attachment"},15f,C.text))
-            entry.nullableString("error")?.let {body.addView(text(context,it.replace('_',' '),14f,C.amber))}
-            if(state=="not_confirmed")body.addView(button(context,"Retry exact same message",false) {Outbox(host.session).retry(entry.getString("id"));host.sendQueued();render()})
+            val card=sectionCard(context)
+            card.addView(text(context,(room?.name ?: "Room")+" · "+state.replace('_',' '),15f,C.text,true))
+            card.addView(text(context,entry.getJSONObject("body").optString("text").ifBlank {"Attachment"},14f,C.text),android.widget.LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+            entry.nullableString("error")?.let {card.addView(text(context,it.replace('_',' '),13f,C.amber),android.widget.LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})}
+            if(state=="not_confirmed")card.addStacked(button(context,"Retry exact same message",false) {Outbox(host.session).retry(entry.getString("id"));host.sendQueued();render()},android.widget.LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(12)})
+            body.addCard(card)
         }
-        body.addView(button(context,"Send queued messages",true) {host.sendQueued();render()})
+        if(entries.isNotEmpty())body.addStacked(button(context,"Send queued messages",true) {host.sendQueued();render()})
     }
 }

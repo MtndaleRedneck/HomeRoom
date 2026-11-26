@@ -39,11 +39,11 @@ class AisScreen(context:Context):Screen(context) {
     }
     private fun render() {
         body.removeAllViews();countdowns.clear()
-        body.addView(button(context,"+ Add AI",true) {addDialog()},LinearLayout.LayoutParams(-1,dp(44)))
+        body.addStacked(button(context,"+ Add AI",true) {addDialog()},LinearLayout.LayoutParams(-1,dp(48)))
         if(ais.isEmpty()) body.addView(text(context,"No AIs linked yet.",15f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(16)})
         ais.forEach {card(it)}
         body.addView(text(context,"A key is how an AI proves it is really that AI. When an AI connects, you check its key here before it can do anything.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(16)})
-        body.addView(button(context,"Review AI keys",false) {host.openPage("AI keys",AiKeysScreen(context))},LinearLayout.LayoutParams(-1,dp(44)).apply {topMargin=dp(8)})
+        body.addStacked(button(context,"Review AI keys",false) {host.openPage("AI keys",AiKeysScreen(context))},LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(8)})
         startTicker()
     }
     private fun startTicker() {

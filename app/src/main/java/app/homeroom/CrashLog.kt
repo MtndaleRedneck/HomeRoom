@@ -40,7 +40,7 @@ class CrashLogScreen(context:Context):Screen(context) {
         val preview=text(context,CrashLog.read(context),14f,C.text).apply {setTextIsSelectable(true)}
         col.addView(text(context,"Only on this phone. Nothing is sent automatically.",13f,C.muted))
         col.addView(preview)
-        col.addView(button(context,"Save a copy",false) {host.saveDocument("HomeRoom-crash.txt",CrashLog.read(context),"text/plain")})
-        col.addView(button(context,"Clear log",false) {context.deleteFile("last-crash.txt");preview.text=CrashLog.read(context)})
+        col.addStacked(button(context,"Save a copy",false) {host.saveDocument("HomeRoom-crash.txt",CrashLog.read(context),"text/plain")})
+        col.addStacked(button(context,"Clear log",false) {context.deleteFile("last-crash.txt");preview.text=CrashLog.read(context)})
     }
 }

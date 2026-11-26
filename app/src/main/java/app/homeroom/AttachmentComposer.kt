@@ -198,7 +198,7 @@ class AttachmentComposer(context:Context,private val room:Room,private val uri:U
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
         body.addView(text(context,if(voice)"Voice note" else "Attach a file",22f,C.text,true));body.addView(status);body.addView(message);body.addView(send)
         send.isEnabled=false
-        body.addView(button(context,"Cancel upload",false) {cancelUpload()})
+        body.addStacked(button(context,"Cancel upload",false) {cancelUpload()})
     }
     override fun onShow() {
         if(invalidRestore) {

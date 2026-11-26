@@ -241,7 +241,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
     private fun showAskAllDialog(aiMembers: List<Pair<String, String>>, launch: Session.OpAuth) {
         askAllDialog?.dismiss()
         val body = column(context).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
-        val box = input(context, "Question for these AIs")
+        val box = outlinedInput(context, "Question for these AIs")
         body.addView(box)
         val boxes = aiMembers.map { (actor, name) ->
             android.widget.CheckBox(context).apply {

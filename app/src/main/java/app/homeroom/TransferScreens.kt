@@ -15,9 +15,9 @@ class VerifiedDownloadScreen(context:Context,private val name:String,private val
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
         body.addView(text(context,name,20f,C.text,true));body.addView(status)
         body.addView(text(context,if(digest==null)"Legacy file: no published checksum. Integrity cannot be verified." else "Size and SHA-256 will be checked before opening.",14f,if(digest==null)C.amber else C.muted))
-        body.addView(button(context,"Download",true) {start()})
-        body.addView(button(context,"Cancel",false) {job?.cancel();job=null;local.delete();complete=false;status.text="Download cancelled. Partial local data removed."})
-        body.addView(button(context,"Open completed file",false) {
+        body.addStacked(button(context,"Download",true) {start()})
+        body.addStacked(button(context,"Cancel",false) {job?.cancel();job=null;local.delete();complete=false;status.text="Download cancelled. Partial local data removed."})
+        body.addStacked(button(context,"Open completed file",false) {
             if(!complete) {snack(this,"Download must finish first.");return@button}
             val folder=File(context.cacheDir,"shared-downloads").apply {mkdirs()}
             val target=File(folder,name.substringAfterLast('/').substringAfterLast('\\').replace(Regex("[\\p{Cntrl}]"),"_").ifBlank {"file"})
@@ -50,8 +50,8 @@ class BundleExportScreen(context:Context,private val room:Room):Screen(context) 
     init {
         addView(ScrollView(context).apply {addView(body)},LayoutParams(-1,-1))
         body.addView(text(context,"Export room with attachments",22f,C.text,true));body.addView(status)
-        body.addView(button(context,"Prepare export",true) {start()})
-        body.addView(button(context,"Cancel export",false) {job?.cancel();job=null;screenScope.launch {
+        body.addStacked(button(context,"Prepare export",true) {start()})
+        body.addStacked(button(context,"Cancel export",false) {job?.cancel();job=null;screenScope.launch {
             try {exportId?.let {V15Api(host.api).cancelExport(it)};status.text="Export cancellation recorded."}
             catch(_:Exception) {status.text="Stopped checking. Server cancellation not confirmed; private export expires."}
         }})
@@ -70,7 +70,7 @@ class BundleExportScreen(context:Context,private val room:Room):Screen(context) 
                         val bundle=state.getJSONObject("bundle");val digest=UpdateCheck.parseDigest(bundle.getString("sha256")) ?: throw java.io.IOException("no digest")
                         if(kind=="ready_with_omissions")body.addView(text(context,"Incomplete export: "+state.optJSONArray("missing_files")+"\n"+state.optJSONArray("omitted_files"),14f,C.amber))
                         val path="/owner/exports/"+ApiClient.enc(exportId!!)+"/download"
-                        body.addView(button(context,"Download "+if(kind=="ready_with_omissions")"incomplete bundle" else "complete bundle",false) {host.openPage("Download export",VerifiedDownloadScreen(context,"HomeRoom-export.zip",path,bundle.getLong("byte_size"),digest))})
+                        body.addStacked(button(context,"Download "+if(kind=="ready_with_omissions")"incomplete bundle" else "complete bundle",false) {host.openPage("Download export",VerifiedDownloadScreen(context,"HomeRoom-export.zip",path,bundle.getLong("byte_size"),digest))})
                         break
                     }
                     if(kind in listOf("failed","cancelled"))break

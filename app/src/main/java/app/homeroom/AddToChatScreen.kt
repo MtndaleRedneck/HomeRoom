@@ -36,7 +36,7 @@ internal class AddToChatScreen(context: Context, private val room: Room) : Scree
                 return@launch
             }
             for (ai in candidates) {
-                body.addView(button(context, "Add " + ai.displayName, false) { add(ai) })
+                body.addStacked(button(context, "Add " + ai.displayName, false) { add(ai) })
             }
         }
     }

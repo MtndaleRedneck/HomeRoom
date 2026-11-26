@@ -18,8 +18,8 @@ class RoomPreferencesScreen(context:Context,private val room:Room):Screen(contex
     }}
     private fun render(state:JSONObject) {
         body.removeAllViews();body.addView(text(context,room.name,22f,C.text,true))
-        body.addView(button(context,if(state.getBoolean("pinned"))"Unpin room" else "Pin room",false) {change(state,state.getString("mute_mode"),state.nullableString("muted_until"),!state.getBoolean("pinned"),state.getBoolean("archived"))})
-        body.addView(button(context,"Mute: "+state.getString("mute_mode"),false) {
+        body.addStacked(button(context,if(state.getBoolean("pinned"))"Unpin room" else "Pin room",false) {change(state,state.getString("mute_mode"),state.nullableString("muted_until"),!state.getBoolean("pinned"),state.getBoolean("archived"))})
+        body.addStacked(button(context,"Mute: "+state.getString("mute_mode"),false) {
             AlertDialog.Builder(context).setTitle("Mute room alerts").setItems(arrayOf("Off","One hour","Forever")) {_,which->
                 val mode=listOf("off","until","forever")[which]
                 val until=if(which==1)java.time.Instant.now().plusSeconds(3600).toString() else null
@@ -27,7 +27,7 @@ class RoomPreferencesScreen(context:Context,private val room:Room):Screen(contex
             }.show()
         })
         body.addView(text(context,"Archive is shared, not a private hide. It stops new posts for everyone and keeps history.",14f,C.amber))
-        body.addView(button(context,if(state.getBoolean("archived"))"Unarchive for everyone" else "Archive for everyone",false) {
+        body.addStacked(button(context,if(state.getBoolean("archived"))"Unarchive for everyone" else "Archive for everyone",false) {
             AlertDialog.Builder(context).setTitle(if(state.getBoolean("archived"))"Unarchive for everyone?" else "Archive for everyone?")
                 .setMessage(if(state.getBoolean("archived"))"Allows new posts again; keeps history." else "Stops new posts; keeps history.")
                 .setNegativeButton("Cancel",null).setPositiveButton("Confirm") {_,_->change(state,state.getString("mute_mode"),state.nullableString("muted_until"),state.getBoolean("pinned"),!state.getBoolean("archived"))}.show()

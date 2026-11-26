@@ -47,7 +47,7 @@ class ProfileScreen(context:Context):Screen(context) {
         }
         card.addView(name,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
         card.addView(text(context,"This is the name your AIs and rooms show for you. It doesn't change how you sign in.",12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
-        card.addView(button(context,"Save name",true) {saveName(name.text.toString())},LinearLayout.LayoutParams(-1,dp(44)).apply {topMargin=dp(12)})
+        card.addStacked(button(context,"Save name",true) {saveName(name.text.toString())},LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(12)})
         body.addView(card,LinearLayout.LayoutParams(-1,-2))
     }
     private fun saveName(raw:String) {
