@@ -204,7 +204,7 @@ class V3BehaviorTest {
     @Test fun navWidthGrowsWithFontButStaysOnScreen() {
         assertEquals("normal font keeps the live 256dp",256,navWidthFor(360,1f,1.0f))
         assertEquals("smaller-than-1 font never narrows it",256,navWidthFor(360,1f,0.85f))
-        assertEquals("1.3x widens in step",332,navWidthFor(360,1f,1.3f),1)
+        assertEquals("1.3x widens in step",332,navWidthFor(360,1f,1.3f))
         assertEquals("huge font stops 12dp short of each screen edge",336,navWidthFor(360,1f,2.0f))
         assertEquals("medium screen",276,navWidthFor(300,1f,1.3f))
         assertEquals("screen narrower than 256dp: full width, never past it",240,navWidthFor(240,1f,1.3f))
