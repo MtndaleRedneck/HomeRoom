@@ -20,7 +20,6 @@ class Hr18PrivacyTest {
         val app=RuntimeEnvironment.getApplication()
         val s=Session(app);s.clear();s.ownerId="owner";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)
         PrivacyPrefs.set(app,"hide_previews",false)
-        MainActivity.isForeground=false
         return s
     }
     private fun manager()=RuntimeEnvironment.getApplication().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
