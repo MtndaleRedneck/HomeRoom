@@ -164,6 +164,8 @@ class MainActivity : AppCompatActivity() {
         // Consume (and always clear) the draft kept across a system recreation, whatever the session state.
         val restoredDraft = retained.feedbackDraft
         retained.feedbackDraft = null
+        // A finished token deletion must not leave a re-enrolled session without a token: register again without a restart.
+        PushTokenDeletion.onCompleted = { runOnUiThread { if (session.enrolled) PushRegistration.sync(scope, session, api) } }
         if (session.enrolled) {
             showMain()
             // System recreation (font size change): put the Feedback page and its typed draft back.
@@ -177,8 +179,6 @@ class MainActivity : AppCompatActivity() {
             showSetup(null)
             PushTokenDeletion.retryOnStart(applicationContext)
         }
-        // A finished token deletion must not leave a re-enrolled session without a token: register again without a restart.
-        PushTokenDeletion.onCompleted = { runOnUiThread { if (session.enrolled) PushRegistration.sync(scope, session, api) } }
         startPoller()
         registerConnectivity()
         onConnectIntent(intent)
@@ -544,8 +544,8 @@ class MainActivity : AppCompatActivity() {
 
     /** Enrolled start/enrolment: a failed earlier token deletion is retried first (its completion registers the fresh token); otherwise register now. */
     private fun syncPush() {
-        if (PushTokenDeletion.pending) PushTokenDeletion.retryOnStart(applicationContext)
-        else PushRegistration.sync(scope, session, api)
+        // retryOnStart reads the persisted flag first (the in-memory one is false after a cold start); its completion callback registers.
+        if (!PushTokenDeletion.retryOnStart(applicationContext)) PushRegistration.sync(scope, session, api)
     }
 
     // Enrollment finished while the app was in the background: show Main on the next resume.

@@ -28,7 +28,7 @@ class Hr18PushTest {
         val session=Session(org.robolectric.RuntimeEnvironment.getApplication());session.clear();session.serverUrl=server.url("/").toString().trimEnd('/')
         val api=ApiClient(session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(1,TimeUnit.SECONDS)}
         pending(false);PushRegistration.tokenFetcher={done->done(null)} // deterministic: FCM unavailable unless a test says otherwise
-        try {block(server,api,session)}finally {pending(false);PushRegistration.tokenFetcher=null;PushTokenDeletion.deleteTokenOp=null;PushTokenDeletion.onCompleted=null;server.shutdown();session.clear()}
+        try {block(server,api,session)}finally {PushTokenDeletion.resetForTest();pending(false);PushRegistration.tokenFetcher=null;PushTokenDeletion.deleteTokenOp=null;PushTokenDeletion.onCompleted=null;server.shutdown();session.clear()}
     }
     private fun enroll(s:Session) {s.ownerId="ezzy";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)}
     private fun scope()=CoroutineScope(Dispatchers.IO)
@@ -142,6 +142,38 @@ class Hr18PushTest {
         held!!.invoke("tok-deleted-by-instance-wide-delete")
         assertNull("stale fetch result is not registered",server.takeRequest(400,TimeUnit.MILLISECONDS))
         app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    // Cold start: the in-memory flag is false but the persisted one is set; retryOnStart reads it and reports pending (so syncPush does not register).
+    @Test fun coldStartReadsPersistedPendingFlag()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session)
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().putBoolean("pending",true).commit()
+        var held:((Boolean)->Unit)?=null
+        PushTokenDeletion.deleteTokenOp={done->held=done}
+        assertTrue(PushTokenDeletion.retryOnStart(app))
+        assertNotNull(held)
+        PushRegistration.tokenFetcher={done->done("tok-x")}
+        PushRegistration.sync(scope(),session,api)
+        assertNull("no register while deletion is pending",server.takeRequest(400,TimeUnit.MILLISECONDS))
+        held!!.invoke(false)
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    // Overlapping request and retry start exactly one instance-wide deleteToken.
+    @Test fun overlappingDeletionRequestsAreSingleFlight()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        var calls=0;var held:((Boolean)->Unit)?=null
+        PushTokenDeletion.deleteTokenOp={done->calls++;held=done}
+        PushTokenDeletion.request(app)
+        PushTokenDeletion.retryOnStart(app)
+        PushTokenDeletion.request(app)
+        assertEquals(1,calls)
+        held!!.invoke(false)                       // failure releases the slot; a later retry may start a new attempt
+        PushTokenDeletion.retryOnStart(app)
+        assertEquals(2,calls)
+        held!!.invoke(true)
+        assertFalse(PushTokenDeletion.pending)
     }
 
     // A deletion that fails stays pending (and persisted) for the next retry.
