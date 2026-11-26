@@ -682,7 +682,7 @@ class MainActivity : AppCompatActivity() {
         headerMeta.removeAllViews()
         if (room == null) { headerMeta.visibility = View.GONE; return }
         headerMeta.visibility = View.VISIBLE
-        headerMeta.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
+        headerMeta.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second.ifBlank { it.first } } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
         for (member in room.members.take(6)) {
             headerMeta.addView(View(this).apply {
                 background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
