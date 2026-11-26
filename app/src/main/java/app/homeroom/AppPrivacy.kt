@@ -29,6 +29,9 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
     // backdrop capture while the cover is up - the cover is a sibling overlay,
     // not part of the captured column.
     val coverShowing:Boolean get()=overlay!=null
+    // App content is hidden from accessibility services while the cover is up (the cover itself stays reachable); the prior value is restored on remove.
+    private var contentA11yBefore:Int?=null
+    private fun contentRoot():View?=host.findViewById(android.R.id.content)
     private var signal:android.os.CancellationSignal?=null
     private val pin=host.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {result->
         authenticating=false
@@ -55,6 +58,7 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
         col.addView(text(host,"Unlock with your phone's fingerprint or PIN. Nothing is sent.",15f,C.muted))
         col.addStacked(button(host,"Unlock",true) {authenticate()})
         cover.addView(col,FrameLayout.LayoutParams(-1,-1))
+        contentRoot()?.let {if(contentA11yBefore==null)contentA11yBefore=it.importantForAccessibility;it.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS}
         (host.window.decorView as ViewGroup).addView(cover,ViewGroup.LayoutParams(-1,-1));overlay=cover
         host.invalidateNavBackdrop()
         cover.requestFocus()
@@ -86,7 +90,11 @@ class AppLock(private val host:MainActivity,private val unlocked:()->Unit) {
         if(enabling) {PrivacyPrefs.set(host,"lock",true);enabling=false}
         authenticated=true;remove();unlocked()
     }
-    private fun remove() {overlay?.let {(it.parent as? ViewGroup)?.removeView(it)};overlay=null;host.refreshNavBackdrop()}
+    private fun remove() {
+        overlay?.let {(it.parent as? ViewGroup)?.removeView(it)};overlay=null
+        contentA11yBefore?.let {before->contentRoot()?.importantForAccessibility=before};contentA11yBefore=null
+        host.refreshNavBackdrop()
+    }
 }
 
 class PrivacyScreen(context:Context):Screen(context) {
