@@ -48,8 +48,10 @@ object PushRegistration {
     fun sync(scope: CoroutineScope, session: Session, api: ApiClient) {
         if (!session.enrolled || PushTokenDeletion.pending) return
         val gen = session.authSnapshot().generation
+        val epoch = PushTokenDeletion.epoch
         fetchToken { fresh ->
-            if (!session.enrolled || session.authSnapshot().generation != gen || PushTokenDeletion.pending) return@fetchToken
+            // Stale if the session changed, a deletion is running, or one started or finished since this fetch began.
+            if (!session.enrolled || session.authSnapshot().generation != gen || PushTokenDeletion.pending || PushTokenDeletion.epoch != epoch) return@fetchToken
             if (!fresh.isNullOrBlank() && session.fcmToken != fresh) session.fcmToken = fresh
             register(scope, session, api) // exactly one POST: the fresh token if FCM issued one, else the stored one
         }
