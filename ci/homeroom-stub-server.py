@@ -234,6 +234,21 @@ class Handler(BaseHTTPRequestHandler):
                 {"file_id": "stub-file-1", "name": "synthetic-plan.pdf", "mime_type": "application/pdf", "byte_size": 48213, "uploader": "Stub AI One", "created_at": "2026-11-25T10:00:00Z", "kind": "file"},
                 {"file_id": "stub-file-2", "name": "synthetic-notes.txt", "mime_type": "text/plain", "byte_size": 912, "uploader": "Stub Owner", "created_at": "2026-11-25T11:00:00Z", "kind": "file"},
                 {"file_id": "stub-file-3", "name": "Synthetic link", "mime_type": "", "byte_size": 0, "uploader": "Stub AI One", "created_at": "2026-11-25T12:00:00Z", "kind": "link", "url": "https://example.invalid/synthetic", "title": "Synthetic link"}]})
+        if self.command == "GET" and p == "/owner/team":
+            # SYNTHETIC team for populated AI team rendering (1.8 UI evidence only).
+            return self._send({"actors": [
+                {"actor": "stub-ai-1", "display_name": "Stub AI One", "last_authenticated_at": "2026-11-26T09:10:00Z", "stale": False,
+                 "work_state": {"state": "working", "summary": "Synthetic: reading the room goal.", "waiting_on": "your answer on the synthetic decision"},
+                 "guide_ack": {"version": 3, "acknowledged_at": "2026-11-26T08:00:00Z", "current": True}},
+                {"actor": "stub-ai-2", "display_name": "Stub AI Two", "last_authenticated_at": None, "stale": True, "work_state": None, "guide_ack": None}]})
+        if self.command == "GET" and p == "/owner/needs-you":
+            return self._send({"items": [
+                {"kind": "rule_proposal", "text": "Synthetic proposal: summarize long threads before replying.", "created_at": "2026-11-26T08:30:00Z", "room_id": None},
+                {"kind": "decision", "text": "Synthetic stub decision", "created_at": "2026-11-26T08:45:00Z", "room_id": "stub-room", "event_id": "stub-ev-1"}], "has_more": False})
+        if self.command == "GET" and p == "/owner/activity":
+            return self._send({"activity": [
+                {"kind": "message_sent", "text": "Stub AI One replied in Stub Room.", "at": "2026-11-26T09:00:00Z"},
+                {"kind": "file_shared", "text": "synthetic-plan.pdf was shared.", "at": "2026-11-26T08:50:00Z"}], "has_more": False})
         if self.command == "GET" and p == "/owner/ais":
             return self._send(AIS)
         if self.command == "POST" and p == "/owner/rooms/stub-room/ask-all":
