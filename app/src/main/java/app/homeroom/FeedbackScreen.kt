@@ -42,6 +42,11 @@ class FeedbackScreen(context:Context):Screen(context) {
             FORM_URL+"?usp=pp_url&"+ENTRY_MESSAGE+"="+URLEncoder.encode(message,"UTF-8")+"&"+ENTRY_MODEL+"="+URLEncoder.encode(model,"UTF-8")+
                 "&"+ENTRY_ANDROID+"="+URLEncoder.encode(android,"UTF-8")+"&"+ENTRY_APP_VERSION+"="+URLEncoder.encode(appVersion,"UTF-8")
     }
+    private var editRef:EditText?=null
+    /** The typed text, kept across a system recreation (font size, language) by MainActivity. */
+    var draft:String
+        get()=editRef?.text?.toString().orEmpty()
+        set(v) {editRef?.setText(v)}
     init {
         val body=column(context)
         body.setPadding(dp(16),dp(12),dp(16),dp(110))
@@ -50,6 +55,7 @@ class FeedbackScreen(context:Context):Screen(context) {
         val card=sectionCard(context)
         body.addView(card,LinearLayout.LayoutParams(-1,-2))
         val edit=input(context,"What happened, or what would help?")
+        editRef=edit
         edit.minLines=5
         edit.gravity=Gravity.TOP
         edit.background=rounded(C.surfaceAlt,dp(12).toFloat())
