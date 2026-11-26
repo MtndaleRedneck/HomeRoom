@@ -36,9 +36,11 @@ android {
         applicationId 'app.homeroom'
         minSdk 26
         targetSdk 34
-        // RECONSTRUCTED: matches the exact private12 release build (badging: versionCode 10, versionName 1.5).
-        versionCode 10
-        versionName '1.5'
+        // 1.6: dark-mode-default fix release over the installed 1.5 (private12,
+        // badging verified from the TestLab APK: versionCode 10, versionName 1.5,
+        // signer cert 0063cd16...). versionCode must be strictly above 10.
+        versionCode 11
+        versionName '1.6'
     }
 
     signingConfigs {
