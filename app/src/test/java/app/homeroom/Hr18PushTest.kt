@@ -140,4 +140,16 @@ class Hr18PushTest {
         assertTrue(app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).getBoolean("pending",false))
         app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
     }
+
+    // Deletion succeeds after a re-enrol and FCM cannot be reached afterwards: the retired (deleted) token must not be registered.
+    @Test fun neverRegistersTheRetiredTokenWhenFreshFetchFails()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session);session.fcmToken="tok-retired"
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().putBoolean("pending",true).commit()
+        PushTokenDeletion.deleteTokenOp={done->done(true)}
+        PushTokenDeletion.retryOnStart(app)
+        assertNull("retired token dropped",session.fcmToken)
+        PushRegistration.sync(scope(),session,api) // fetcher fake reports FCM unavailable
+        assertNull("nothing registered",server.takeRequest(400,TimeUnit.MILLISECONDS))
+    }
 }
