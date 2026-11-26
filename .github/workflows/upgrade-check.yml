@@ -3,7 +3,7 @@ on:
   push:
     branches: [ci/upgrade-check-1.5]
 jobs:
-  upgrade-1.4-to-1.5:
+  upgrade-v14-to-v15:
     # Finite upgrade evidence: published v1.4 APK -> adb install -r the
     # signed 1.5 release candidate from ci-inputs/ -> launch. Proves the
     # upgrade path (signature continuity, package identity and app data
