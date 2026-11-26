@@ -6,6 +6,7 @@ import android.content.Intent
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import kotlinx.coroutines.launch
 
 class SettingsScreen(context:Context):Screen(context) {
@@ -50,7 +51,14 @@ class SettingsScreen(context:Context):Screen(context) {
         card.addView(line,LinearLayout.LayoutParams(-1,-2))
     }
     /** Update state changed (check finished, download progress or failure): redraw the Updates card while visible. */
-    fun onUpdateChanged() {post {if(isAttachedToWindow)rebuild()}}
+    private var renderedState:UpdateCheck.State?=null
+    private var updateBtn:TextView?=null
+    fun onUpdateChanged() {post {
+        if(!isAttachedToWindow)return@post
+        // Redraw only on a state transition; download progress just retexts the button (no scroll or focus reset).
+        if(UpdateCheck.state!=renderedState) rebuild()
+        else if(UpdateCheck.state==UpdateCheck.State.DOWNLOADING) updateBtn?.text="Downloading... ${UpdateCheck.progress}%"
+    }}
     private fun rebuild() {
         col.removeAllViews()
         val owner=host.session.ownerName ?: "You"
@@ -120,6 +128,7 @@ class SettingsScreen(context:Context):Screen(context) {
         // and "You're up to date." at the right, reverting after 5 seconds.
         // Always the LAST card in Settings.
         val update=UpdateCheck.hasUpdate()
+        renderedState=UpdateCheck.state
         val updatesCard=sectionCard(context)
         val busy=UpdateCheck.state==UpdateCheck.State.CHECKING || UpdateCheck.state==UpdateCheck.State.DOWNLOADING
         val btnLabel=when {
@@ -139,6 +148,7 @@ class SettingsScreen(context:Context):Screen(context) {
                 UpdateCheck.checkManually(host,host.scope,host.session) {_->rebuild()}
             }
         }
+        updateBtn=checkBtn
         updatesCard.addView(checkBtn,LinearLayout.LayoutParams(-1,dp(48)))
         val status=when {
             update -> "Version ${UpdateCheck.latestTag?.let {UpdateCheck.displayVersion(it)} ?: ""} is available."

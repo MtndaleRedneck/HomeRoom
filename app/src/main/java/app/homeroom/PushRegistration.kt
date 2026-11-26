@@ -47,8 +47,18 @@ object PushRegistration {
     /** App start and after enrollment: register the stored token and pick up a token FCM issued before enrollment. */
     fun sync(scope: CoroutineScope, session: Session, api: ApiClient) {
         if (!session.enrolled || PushTokenDeletion.pending) return
-        register(scope, session, api)
-        try { refreshToken(scope, session, api) } catch (_: Exception) { /* Firebase unavailable: the stored token path above still ran. */ }
+        val gen = session.authSnapshot().generation
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnCompleteListener { task ->
+                    if (!session.enrolled || session.authSnapshot().generation != gen || PushTokenDeletion.pending) return@addOnCompleteListener
+                    val fresh = if (task.isSuccessful) task.result else null
+                    if (!fresh.isNullOrBlank() && session.fcmToken != fresh) session.fcmToken = fresh
+                    register(scope, session, api) // exactly one POST: the fresh token if FCM issued one, else the stored one
+                }
+        } catch (_: Exception) {
+            register(scope, session, api) // Firebase unavailable: the stored token still registers
+        }
     }
 
     fun refreshToken(scope: CoroutineScope, session: Session, api: ApiClient) {

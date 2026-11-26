@@ -130,9 +130,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
+        // Progress callbacks come from the download thread: the whole listener (nav view and tab map) runs on main.
         setUpdateListener {
-            if (::nav.isInitialized) nav.setUpdateAvailable(UpdateCheck.hasUpdate())
-            (tabScreens[R.id.nav_settings] as? SettingsScreen)?.onUpdateChanged()
+            runOnUiThread {
+                if (::nav.isInitialized) nav.setUpdateAvailable(UpdateCheck.hasUpdate())
+                (tabScreens[R.id.nav_settings] as? SettingsScreen)?.onUpdateChanged()
+            }
         }
         nav.setUpdateAvailable(UpdateCheck.hasUpdate())
 
@@ -174,6 +177,8 @@ class MainActivity : AppCompatActivity() {
             showSetup(null)
             PushTokenDeletion.retryOnStart(applicationContext)
         }
+        // A finished token deletion must not leave a re-enrolled session without a token: register again without a restart.
+        PushTokenDeletion.onCompleted = { runOnUiThread { if (session.enrolled) PushRegistration.sync(scope, session, api) } }
         startPoller()
         registerConnectivity()
         onConnectIntent(intent)
@@ -218,6 +223,7 @@ class MainActivity : AppCompatActivity() {
     // the activity really finishes or the process dies. Nothing is written to preferences, files or a saved-state Bundle.
     internal val retained by lazy { androidx.lifecycle.ViewModelProvider(this)[RetainedUiState::class.java] }
     override fun onDestroy() {
+        PushTokenDeletion.onCompleted = null
         if (isChangingConfigurations) (currentPage as? FeedbackScreen)?.let { retained.feedbackDraft = it.draft }
         super.onDestroy()
     }
@@ -496,6 +502,8 @@ class MainActivity : AppCompatActivity() {
         transientDialog = null
         synchronized(afterUnlockActions) { afterUnlockActions.clear() }
         retained.pendingShare = null
+        retained.feedbackClientId = null
+        retained.feedbackSentText = null
         pendingShowMain = false
         // Reset contract (I2 76e trace): entering Setup discards pushed pages
         // too - an unconsumed Back on SetupScreen falls to closePage(), which

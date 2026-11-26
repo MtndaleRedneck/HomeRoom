@@ -125,6 +125,7 @@ class FeedbackScreen(context:Context):Screen(context) {
         snack(this,"Message copied.")
     }
     /** One id per report: the same text after an unconfirmed send keeps its id (a retry replays); new text or a confirmed send gets a fresh one. Kept in memory across a recreation. */
+    // Policy: text edited after an unconfirmed send is a new report (new id). The failure message already tells the user to check the Feedback room first, since the server has no dedupe we can rely on.
     private fun clientIdFor(text:String):String {
         val r=host.retained
         val kept=r.feedbackClientId
@@ -134,12 +135,14 @@ class FeedbackScreen(context:Context):Screen(context) {
     private fun send(edit:EditText) {
         if(!guard())return
         val text=composed()
+        val sentMessage=message
         val clientId=clientIdFor(text)
         screenScope.launch {
             try {
                 host.api.sendFeedback(text,clientId)
-                host.retained.feedbackClientId=null;host.retained.feedbackSentText=null
-                edit.setText("")
+                // Only this confirmed report's identity is retired, and the box is cleared only if the user did not edit while it was in flight.
+                if(host.retained.feedbackSentText==text) {host.retained.feedbackClientId=null;host.retained.feedbackSentText=null}
+                if(message==sentMessage) edit.setText("")
                 snack(this@FeedbackScreen,"Saved in your private Feedback room.")
             } catch(e:SessionEndedException) {host.onSessionEnded(e)
             } catch(_:Exception) {snack(this@FeedbackScreen,"Couldn't confirm. Check your Feedback room before trying again.")}
