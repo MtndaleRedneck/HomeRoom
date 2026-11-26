@@ -131,7 +131,7 @@ class MainActivity : AppCompatActivity() {
             captureSuspended || appLock.coverShowing ||
                 (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
         }
-        root.addView(nav, FrameLayout.LayoutParams(dp(256), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
+        root.addView(nav, FrameLayout.LayoutParams(navWidthPx(), dp(64), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(28) })
         setContentView(root)
 
         // The settings-tab update dot rides the release's update-state hook.
@@ -199,6 +199,20 @@ class MainActivity : AppCompatActivity() {
     // retries the pending open, which is the refresh completion point.
     private var pendingOpenRoomId: String? = null
 
+    // The floating nav is 256dp wide at normal font. It widens in step with the
+    // system font size (never past the screen minus 12dp each side) so the
+    // labels keep following the user's font setting and "Settings" stays whole.
+    // screenSize/screenLayout are handled without recreating the activity
+    // (manifest), so a rotation or split-screen resize must refit the nav.
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::nav.isInitialized) {
+            val dm = resources.displayMetrics
+            val w = navWidthFor(dm.widthPixels, dm.density, newConfig.fontScale)
+            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { if (it.width != w) { it.width = w; nav.layoutParams = it } }
+        }
+    }
+    private fun navWidthPx():Int = navWidthFor(resources.displayMetrics.widthPixels, resources.displayMetrics.density, resources.configuration.fontScale)
     private fun onRoomIntent(intent: android.content.Intent?) {
         val roomId = intent?.getStringExtra(HomeRoomMessagingService.EXTRA_ROOM_ID) ?: return
         intent.removeExtra(HomeRoomMessagingService.EXTRA_ROOM_ID)
@@ -752,4 +766,15 @@ class MainActivity : AppCompatActivity() {
         fun setUpdateListener(listener: (() -> Unit)?) { updateListener = listener }
         fun onUpdateChanged() { updateListener?.invoke() }
     }
+}
+
+/**
+ * Width of the floating nav in px: 256dp at normal font, growing with the font
+ * scale, never wider than the screen minus 12dp per side, never narrower than
+ * 256dp unless the screen itself is narrower (then the full screen width).
+ */
+internal fun navWidthFor(screenPx:Int, density:Float, fontScale:Float):Int {
+    val base=(256*density).toInt()
+    val wanted=(base*maxOf(1f,fontScale)).toInt()
+    return minOf(wanted,screenPx-(24*density).toInt()).coerceAtLeast(minOf(base,screenPx))
 }

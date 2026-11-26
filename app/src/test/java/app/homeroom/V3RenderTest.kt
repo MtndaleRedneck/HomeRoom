@@ -11,6 +11,7 @@ import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
@@ -104,6 +105,71 @@ class V3RenderTest {
         field(chat,"serverTime").set(chat,"2026-11-10T14:26:00Z");call(chat,"rebuild");render(a,chat,"WrenBoard",null,"chat",true)
         c.pause()
     }
+    // 1.7 pixel evidence: a REAL pressed nav cell (DOWN dispatched, sink
+    // animation run to rest) drawn with its selection pill and badges.
+    @Test fun navPressedStatePreview() {
+        val(c,a)=activity()
+        // The REAL main shell on the Files tab (not the Connect screen).
+        a.javaClass.getDeclaredMethod("showMain").apply {isAccessible=true}.invoke(a)
+        // Really open the Files tab (title, header and content), as a tab tap does.
+        a.javaClass.getDeclaredMethod("showTab",Int::class.javaPrimitiveType).apply {isAccessible=true}.invoke(a,R.id.nav_files)
+        assertEquals("Files tab is showing","Files",(field(a,"headerTitle").get(a) as TextView).text.toString())
+        val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        val nav=field(a,"nav").get(a) as GlassNav
+        nav.visibility=View.VISIBLE
+        nav.setBadges(2,2)
+        field(nav,"selectedItemId").set(nav,R.id.nav_files)
+        nav.javaClass.getDeclaredMethod("updateSelection").apply{isAccessible=true}.invoke(nav)
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        val items=field(nav,"items").get(nav) as LinearLayout
+        val cell=items.getChildAt(2) as View // Files tab
+        val down=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,10f,10f,0)
+        cell.dispatchTouchEvent(down);down.recycle()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+        val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
+        val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
+        File(previewDir).apply {mkdirs()}.resolve("v3-nav-pressed.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        c.pause()
+    }
+    // 1.7 pixel evidence: the full Settings screen at 1.3x font, proving the
+    // new bottom order (Sign out, Feedback & bugs, Updates last) survives a
+    // larger font.
+    @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
+    fun settingsAtLargeFont() {
+        val(c,a)=activity()
+        val settings=SettingsScreen(a);field(settings,"rooms").set(settings,rooms());field(settings,"devicesLoaded").set(settings,true);field(settings,"devices").set(settings,listOf(OwnerDevice("phone","This phone",null,null),OwnerDevice("browser","Browser",null,"2026-11-09T15:00:00Z")))
+        call(settings,"rebuild");render(a,settings,"Settings",R.id.nav_settings,"settings-font13")
+        c.pause()
+    }
+    // Settings scrolled to the very BOTTOM: the last card (Updates) must clear the floating nav.
+    private fun settingsBottom(name:String) {
+        val(c,a)=activity()
+        val settings=SettingsScreen(a);field(settings,"rooms").set(settings,rooms());field(settings,"devicesLoaded").set(settings,true);field(settings,"devices").set(settings,listOf(OwnerDevice("phone","This phone",null,null),OwnerDevice("browser","Browser",null,"2026-11-09T15:00:00Z")))
+        call(settings,"rebuild");render(a,settings,"Settings",R.id.nav_settings,"tmp-"+name)
+        val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        val sv=settings.getChildAt(0) as ScrollView
+        val navV=field(a,"nav").get(a) as View
+        sv.scrollTo(0,sv.getChildAt(0).height)
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        sv.scrollTo(0,sv.getChildAt(0).height)
+        // The glass recaptures its backdrop on the next animation frame after the scroll. Run
+        // that frame before drawing, or the preview shows the PRE-scroll backdrop (the stale
+        // Privacy row under the nav seen in the earlier bottom previews).
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(200))
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        val col=sv.getChildAt(0) as ViewGroup
+        val last=col.getChildAt(col.childCount-1)
+        val lastLoc=IntArray(2);last.getLocationInWindow(lastLoc)
+        val navLoc=IntArray(2);navV.getLocationInWindow(navLoc)
+        assertTrue("last Settings card clears the floating nav when scrolled to bottom: card bottom ${lastLoc[1]+last.height}, nav top ${navLoc[1]}",lastLoc[1]+last.height<=navLoc[1])
+        val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
+        val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
+        File(previewDir).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        c.pause()
+    }
+    @Test fun settingsScrolledToBottomClearsNav() = settingsBottom("settings-bottom")
+    @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
+    fun settingsScrolledToBottomAtLargeFont() = settingsBottom("settings-bottom-font13")
     // Capture-under-lock gate (I2, Nov 24): while FLAG_SECURE or the lock
     // cover is up, the nav must not capture the content column into retained
     // buffers; transitions drop prior buffers and cancel posted runnables.

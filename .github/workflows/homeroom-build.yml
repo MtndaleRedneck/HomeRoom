@@ -36,7 +36,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.9.2'
 
       - name: Run release unit tests (Robolectric fault-injection included)
         run: gradle --no-daemon :app:testReleaseUnitTest
@@ -75,7 +75,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.9.2'
 
       - name: Compile release sources and process release resources (unsigned)
         run: gradle --no-daemon compileReleaseKotlin processReleaseResources
@@ -105,7 +105,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.9.2'
 
       - name: Build unsigned release APK (explicit opt-in)
         run: gradle --no-daemon assembleRelease -PhrAllowUnsignedRelease=true
@@ -143,7 +143,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.9.2'
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
@@ -340,7 +340,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.9.2'
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
@@ -545,32 +545,32 @@ jobs:
             adb shell input tap 792 2242
             sleep 6
             adb exec-out screencap -p > i-settings-rows.png
-            XY=$(python3 ci/ui-tap.py "Needs you") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Needs you"); }; [ -n "$XY" ] && adb shell input tap $XY
+            sh ci/settings-tap.sh "Needs you"
             sleep 5
             adb exec-out screencap -p > i-settings-needsyou.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "Activity") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Activity"); }; [ -n "$XY" ] && adb shell input tap $XY
+            sh ci/settings-tap.sh "Activity"
             sleep 5
             adb exec-out screencap -p > i-settings-activity.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            XY=$(python3 ci/ui-tap.py "AI team") || { adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI team"); }; [ -n "$XY" ] && adb shell input tap $XY
+            sh ci/settings-tap.sh "AI team"
             sleep 5
             adb exec-out screencap -p > i-settings-aiteam.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "AI guide") && adb shell input tap $XY
+            adb shell input swipe 540 1800 540 600 600; sleep 2; sh ci/settings-tap.sh "AI guide"
             sleep 5
             adb exec-out screencap -p > i-settings-aiguide.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Connection and features") && adb shell input tap $XY
+            adb shell input swipe 540 1800 540 600 600; sleep 2; sh ci/settings-tap.sh "Connection and features"
             sleep 5
             adb exec-out screencap -p > i-settings-connection.png
             adb shell input keyevent KEYCODE_BACK
             sleep 3
-            adb shell input swipe 540 1800 540 600 600; sleep 2; XY=$(python3 ci/ui-tap.py "Unsent attachments") && adb shell input tap $XY
+            adb shell input swipe 540 1800 540 600 600; sleep 2; sh ci/settings-tap.sh "Unsent attachments"
             sleep 5
             adb exec-out screencap -p > i-settings-unsent.png
             adb shell input keyevent KEYCODE_BACK
