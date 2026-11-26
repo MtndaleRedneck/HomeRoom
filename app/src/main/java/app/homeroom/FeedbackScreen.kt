@@ -56,7 +56,7 @@ class FeedbackScreen(context:Context):Screen(context) {
         // TYPE_CLASS_TEXT | TYPE_TEXT_FLAG_MULTI_LINE | TYPE_TEXT_FLAG_CAP_SENTENCES
         edit.inputType=147457
         card.addView(edit,LinearLayout.LayoutParams(-1,-2))
-        val preview=text(context,previewOf(""),12.5f,C.muted)
+        val preview=text(context,previewOf(""),13f,C.muted)
         edit.addTextChangedListener(object:TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {}
@@ -64,9 +64,9 @@ class FeedbackScreen(context:Context):Screen(context) {
         })
         card.addView(preview,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         body.addView(actionButton(context,"Open GitHub issue",true) {openGithubIssue()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
-        body.addView(text(context,"Public and easiest to follow up.",12f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+        body.addView(text(context,"Public and easiest to follow up.",13f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
         body.addView(actionButton(context,"Open private form",true) {openForm()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
-        body.addView(text(context,"No name needed. A reply email is optional.",12f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
+        body.addView(text(context,"No name needed. A reply email is optional.",13f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(4)})
         body.addView(actionButton(context,"Copy message",false) {copyMessage()},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(14)})
         if(host.api.hasFeature("owner_room_management")) {
             val clientId=UUID.randomUUID().toString()

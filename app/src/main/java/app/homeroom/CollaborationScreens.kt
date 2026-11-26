@@ -26,7 +26,7 @@ class DecisionScreen(context:Context,private val decisionId:String):Screen(conte
         c.addView(text(context,card.proposal,15f,C.text).apply {setTextIsSelectable(true)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
         c.addView(text(context,"State: "+card.state+" · "+card.effect.replace('_',' '),12.5f,C.muted),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)})
         body.addCard(c)
-        body.addCard(sectionCard(context).apply {addView(text(context,"A choice needs a separate confirmation. It does not send messages, spend money or approve keys/rules.",13f,C.amber))})
+        body.addCard(sectionCard(context).apply {addView(text(context,"A choice needs a separate confirmation. It does not send messages, spend money or approve keys/rules.",13.5f,C.text))})
         if(card.state!="open")return
         for(option in card.options) {
             val selectionId=clientId()
@@ -65,7 +65,7 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
         c.addView(text(context,card.proposal,15f,C.text).apply {setTextIsSelectable(true)},LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(6)})
         c.addView(text(context,"Your answer: "+choice.label,16f,C.accent,true),LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(10)})
         body.addCard(c)
-        body.addCard(sectionCard(context).apply {addView(text(context,"This records your answer in HomeRoom only. It does not execute an outside action. Confirm only if the proposal contains the full action, cost and audience you intend.",13f,C.amber))})
+        body.addCard(sectionCard(context).apply {addView(text(context,"This records your answer in HomeRoom only. It does not execute an outside action. Confirm only if the proposal contains the full action, cost and audience you intend.",13.5f,C.text))})
         body.addStacked(button(context,"Confirm answer",true) {confirm()})
         body.addStacked(button(context,"Cancel",false) {host.onBackPressedDispatcher.onBackPressed()})
     }
