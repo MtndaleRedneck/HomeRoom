@@ -58,6 +58,12 @@ internal class SetupChecklist(savedConnection:Boolean=false) {
                 ended=true
                 set(SetupStep.SIGN_IN,"Needs attention","This saved sign-in is no longer accepted.","Get a fresh connection link.")
                 set(SetupStep.ROOMS,"Waiting")
+                // fp66c/Gemini: a 401 from the enroll request itself arrives as a
+                // plain SessionEndedException (not ApiException), so the status
+                // branch above never ran and SERVER would sit on "Checking"
+                // forever. Mark it Not confirmed only when still Checking; a
+                // SERVER already Passed stays Passed. Pre-existing 1.8 gap.
+                if(checks[SetupStep.SERVER]?.state=="Checking")set(SetupStep.SERVER,"Not confirmed","The phone could not confirm a response from the server.","Check your internet connection and server address.")
             } else if(stage==SetupStep.ROOMS) {
                 set(SetupStep.ROOMS,"Not confirmed","Your sign-in was accepted, but rooms did not load.","Tap Retry room loading. Your link will not be sent again.")
             } else if(api?.code in listOf("enrollment_expired","enrollment_used")) {

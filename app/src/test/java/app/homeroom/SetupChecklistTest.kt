@@ -105,4 +105,28 @@ class SetupChecklistTest {
             assertEquals(1,submits);assertFalse(c.ready)
         }
     }
+
+    @Test fun enroll401ClearsServerCheckingAndPreservesEndedSemantics()=runBlocking {
+        // Regression (fp66c/Gemini): a 401 from the enroll request itself is a
+        // plain SessionEndedException, not an ApiException, so the status
+        // branch never ran and SERVER stayed "Checking" forever (pre-existing
+        // 1.8 gap). Ended ordering must stay: SIGN_IN Needs attention, ROOMS
+        // Waiting, no resubmit, and a SERVER that already Passed stays Passed.
+        val c=SetupChecklist();var submits=0
+        c.connect(true,{submits++;throw SessionEndedException("owner_session_required")},{fail("resumed")},{fail("rooms")},{})
+        assertTrue(c.ended);assertFalse(c.ready);assertFalse(c.busy)
+        assertEquals("Not confirmed",c.checks[SetupStep.SERVER]?.state)
+        assertEquals("Needs attention",c.checks[SetupStep.SIGN_IN]?.state)
+        assertEquals("Waiting",c.checks[SetupStep.ROOMS]?.state)
+        c.connect(true,{submits++},{},{},{})
+        assertEquals(1,submits)
+        // Saved-session path: the server answered before the 401, so SERVER
+        // Passed must survive the ended branch.
+        val c2=SetupChecklist(savedConnection=true)
+        c2.connect(true,{fail("no enroll")},{throw SessionEndedException("owner_session_required")},{fail("rooms")},{})
+        assertTrue(c2.ended)
+        assertEquals("Passed",c2.checks[SetupStep.SERVER]?.state)
+        assertEquals("Needs attention",c2.checks[SetupStep.SIGN_IN]?.state)
+        assertEquals("Waiting",c2.checks[SetupStep.ROOMS]?.state)
+    }
 }
