@@ -89,12 +89,16 @@ internal class DecisionConfirmScreen(context:Context,private val card:DecisionCa
                     ReceiptOutcome.Unverified -> snack(this@DecisionConfirmScreen,"The server's reply could not be verified for this answer. It may or may not be recorded. Check the decision before choosing again.")
                 }
             } catch(e:SessionEndedException) {host.onSessionEnded(e)}
-            catch(e:ApiException) when(confirmFailure(e.status,e.code)!=ConfirmFailure.Unknown) {
-                // Definitive server replies (captured contract): shown as a persistent card, no retry loop.
-                done=true
+            catch(e:ApiException) {
                 val kind=confirmFailure(e.status,e.code)
-                val card2=failureCard(context,kind)
-                body.removeAllViews();body.addCard(card2)
+                if(kind==ConfirmFailure.Unknown) {
+                    snack(this@DecisionConfirmScreen,"Couldn't confirm whether the answer was recorded. Tap Confirm answer again to check (same answer identity), or check the decision before choosing again.")
+                } else {
+                    // Definitive server replies (captured contract): card built first, shown persistently, no retry loop.
+                    val failed=failureCard(context,kind)
+                    done=true
+                    body.removeAllViews();body.addCard(failed)
+                }
             }
             catch(_:Exception) {snack(this@DecisionConfirmScreen,"Couldn't confirm whether the answer was recorded. Tap Confirm answer again to check (same answer identity), or check the decision before choosing again.")}
             finally {busy=false}
