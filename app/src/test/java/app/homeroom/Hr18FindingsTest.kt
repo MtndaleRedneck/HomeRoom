@@ -42,14 +42,18 @@ class Hr18FindingsTest {
         assertTrue(MainActivity.isForeground)
     }
 
-    // 1b. Enrollment finishing while backgrounded is not stranded: Main shows on the next resume.
+    // 1b. Enrollment finishing while the app is stopped is not stranded: onEnrolled defers, the next resume shows Main.
     @Test fun backgroundEnrollShowsMainOnResume() {
         val c=start()
         val a=c.get()
         c.pause().stop()
-        field(a,"pendingShowMain").setBoolean(a,true)
+        a.onEnrolled()
+        val flag=field(a,"pendingShowMain")
+        var n=0
+        while(!flag.getBoolean(a) && n++<100) {shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100));Thread.sleep(50)}
+        assertTrue("deferred while stopped",flag.getBoolean(a))
         c.start().resume()
-        assertFalse(field(a,"pendingShowMain").getBoolean(a))
+        assertFalse("consumed on resume",flag.getBoolean(a))
     }
 
     // 3a. With the lock on, every tracked dialog is closed before the cover goes up; with it off they stay.
@@ -94,17 +98,20 @@ class Hr18FindingsTest {
         assertNull(a.retained.pendingShare)
     }
 
-    // 4. Manual update: busy is released for install(), and a second check is still ignored while one runs.
-    @Test fun manualCheckReleasesBusyOnlyForInstall() {
+    // 4. Manual check that finds an update hands the download to install() with the guard released (old code held busy and install returned early).
+    @Test fun manualCheckHandsInstallAReleasedGuard() {
         val busy=UpdateCheck::class.java.getDeclaredField("busy").apply {isAccessible=true}
-        val inst=UpdateCheck
-        busy.setBoolean(inst,true)
+        val c=start();val a=c.get()
+        var busyAtInstall:Boolean?=null
+        UpdateCheck.fetchOverride={UpdateCheck.Release("v99.0",null,null,null)}
+        UpdateCheck.installOverride={_,_->busyAtInstall=busy.getBoolean(null)}
         try {
-            val c=start();val a=c.get()
-            var called=0
-            UpdateCheck.checkManually(a,a.scope,a.session) {called++}
-            assertEquals("a running check blocks a second one",0,called)
-        } finally {busy.setBoolean(inst,false)}
+            UpdateCheck.checkManually(a,a.scope,a.session) {}
+            var n=0
+            while(busyAtInstall==null && n++<100) {shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50));Thread.sleep(20)}
+            assertEquals("install() saw busy=false",false,busyAtInstall)
+            assertFalse("guard is free afterwards",busy.getBoolean(null))
+        } finally {UpdateCheck.fetchOverride=null;UpdateCheck.installOverride=null;busy.setBoolean(null,false)}
     }
 
     // 5. Feedback id: same text keeps its id, new text or a confirmed send gets a new one.
@@ -121,5 +128,30 @@ class Hr18FindingsTest {
         // Confirmed success clears it.
         a.retained.feedbackClientId=null;a.retained.feedbackSentText=null
         assertNotEquals(kept,m.invoke(s,"second"))
+    }
+
+    // 5b. The real send path: an edit made while the request is in flight survives a confirmed send, and the confirmed identity is retired.
+    @Test fun feedbackSendKeepsEditsMadeInFlight() {
+        val cert=okhttp3.tls.HeldCertificate.Builder().addSubjectAlternativeName("localhost").build()
+        val server=okhttp3.mockwebserver.MockWebServer();server.useHttps(okhttp3.tls.HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory(),false);server.start()
+        val trust=okhttp3.tls.HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
+        try {
+            val c=start();val a=c.get()
+            a.session.serverUrl=server.url("/").toString().trimEnd('/')
+            a.api=ApiClient(a.session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(5,java.util.concurrent.TimeUnit.SECONDS)}
+            server.enqueue(okhttp3.mockwebserver.MockResponse().setBody("{}").setBodyDelay(600,java.util.concurrent.TimeUnit.MILLISECONDS))
+            val s=FeedbackScreen(a)
+            val edit=field(s,"editRef").get(s) as android.widget.EditText
+            edit.setText("first report")
+            val send=s.javaClass.getDeclaredMethod("send",android.widget.EditText::class.java).apply {isAccessible=true}
+            send.invoke(s,edit)
+            edit.setText("second report typed while sending")
+            val req=server.takeRequest(5,java.util.concurrent.TimeUnit.SECONDS)!!
+            assertTrue(req.body.readUtf8().contains("client_id"))
+            var n=0
+            while(a.retained.feedbackClientId!=null && n++<100) {shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100));Thread.sleep(50)}
+            assertNull("confirmed report's identity retired",a.retained.feedbackClientId)
+            assertEquals("edit made in flight is kept","second report typed while sending",edit.text.toString())
+        } finally {server.shutdown()}
     }
 }

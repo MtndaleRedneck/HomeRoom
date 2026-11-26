@@ -101,7 +101,8 @@ object UpdateCheck {
                         onMessage("Update "+r.tag+" available.")
                         // The check is over: release the guard so install() owns it (and keeps its own duplicate protection) for the download.
                         busy=false;handedToInstall=true
-                        install(activity,scope)
+                        val io=installOverride
+                        if(io!=null) io(activity,scope) else install(activity,scope)
                     }
                     else onMessage("HomeRoom is up to date.")
                 }
@@ -132,9 +133,12 @@ object UpdateCheck {
         setState(if(isNewer(r.tag,BuildConfig.VERSION_NAME)) State.AVAILABLE else State.UP_TO_DATE)
     }
 
-    private data class Release(val tag:String,val apk:String?,val sha256:String?,val notes:String?)
+    internal data class Release(val tag:String,val apk:String?,val sha256:String?,val notes:String?)
 
-    private suspend fun fetch():Release? = withContext(Dispatchers.IO) {
+    /** Test seams (null in production): replace the network check and the installer. */
+    internal var fetchOverride:(suspend ()->Release?)?=null
+    internal var installOverride:((Activity,CoroutineScope)->Unit)?=null
+    private suspend fun fetch():Release? = fetchOverride?.invoke() ?: withContext(Dispatchers.IO) {
         try {
             val req=Request.Builder().url(BuildConfig.UPDATE_API_OVERRIDE.ifEmpty {LATEST_RELEASE_API}).header("Accept","application/vnd.github+json").header("User-Agent","HomeRoom-Android").build()
             client.newCall(req).execute().use {resp ->
