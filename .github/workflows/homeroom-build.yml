@@ -15,6 +15,11 @@ name: homeroom-build
 
 on:
   workflow_dispatch:
+    inputs:
+      only_interaction:
+        description: "Run only the debug-interaction job (evidence re-run for CI-only fixture changes)"
+        type: boolean
+        default: false
   push:
     # Temporary measure so this branch-only workflow can be triggered without
     # touching the default branch; only the temp CI branch ever pushes match.
@@ -25,6 +30,7 @@ on:
 
 jobs:
   unit-tests:
+    if: ${{ !inputs.only_interaction }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +70,7 @@ jobs:
           retention-days: 14
 
   verify-build:
+    if: ${{ !inputs.only_interaction }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +97,7 @@ jobs:
           fi
 
   unsigned-release-artifact:
+    if: ${{ !inputs.only_interaction }}
     # Builds the UNSIGNED release intermediate for the local vault-signing
     # verification lane. Explicit opt-in only (-PhrAllowUnsignedRelease); the
     # guard stays fail-closed by default. Output is conspicuously marked
@@ -128,6 +136,7 @@ jobs:
           retention-days: 5
 
   debug-smoke:
+    if: ${{ !inputs.only_interaction }}
     # Functional smoke on an emulator using the DEBUG variant (auto debug
     # signing, no keystore material needed). This is a QUALIFIED smoke - same
     # sources/resources, but not the minified/signed release bytes - and is
@@ -258,6 +267,7 @@ jobs:
           if-no-files-found: warn
 
   release-runtime-smoke:
+    if: ${{ !inputs.only_interaction }}
     # Runtime qualification for the RELEASE packaging (R8-minified, shrunk
     # resources): the unsigned intermediate from unsigned-release-artifact is
     # signed IN CI with a THROWAWAY debug key (never the release signer, no
