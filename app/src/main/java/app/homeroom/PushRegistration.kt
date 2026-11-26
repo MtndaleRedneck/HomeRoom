@@ -48,17 +48,22 @@ object PushRegistration {
     fun sync(scope: CoroutineScope, session: Session, api: ApiClient) {
         if (!session.enrolled || PushTokenDeletion.pending) return
         val gen = session.authSnapshot().generation
+        fetchToken { fresh ->
+            if (!session.enrolled || session.authSnapshot().generation != gen || PushTokenDeletion.pending) return@fetchToken
+            if (!fresh.isNullOrBlank() && session.fcmToken != fresh) session.fcmToken = fresh
+            register(scope, session, api) // exactly one POST: the fresh token if FCM issued one, else the stored one
+        }
+    }
+
+    /** Test seam (null in production): replaces the FCM token fetch; reports null when unavailable. */
+    internal var tokenFetcher: (((String?) -> Unit) -> Unit)? = null
+    private fun fetchToken(done: (String?) -> Unit) {
+        val f = tokenFetcher
+        if (f != null) { f(done); return }
         try {
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token
-                .addOnCompleteListener { task ->
-                    if (!session.enrolled || session.authSnapshot().generation != gen || PushTokenDeletion.pending) return@addOnCompleteListener
-                    val fresh = if (task.isSuccessful) task.result else null
-                    if (!fresh.isNullOrBlank() && session.fcmToken != fresh) session.fcmToken = fresh
-                    register(scope, session, api) // exactly one POST: the fresh token if FCM issued one, else the stored one
-                }
-        } catch (_: Exception) {
-            register(scope, session, api) // Firebase unavailable: the stored token still registers
-        }
+                .addOnCompleteListener { task -> done(if (task.isSuccessful) task.result else null) }
+        } catch (_: Exception) { done(null) } // Firebase unavailable: the stored token still registers
     }
 
     fun refreshToken(scope: CoroutineScope, session: Session, api: ApiClient) {

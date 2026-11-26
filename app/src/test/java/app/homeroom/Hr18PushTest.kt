@@ -27,8 +27,8 @@ class Hr18PushTest {
         val trust=HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
         val session=Session(org.robolectric.RuntimeEnvironment.getApplication());session.clear();session.serverUrl=server.url("/").toString().trimEnd('/')
         val api=ApiClient(session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(1,TimeUnit.SECONDS)}
-        pending(false)
-        try {block(server,api,session)}finally {pending(false);server.shutdown();session.clear()}
+        pending(false);PushRegistration.tokenFetcher={done->done(null)} // deterministic: FCM unavailable unless a test says otherwise
+        try {block(server,api,session)}finally {pending(false);PushRegistration.tokenFetcher=null;PushTokenDeletion.deleteTokenOp=null;PushTokenDeletion.onCompleted=null;server.shutdown();session.clear()}
     }
     private fun enroll(s:Session) {s.ownerId="ezzy";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)}
     private fun scope()=CoroutineScope(Dispatchers.IO)
@@ -60,6 +60,7 @@ class Hr18PushTest {
         val held=object:CoroutineDispatcher() {override fun dispatch(context:CoroutineContext,block:Runnable) {queue.add(block)}}
         PushRegistration.register(CoroutineScope(held),session,api)
         session.clear()
+        enroll(session) // enrolled again, so only the generation guard can stop the stale call
         queue.toList().forEach {it.run()}
         assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
         assertNull(session.fcmRegisteredToken)
@@ -84,6 +85,59 @@ class Hr18PushTest {
         pending(false)
         PushTokenDeletion.retryOnStart(app)
         assertTrue("pending reloaded from disk",PushTokenDeletion.pending)
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    // FCM issued a newer token than the stored one: exactly one POST, with the fresh token, which is also stored.
+    @Test fun syncRegistersFreshTokenOnceNotTheStoredOne()=fixture {server,api,session ->
+        enroll(session);session.fcmToken="tok-stored";server.enqueue(MockResponse().setBody("{}"))
+        PushRegistration.tokenFetcher={done->done("tok-fresh")}
+        PushRegistration.sync(scope(),session,api)
+        assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-fresh"))
+        assertNull("no second POST for the stored token",server.takeRequest(400,TimeUnit.MILLISECONDS))
+        assertEquals("tok-fresh",session.fcmToken)
+    }
+
+    // FCM unavailable: the stored token still registers, once.
+    @Test fun syncFallsBackToStoredTokenWhenFcmUnavailable()=fixture {server,api,session ->
+        enroll(session);session.fcmToken="tok-stored";server.enqueue(MockResponse().setBody("{}"))
+        PushRegistration.sync(scope(),session,api)
+        assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-stored"))
+        assertNull(server.takeRequest(400,TimeUnit.MILLISECONDS))
+    }
+
+    // A failed sign-out deletion stays pending; the retry (run at an enrolled start/enrolment) completes, clears only the RETIRED token
+    // (a newer one that arrived meanwhile survives) and reports completion so the fresh token registers with no restart.
+    @Test fun retryCompletesKeepsNewerTokenAndSignalsCompletion()=fixture {server,api,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        enroll(session);session.fcmToken="tok-retired";session.fcmRegisteredToken="tok-retired"
+        app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().putBoolean("pending",true).commit()
+        var completed=false
+        PushTokenDeletion.onCompleted={completed=true}
+        PushTokenDeletion.deleteTokenOp={done->
+            session.fcmToken="tok-newer" // FCM issued a new token while the deletion was completing
+            done(true)
+        }
+        PushTokenDeletion.retryOnStart(app)
+        assertFalse(PushTokenDeletion.pending);assertTrue(completed)
+        assertEquals("newer token survives","tok-newer",session.fcmToken)
+        assertNull("retired registration cleared",session.fcmRegisteredToken)
+        assertFalse(app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).getBoolean("pending",false))
+        // Pending is clear, so sync registers the newer token now.
+        server.enqueue(MockResponse().setBody("{}"))
+        PushRegistration.sync(scope(),session,api)
+        assertTrue(server.takeRequest(5,TimeUnit.SECONDS)!!.body.readUtf8().contains("tok-newer"))
+    }
+
+    // A deletion that fails stays pending (and persisted) for the next retry.
+    @Test fun failedDeletionStaysPending()=fixture {_,_,session ->
+        val app=org.robolectric.RuntimeEnvironment.getApplication()
+        session.fcmToken="tok-x"
+        PushTokenDeletion.deleteTokenOp={done->done(false)}
+        PushTokenDeletion.request(app)
+        assertTrue(PushTokenDeletion.pending)
+        assertEquals("token untouched on failure","tok-x",session.fcmToken)
+        assertTrue(app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).getBoolean("pending",false))
         app.getSharedPreferences("push_token_cleanup",android.content.Context.MODE_PRIVATE).edit().clear().commit()
     }
 }
