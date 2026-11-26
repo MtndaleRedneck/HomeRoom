@@ -137,5 +137,62 @@ while IFS= read -r line; do grep -qxF "$line" "$EV/map-new.txt" || fail "seeded 
 adb logcat -d -b crash > "$EV/crash-new.txt" || fail "cannot read the crash buffer"
 if grep -q "Process: $PKG" "$EV/crash-new.txt"; then fail "crash of $PKG after the 1.8 launch (see crash-new.txt)"; fi
 log "crash buffer since the 1.8 launch: $(wc -l < "$EV/crash-new.txt") lines, none for $PKG"
+# 6) Targeted runtime checks on the SIGNED candidate (harness-only, emulator-only credential; cleartext/manifest untouched).
+#    Seeded session = enrolled but unreachable server (seed.invalid): connected share/update success is NOT exercised here.
+SEC6="$EV/signed-paths.log"; : > "$SEC6"
+s6() { echo "$*" | tee -a "$SEC6" | tee -a "$EV/proof.log" >/dev/null; }
+no_label() { if grep -qF "text=\"$2\"" "$EV/$1.xml"; then fail "$1: label \"$2\" must NOT be on screen"; fi; }
+qlaunch() { adb shell am start -n "$PKG/.MainActivity" >/dev/null; sleep 10; adb shell input keyevent KEYCODE_WAKEUP; sleep 2; }
+enter_pin() { sleep 4; adb shell input text 1234; sleep 1; adb shell input keyevent 66; sleep 5; }
+unlock_app() { tap_text "Unlock" || fail "lock cover has no Unlock button"; enter_pin; }
+adb shell locksettings set-pin 1234 >/dev/null 2>&1 || fail "emulator PIN setup failed"
+adb shell locksettings get-disabled | tr -d '\r' | tee -a "$SEC6" >/dev/null || true
+s6 "emulator PIN set (emulator-only, harness)"
+adb shell am force-stop "$PKG"
+printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' '<map>' \
+  '<boolean name="hide_previews" value="true" />' '<boolean name="hide_recents" value="false" />' '<boolean name="lock" value="true" />' '</map>' > app_privacy_lock.xml
+adb push app_privacy_lock.xml /data/local/tmp/app_privacy.xml >/dev/null
+adb shell "cp /data/local/tmp/app_privacy.xml /data/data/$PKG/shared_prefs/app_privacy.xml && chown $OWN /data/data/$PKG/shared_prefs/app_privacy.xml && chmod 660 /data/data/$PKG/shared_prefs/app_privacy.xml; restorecon /data/data/$PKG/shared_prefs/app_privacy.xml"
+adb logcat -b crash -c
+# 6a lock on at cold start: cover shown, app content hidden
+qlaunch; shot lock-cold
+has_label lock-cold "HomeRoom is locked"; no_label lock-cold "Rooms"
+s6 "6a PASS: lock=true cold start shows cover 'HomeRoom is locked', tab label Rooms hidden"
+# 6b unlock with the emulator PIN: cover gone, content back
+unlock_app; shot lock-unlocked
+no_label lock-unlocked "HomeRoom is locked"; has_label lock-unlocked "Rooms"
+s6 "6b PASS: PIN unlock removes the cover and shows Rooms"
+# 6c background then return: relocks
+adb shell input keyevent KEYCODE_HOME; sleep 3; qlaunch; shot lock-relock
+has_label lock-relock "HomeRoom is locked"; no_label lock-relock "Rooms"
+s6 "6c PASS: HOME then return shows the cover again"
+# 6d share while LOCKED: cover stays, nothing delivered before unlock
+adb shell am start -a android.intent.action.SEND -t text/plain --eu android.intent.extra.STREAM content://media/external/file/1 -n "$PKG/.MainActivity" >/dev/null; sleep 6
+shot share-locked
+has_label share-locked "HomeRoom is locked"
+s6 "6d PASS: ACTION_SEND while locked keeps the cover up"
+# 6e after unlock the queued share is delivered: no room is loaded (seed.invalid), so the app must say so (toast text if the dump caught it)
+unlock_app; adb shell uiautomator dump /sdcard/t.xml >/dev/null 2>&1; adb pull /sdcard/t.xml "$EV/share-after-unlock.xml" >/dev/null 2>&1 || true
+adb exec-out screencap -p > "$EV/share-after-unlock.png"
+no_label share-after-unlock "HomeRoom is locked"
+if grep -qF "Open your room list before sharing a file." "$EV/share-after-unlock.xml"; then s6 "6e PASS: after unlock the pending share showed the 'Open your room list before sharing a file.' message"; else s6 "6e PARTIAL: cover removed after unlock; share toast text NOT captured in the UI dump (toast may have expired), delivery not proven"; fi
+# 6f share while UNLOCKED (new intent, app already unlocked)
+adb shell am start -a android.intent.action.SEND -t text/plain --eu android.intent.extra.STREAM content://media/external/file/1 -n "$PKG/.MainActivity" >/dev/null; sleep 2
+adb shell uiautomator dump /sdcard/t2.xml >/dev/null 2>&1; adb pull /sdcard/t2.xml "$EV/share-unlocked.xml" >/dev/null 2>&1 || true
+adb exec-out screencap -p > "$EV/share-unlocked.png"
+no_label share-unlocked "HomeRoom is locked"
+if grep -qF "Open your room list before sharing a file." "$EV/share-unlocked.xml"; then s6 "6f PASS: unlocked share showed the 'Open your room list' message and no cover"; else s6 "6f PARTIAL: unlocked share left no cover; message text not captured"; fi
+# 6g Updates card with the server unreachable: shows version, check does not crash or invent an update
+sleep 4; shot upd-0
+tap_text "Settings" || fail "Settings tab not found after unlock"; sleep 4
+for i in 1 2 3 4 5 6; do adb shell input swipe 360 1300 360 400 300; sleep 1; done
+shot upd-1
+has_label upd-1 "Version 1.8"
+if tap_text "Check for updates"; then sleep 8; shot upd-2; if grep -qF "Couldn't check. Try again." "$EV/upd-2.xml"; then s6 "6g PASS: Check for updates reported \"Couldn't check. Try again.\"; version row Version 1.8 shown"; elif grep -qE "is available|Up to date" "$EV/upd-2.xml"; then s6 "6g INFO: update check reached a release (network): see upd-2.png; version row Version 1.8 shown"; else s6 "6g PARTIAL: Check tapped, outcome text not recognised (see upd-2.png)"; fi; else s6 "6g PARTIAL: Check for updates button not found after scroll (see upd-1.png); Version 1.8 shown"; fi
+adb logcat -d -b crash > "$EV/crash-signed-paths.txt" || fail "cannot read the crash buffer"
+if grep -q "Process: $PKG" "$EV/crash-signed-paths.txt"; then fail "crash of $PKG during signed-path checks (crash-signed-paths.txt)"; fi
+s6 "crash buffer during 6a-6g: none for $PKG. Connected share/update success: NOT exercised (seed.invalid)."
+adb shell locksettings clear --old 1234 >/dev/null 2>&1 || true
+
 adb shell cmd uimode night auto
 log "PASS: 1.7(12) -> 1.8(13) in place; same firstInstallTime; seeded values preserved; installed bytes == candidate; signer unchanged"
