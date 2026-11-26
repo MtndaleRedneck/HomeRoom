@@ -66,7 +66,7 @@ jobs:
           github-token: ${{ github.token }}
           path: in
 
-      - name: Rebuild the signed 1.7 from unsigned + delta, fetch the published 1.6 (all hash-pinned)
+      - name: Rebuild the signed 1.8 from unsigned + delta, fetch the published 1.7 (all hash-pinned)
         run: |
           set -euo pipefail
           test "$(tr -d '[:space:]' < in/source-commit.txt)" = "$EXPECTED_HEAD" || { echo "artifact source-commit != expected head"; exit 1; }

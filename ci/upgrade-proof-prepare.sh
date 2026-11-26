@@ -19,15 +19,15 @@ echo "$UNSIGNED_SHA256  $UNS" | sha256sum -c -
 echo "$ALIGNED_SHA256  $OUT/aligned.apk" | sha256sum -c -
 pip install --quiet bsdiff4==1.4.4
 printf '%s' "$PATCH_B64" | base64 -d > "$OUT/sig.patch"
-python3 -c "import bsdiff4; bsdiff4.file_patch('$OUT/aligned.apk', '$OUT/HomeRoom-1.7-signed.apk', '$OUT/sig.patch')"
-echo "$SIGNED_SHA256  $OUT/HomeRoom-1.7-signed.apk" | sha256sum -c -
-CERT=$("$BT/apksigner" verify --print-certs "$OUT/HomeRoom-1.7-signed.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-[ "$CERT" = "$TRUSTED_CERT" ] || { echo "ASSERT FAIL: 1.7 signer $CERT"; exit 1; }
-"$BT/aapt2" dump badging "$OUT/HomeRoom-1.7-signed.apk" | head -1 | grep -q "name='app.homeroom' versionCode='12' versionName='1.7'" || { echo "ASSERT FAIL: 1.7 package/version"; exit 1; }
+python3 -c "import bsdiff4; bsdiff4.file_patch('$OUT/aligned.apk', '$OUT/HomeRoom-1.8-signed.apk', '$OUT/sig.patch')"
+echo "$SIGNED_SHA256  $OUT/HomeRoom-1.8-signed.apk" | sha256sum -c -
+CERT=$("$BT/apksigner" verify --print-certs "$OUT/HomeRoom-1.8-signed.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+[ "$CERT" = "$TRUSTED_CERT" ] || { echo "ASSERT FAIL: 1.8 signer $CERT"; exit 1; }
+"$BT/aapt2" dump badging "$OUT/HomeRoom-1.8-signed.apk" | head -1 | grep -q "name='app.homeroom' versionCode='13' versionName='1.8'" || { echo "ASSERT FAIL: 1.8 package/version"; exit 1; }
 
-curl -sfL -o "$OUT/HomeRoom-1.6.apk" https://github.com/MtndaleRedneck/HomeRoom/releases/download/v1.6/HomeRoom-1.6.apk
-echo "d2b5cf2af7533171e29aee90cacf64c10a78e80530f8a45c21647ce15a17ae2a  $OUT/HomeRoom-1.6.apk" | sha256sum -c -
-"$BT/aapt2" dump badging "$OUT/HomeRoom-1.6.apk" | head -1 | grep -q "name='app.homeroom' versionCode='11' versionName='1.6'" || { echo "ASSERT FAIL: 1.6 package/version"; exit 1; }
-C16=$("$BT/apksigner" verify --print-certs "$OUT/HomeRoom-1.6.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-[ "$C16" = "$TRUSTED_CERT" ] || { echo "ASSERT FAIL: 1.6 signer $C16"; exit 1; }
-echo "prepared: 1.7 signed $SIGNED_SHA256 (cert $CERT, versionCode 12); 1.6 published d2b5cf2a... (cert $C16, versionCode 11)"
+curl -sfL -o "$OUT/HomeRoom-1.7.apk" https://github.com/MtndaleRedneck/HomeRoom/releases/download/v1.7/HomeRoom-1.7.apk
+echo "238bc7558cc29c91959975e41e9f2a5e0a3a7ebad3c0a28c7066c90e062b9fa1  $OUT/HomeRoom-1.7.apk" | sha256sum -c -
+"$BT/aapt2" dump badging "$OUT/HomeRoom-1.7.apk" | head -1 | grep -q "name='app.homeroom' versionCode='12' versionName='1.7'" || { echo "ASSERT FAIL: 1.7 package/version"; exit 1; }
+C17=$("$BT/apksigner" verify --print-certs "$OUT/HomeRoom-1.7.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+[ "$C17" = "$TRUSTED_CERT" ] || { echo "ASSERT FAIL: 1.7 signer $C17"; exit 1; }
+echo "prepared: 1.8 signed $SIGNED_SHA256 (cert $CERT, versionCode 13); 1.7 published 238bc755... (cert $C17, versionCode 12)"
