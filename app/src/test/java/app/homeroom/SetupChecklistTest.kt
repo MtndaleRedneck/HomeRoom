@@ -111,22 +111,36 @@ class SetupChecklistTest {
         // plain SessionEndedException, not an ApiException, so the status
         // branch never ran and SERVER stayed "Checking" forever (pre-existing
         // 1.8 gap). Ended ordering must stay: SIGN_IN Needs attention, ROOMS
-        // Waiting, no resubmit, and a SERVER that already Passed stays Passed.
+        // Waiting, no resubmit. Throw sites are ambiguous (mostly HTTP 401,
+        // but ApiClient also throws locally on a blank saved cookie), so the
+        // stuck SERVER becomes "Not confirmed" with non-network-blaming copy.
         val c=SetupChecklist();var submits=0
         c.connect(true,{submits++;throw SessionEndedException("owner_session_required")},{fail("resumed")},{fail("rooms")},{})
         assertTrue(c.ended);assertFalse(c.ready);assertFalse(c.busy)
         assertEquals("Not confirmed",c.checks[SetupStep.SERVER]?.state)
+        assertTrue(c.checks[SetupStep.SERVER]!!.detail.contains("could not confirm the saved sign-in"))
         assertEquals("Needs attention",c.checks[SetupStep.SIGN_IN]?.state)
         assertEquals("Waiting",c.checks[SetupStep.ROOMS]?.state)
         c.connect(true,{submits++},{},{},{})
         assertEquals(1,submits)
-        // Saved-session path: the server answered before the 401, so SERVER
-        // Passed must survive the ended branch.
-        val c2=SetupChecklist(savedConnection=true)
-        c2.connect(true,{fail("no enroll")},{throw SessionEndedException("owner_session_required")},{fail("rooms")},{})
+        // Guard: a SERVER that already Passed (sign-in accepted, rooms load
+        // then 401s) must survive the ended branch untouched.
+        val c2=SetupChecklist()
+        c2.connect(true,{it()},{},{throw SessionEndedException("owner_session_required")},{})
         assertTrue(c2.ended)
         assertEquals("Passed",c2.checks[SetupStep.SERVER]?.state)
         assertEquals("Needs attention",c2.checks[SetupStep.SIGN_IN]?.state)
         assertEquals("Waiting",c2.checks[SetupStep.ROOMS]?.state)
+        // ApiException HTTP-response path: an actual HTTP answer (here 401)
+        // takes the status branch, so SERVER is Passed with the existing
+        // "server answered" copy; the ended condition needs api 401 AND an
+        // accepted session, so a fresh-link 401 falls to the generic branch
+        // and SIGN_IN is "Not confirmed", not ended.
+        val c3=SetupChecklist();var submits3=0
+        c3.connect(true,{submits3++;throw ApiException(401,"unauthorized")},{fail("resumed")},{fail("rooms")},{})
+        assertFalse(c3.ended)
+        assertEquals("Passed",c3.checks[SetupStep.SERVER]?.state)
+        assertTrue(c3.checks[SetupStep.SERVER]!!.detail.contains("The server answered"))
+        assertEquals("Not confirmed",c3.checks[SetupStep.SIGN_IN]?.state)
     }
 }
