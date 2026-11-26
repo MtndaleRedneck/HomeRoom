@@ -81,7 +81,7 @@ class Hr18FindingsTest {
             assertTrue(a.appLock.coverShowing)
             a.onNewIntent(shareIntent(a))
             assertNotNull("uri queued",a.retained.pendingShare)
-            assertTrue("no room names above the cover",showingDialogs().none {it.isShowing && it !== null && (it as? android.app.AlertDialog)?.listView?.count==1})
+            assertTrue("no dialog above the cover before unlock",showingDialogs().isEmpty())
             val unlock=a.appLock.javaClass.getDeclaredMethod("success").apply {isAccessible=true}
             unlock.invoke(a.appLock)
             assertNull("picker consumed the queue",a.retained.pendingShare)
