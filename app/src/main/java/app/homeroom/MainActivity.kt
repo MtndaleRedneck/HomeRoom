@@ -75,12 +75,13 @@ class MainActivity : AppCompatActivity() {
 
         header = LinearLayout(this).apply {
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(8), 0)
+            setPadding(dp(4), 0, dp(4), 0)
             setBackgroundColor(C.bg)
         }
         headerBack = iconButton(this, R.drawable.ic_arrow_back, C.text, "Back") { onBackPressedDispatcher.onBackPressed() }
         headerTitle = android.widget.TextView(this).apply {
             textSize = 20f
+            setPadding(dp(12), 0, 0, 0)
             setTextColor(C.text)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
@@ -103,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         header.addView(headerBack, LinearLayout.LayoutParams(dp(48), dp(48)))
         header.addView(headerTitle, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         header.addView(headerSearch, LinearLayout.LayoutParams(dp(48), dp(48)))
-        column.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(80)))
+        column.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(56)))
 
         content = FrameLayout(this)
         column.addView(content, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))

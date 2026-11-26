@@ -1,16 +1,12 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <!-- 1.7: Rules icon redrawn in the same outline family: -->
-         with the Rooms and new Files icons"): same outline family - rounded
-         corners, round caps/joins, matching stroke weight. -->
+    <!-- 1.8: checklist (rounded square, two ticked lines). Replaces the 1.7
+         folded-corner document; different silhouette (square, no fold). -->
     <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
         android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M8 3h6l4 4v12a2 2 0 0 1 -2 2H8a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2Z"/>
+        android:pathData="M6 3.5H18a2.5 2.5 0 0 1 2.5 2.5V18a2.5 2.5 0 0 1 -2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5Z"/>
     <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
         android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M14 3v4h4"/>
-    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M9.5 12.5h6M9.5 16.5h6"/>
+        android:pathData="M7.5 9l1.3 1.3L11 8M7.5 15l1.3 1.3L11 14M13.5 9.2h3.5M13.5 15.2h3.5"/>
 </vector>

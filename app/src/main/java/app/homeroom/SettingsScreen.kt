@@ -182,6 +182,9 @@ class SettingsScreen(context:Context):Screen(context) {
         line.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
         val trackOn=0x59fc8613.toInt()
         val sw=android.widget.Switch(context).apply {
+            thumbDrawable=android.graphics.drawable.InsetDrawable(android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(Color.WHITE);setSize(dp(24),dp(24))},dp(4))
+            trackDrawable=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.RECTANGLE;cornerRadius=dp(16).toFloat();setColor(Color.WHITE);setSize(dp(52),dp(32))}
+            showText=false
             isChecked=on
             thumbTintList=android.content.res.ColorStateList.valueOf(if(on) C.accent else C.disabled)
             trackTintList=android.content.res.ColorStateList.valueOf(if(on) trackOn else C.surfaceAlt)
