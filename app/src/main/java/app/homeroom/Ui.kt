@@ -120,23 +120,30 @@ fun tapHaptic(view: View) {
  * back on release or cancel. The haptic fires on the down, like BingeMote's
  * PressTile. Returns false from the touch listener so clicks still land.
  */
+private val pressAttachListeners = java.util.WeakHashMap<View, View.OnAttachStateChangeListener>()
+
 fun View.pressIn(haptic:Boolean=true) {
-    // The alpha a view had before the press (a disabled button sits at 0.6), so
-    // release restores THAT, not a hard-coded 1f.
+    // Installing twice on one view replaces the first install completely.
+    pressAttachListeners.remove(this)?.let { removeOnAttachStateChangeListener(it) }
+    // The view's resting alpha (a disabled button sits at 0.6). It is read only
+    // when no press or release animation is in flight, so a quick second tap
+    // during the 120 ms release cannot adopt an in-between alpha as "resting".
     var baseAlpha=1f
     var pressed=false
+    var releasing=false
     fun release(v:View) {
         if(!pressed) return
         pressed=false
-        v.animate().scaleX(1f).scaleY(1f).alpha(baseAlpha).setDuration(120).start()
+        releasing=true
+        v.animate().scaleX(1f).scaleY(1f).alpha(baseAlpha).setDuration(120).withEndAction { releasing=false }.start()
     }
     setOnTouchListener { v, ev ->
         when (ev.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> {
                 // Disabled (busy) views never buzz or sink.
                 if (v.isEnabled) {
+                    if (releasing) { v.animate().cancel(); releasing=false } else if (!pressed) baseAlpha=v.alpha
                     pressed=true
-                    baseAlpha=v.alpha
                     if (haptic) tapHaptic(v)
                     v.animate().scaleX(0.94f).scaleY(0.94f).alpha(baseAlpha*0.85f).setDuration(90).start()
                 }
@@ -147,12 +154,14 @@ fun View.pressIn(haptic:Boolean=true) {
     }
     // A view that is rebuilt, hidden or detached mid-hold never gets its UP:
     // snap it back so it cannot stay shrunk or dimmed.
-    addOnAttachStateChangeListener(object: View.OnAttachStateChangeListener {
+    val l=object: View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(v:View) {}
         override fun onViewDetachedFromWindow(v:View) {
-            if(pressed) {pressed=false;v.animate().cancel();v.scaleX=1f;v.scaleY=1f;v.alpha=baseAlpha}
+            if(pressed || releasing) {pressed=false;releasing=false;v.animate().cancel();v.scaleX=1f;v.scaleY=1f;v.alpha=baseAlpha}
         }
-    })
+    }
+    pressAttachListeners[this]=l
+    addOnAttachStateChangeListener(l)
 }
 
 fun snack(host: View, msg: CharSequence) {

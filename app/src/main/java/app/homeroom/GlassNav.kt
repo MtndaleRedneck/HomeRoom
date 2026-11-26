@@ -73,11 +73,16 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
             val inner = column(context).apply {
                 tag="inner"
                 gravity=Gravity.CENTER
-                setPadding(dp(10),dp(5),dp(10),dp(5))
+                setPadding(dp(4),dp(5),dp(4),dp(5))
             }
             inner.addView(ImageView(context).apply { setImageResource(icon) }, LinearLayout.LayoutParams(dp(22),dp(22)))
-            inner.addView(text(context,label,10.5f,C.muted,true), LinearLayout.LayoutParams(-2,-2))
-            cell.addView(inner, LinearLayout.LayoutParams(-1,-2).apply {leftMargin=dp(3);rightMargin=dp(3)})
+            // Whole label always: "Settings" must fit in a 60dp cell. The label follows the
+            // system font size up to 1.15x, then holds, so it is never cut or ellipsized.
+            inner.addView(text(context,label,10.5f,C.muted,true).apply {
+                maxLines=1
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,10.5f*resources.displayMetrics.density*minOf(resources.configuration.fontScale,1.15f))
+            }, LinearLayout.LayoutParams(-2,-2))
+            cell.addView(inner, LinearLayout.LayoutParams(-1,-2).apply {leftMargin=dp(1);rightMargin=dp(1)})
             cell.pressIn()
             items.addView(cell, LinearLayout.LayoutParams(0,-1,1f))
         }

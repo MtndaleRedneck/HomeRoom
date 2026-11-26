@@ -109,6 +109,8 @@ class V3RenderTest {
     // animation run to rest) drawn with its selection pill and badges.
     @Test fun navPressedStatePreview() {
         val(c,a)=activity()
+        // The REAL main shell on the Files tab (not the Connect screen).
+        a.javaClass.getDeclaredMethod("showMain").apply {isAccessible=true}.invoke(a)
         val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         val nav=field(a,"nav").get(a) as GlassNav
         nav.visibility=View.VISIBLE
@@ -136,6 +138,30 @@ class V3RenderTest {
         call(settings,"rebuild");render(a,settings,"Settings",R.id.nav_settings,"settings-font13")
         c.pause()
     }
+    // Settings scrolled to the very BOTTOM: the last card (Updates) must clear the floating nav.
+    private fun settingsBottom(name:String) {
+        val(c,a)=activity()
+        val settings=SettingsScreen(a);field(settings,"rooms").set(settings,rooms());field(settings,"devicesLoaded").set(settings,true);field(settings,"devices").set(settings,listOf(OwnerDevice("phone","This phone",null,null),OwnerDevice("browser","Browser",null,"2026-11-09T15:00:00Z")))
+        call(settings,"rebuild");render(a,settings,"Settings",R.id.nav_settings,"tmp-"+name)
+        val frame=a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+        val sv=settings.getChildAt(0) as ScrollView
+        val navV=field(a,"nav").get(a) as View
+        sv.scrollTo(0,sv.getChildAt(0).height)
+        frame.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(780,View.MeasureSpec.EXACTLY));frame.layout(0,0,360,780)
+        sv.scrollTo(0,sv.getChildAt(0).height)
+        val col=sv.getChildAt(0) as ViewGroup
+        val last=col.getChildAt(col.childCount-1)
+        val lastLoc=IntArray(2);last.getLocationInWindow(lastLoc)
+        val navLoc=IntArray(2);navV.getLocationInWindow(navLoc)
+        assertTrue("last Settings card clears the floating nav when scrolled to bottom: card bottom ${lastLoc[1]+last.height}, nav top ${navLoc[1]}",lastLoc[1]+last.height<=navLoc[1])
+        val bitmap=Bitmap.createBitmap(360,780,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);canvas.drawColor(C.bg);frame.draw(canvas)
+        val previewDir=System.getProperty("homeroom.previewDir") ?: "${System.getProperty("user.dir")}/build/previews"
+        File(previewDir).apply {mkdirs()}.resolve("v3-$name.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        c.pause()
+    }
+    @Test fun settingsScrolledToBottomClearsNav() = settingsBottom("settings-bottom")
+    @Test @Config(sdk=[34],qualifiers="w360dp-h780dp-mdpi",fontScale=1.3f)
+    fun settingsScrolledToBottomAtLargeFont() = settingsBottom("settings-bottom-font13")
     // Capture-under-lock gate (I2, Nov 24): while FLAG_SECURE or the lock
     // cover is up, the nav must not capture the content column into retained
     // buffers; transitions drop prior buffers and cancel posted runnables.
