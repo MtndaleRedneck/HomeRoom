@@ -19,7 +19,7 @@ object ApprovalNotifications {
         val ref=if(kind=="key_pending")data["key_id"] else data["rule_id"]
         if(ref.isNullOrBlank())return
         val open=PendingIntent.getActivity(context,0,Intent(context,MainActivity::class.java).setData(android.net.Uri.parse("homeroom://approval/"+android.net.Uri.encode(kind+":"+ref))).putExtra(EXTRA_PAGE,kind),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val b=NotificationCompat.Builder(context,channel).setSmallIcon(R.drawable.ic_notification).setContentTitle(if(kind=="key_pending")"AI key needs review" else "Rule needs your decision").setContentText("Open HomeRoom to review the current details.").setContentIntent(open).setAutoCancel(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        val b=NotificationCompat.Builder(context,channel).setSmallIcon(R.drawable.ic_notification).setContentTitle(if(kind=="key_pending")"AI key needs review" else "Rule needs your decision").setContentText("Open HomeRoom to review the current details.").setContentIntent(open).setAutoCancel(true).setVisibility(PrivacyPrefs.visibility(context))
             .setPublicVersion(NotificationCompat.Builder(context,channel).setSmallIcon(R.drawable.ic_notification).setContentTitle("HomeRoom").setContentText("Review needed").build())
         // TRUE private12 (HomeRoomMessagingService constant pool + full resource
         // table, Nov 24): the approval notification carries a single "Review"

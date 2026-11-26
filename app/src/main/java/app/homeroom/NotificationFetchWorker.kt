@@ -28,6 +28,8 @@ class NotificationFetchWorker(
         val eventId = inputData.getString(KEY_EVENT_ID) ?: return Result.success()
         val session = Session(applicationContext)
         if (!session.enrolled) return Result.success()
+        // Work queued under another session must not run with this session's credentials.
+        if (staleSession(inputData.getString(KEY_SESSION_ID), session.sessionId)) return Result.success()
         val startSessionId = session.sessionId
         val prefs = applicationContext.getSharedPreferences(
             HomeRoomMessagingService.PREFS_NAME, Context.MODE_PRIVATE
@@ -59,7 +61,7 @@ class NotificationFetchWorker(
                 .setSmallIcon(R.drawable.ic_chats)
                 .setContentTitle(sender)
                 .setContentText(preview)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setVisibility(PrivacyPrefs.visibility(applicationContext))
                 .setPublicVersion(publicVersion)
                 .setOnlyAlertOnce(true)
                 .setAutoCancel(true)
@@ -130,6 +132,8 @@ class NotificationFetchWorker(
         const val KEY_ROOM_ID = "room_id"
         const val KEY_EVENT_ID = "event_id"
         const val KEY_SESSION_ID = "session_id"
+        /** True when the work was queued under a session other than the current one (a missing queued id is an older enqueue: allowed). */
+        internal fun staleSession(queued: String?, current: String?): Boolean = queued != null && queued != current
         const val KEY_ENQUEUED_AT = "enqueued_at"
         private val roomLocks = ConcurrentHashMap<String, Any>()
     }

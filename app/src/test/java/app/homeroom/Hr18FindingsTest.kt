@@ -143,7 +143,7 @@ class Hr18FindingsTest {
         try {
             val c=start();val a=c.get()
             a.session.serverUrl=server.url("/").toString().trimEnd('/')
-            a.api=ApiClient(a.session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(5,java.util.concurrent.TimeUnit.SECONDS)}
+            MainActivity::class.java.getDeclaredField("api").apply {isAccessible=true}.set(a,ApiClient(a.session) {it.sslSocketFactory(trust.sslSocketFactory(),trust.trustManager).readTimeout(5,java.util.concurrent.TimeUnit.SECONDS)})
             server.enqueue(okhttp3.mockwebserver.MockResponse().setBody("{}").setBodyDelay(600,java.util.concurrent.TimeUnit.MILLISECONDS))
             val s=FeedbackScreen(a)
             val edit=field(s,"editRef").get(s) as android.widget.EditText
