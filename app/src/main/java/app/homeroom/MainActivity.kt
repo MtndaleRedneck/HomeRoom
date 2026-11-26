@@ -155,11 +155,13 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // Consume (and always clear) the draft kept across a system recreation, whatever the session state.
+        val restoredDraft = retained.feedbackDraft
+        retained.feedbackDraft = null
         if (session.enrolled) {
             showMain()
             // System recreation (font size change): put the Feedback page and its typed draft back.
-            retained.feedbackDraft?.let {draft ->
-                retained.feedbackDraft=null
+            restoredDraft?.let {draft ->
                 nav.selectedItemId = R.id.nav_settings
                 openPage("Feedback & bugs", FeedbackScreen(this).also {it.draft=draft})
             }
