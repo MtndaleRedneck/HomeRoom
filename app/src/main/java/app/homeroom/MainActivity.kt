@@ -78,15 +78,9 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(8), 0, dp(8), 0)
             setBackgroundColor(C.bg)
         }
-        headerBack = android.widget.TextView(this).apply {
-            text = "<"
-            textSize = 22f
-            setTextColor(C.accent)
-            setPadding(dp(8), dp(4), dp(16), dp(4))
-            setOnClickListener { onBackPressedDispatcher.onBackPressed() }
-        }
+        headerBack = iconButton(this, R.drawable.ic_arrow_back, C.text, "Back") { onBackPressedDispatcher.onBackPressed() }
         headerTitle = android.widget.TextView(this).apply {
-            textSize = 18f
+            textSize = 20f
             setTextColor(C.text)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
@@ -106,7 +100,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        header.addView(headerBack, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+        header.addView(headerBack, LinearLayout.LayoutParams(dp(48), dp(48)))
         header.addView(headerTitle, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         header.addView(headerSearch, LinearLayout.LayoutParams(dp(48), dp(48)))
         column.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(80)))

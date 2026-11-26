@@ -79,7 +79,7 @@ class RulesScreen(context:Context):Screen(context) {
             val cell=card()
             val header=LinearLayout(context).apply { gravity=Gravity.CENTER_VERTICAL }
             header.addView(text(context,"Proposed by "+actorName(rule.proposedBy)+" · v${rule.version}",13.5f,personColor(rule.proposedBy),true),LinearLayout.LayoutParams(0,-2,1f))
-            header.addView(text(context,"↶",20f,C.muted).apply { contentDescription="Version history";setPadding(dp(8),dp(8),dp(8),dp(8));setOnClickListener { history(rule) } })
+            header.addView(iconButton(context,R.drawable.ic_history,C.muted,"Version history") { history(rule) },LinearLayout.LayoutParams(dp(48),dp(48)))
             cell.addView(header)
             scope.active.firstOrNull { it.ruleId==rule.ruleId }?.let { old -> cell.addView(text(context,"Now: "+old.text,14f,C.muted),LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }) }
             cell.addView(text(context,rule.text,15.5f,C.text))

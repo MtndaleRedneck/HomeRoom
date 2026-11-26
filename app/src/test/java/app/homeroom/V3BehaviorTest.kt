@@ -76,7 +76,7 @@ class V3BehaviorTest {
         walk(col)
         val signout=texts.indexOf("Sign out")
         val feedback=texts.indexOf("Feedback & bugs")
-        val updates=texts.indexOf("Updates")
+        val updates=texts.indexOf("Check for updates") // 1.8: untitled Updates card, anchored on its button
         assertTrue("sign out present",signout>=0)
         assertTrue("feedback card present",feedback>=0)
         assertTrue("updates card present",updates>=0)
