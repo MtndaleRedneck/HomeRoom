@@ -65,7 +65,7 @@ class GlassNav(context: Context, private val behind: View, val choose: (Int) -> 
         addView(items, LayoutParams(-1,-1))
         tabs.forEach { (id,label,icon) ->
             val cell = column(context).apply { gravity=Gravity.CENTER; tag=id; contentDescription=label; setOnClickListener { selectedItemId=id } }
-            // 1.7 (Ezzy, Nov 25: "Fix the bottom bar. Button pressing in."):
+            // 1.7:
             // the selection pill now hugs the icon+label (an inner column with
             // its own padding) instead of filling the full-height cell, which
             // rendered as an oversized ball, and every tab press sinks in with
