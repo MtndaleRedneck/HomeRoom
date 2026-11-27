@@ -30,8 +30,8 @@ class V14Test {
         assertTrue(Mentions.ranges("@Twin",listOf("ai_1" to "Twin","ai_2" to "Twin")).isEmpty())
     }
     @Test fun deterministicActorColors() {
-        assertEquals(personColor("ai_one"),personColor("ai_one"))
-        assertNotEquals(C.muted,personColor("ai_one"))
+        assertEquals(personColor("ai_one", null),personColor("ai_one", null))
+        assertNotEquals(C.muted,personColor("ai_one", null))
     }
     @Test fun composerIsPerRoomAndClearsWithSession() {
         val ctx=org.robolectric.RuntimeEnvironment.getApplication()
