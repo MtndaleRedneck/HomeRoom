@@ -10,8 +10,8 @@ name: homeroom-build
 #   packaging when keystore files are absent, so this workflow can never
 #   produce an unsigned APK that looks like a deliverable.
 # - Minutes note: private-repo Actions minutes count against the account's
-#   included allowance. Dispatch deliberately, per the GitHub-minutes
-#   concern. Each run is expected to take roughly 5-10 minutes.
+#   included allowance. Dispatch deliberately, to limit GitHub minutes
+#   use. Each run is expected to take roughly 5-10 minutes.
 
 on:
   workflow_dispatch:
