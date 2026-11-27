@@ -686,7 +686,7 @@ class MainActivity : AppCompatActivity() {
         headerMeta.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second.ifBlank { it.first } } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
         for (member in room.members.take(6)) {
             headerMeta.addView(View(this).apply {
-                background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
+                background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first, session.ownerId)) }
             }, LinearLayout.LayoutParams(dp(7), dp(7)).apply { rightMargin = dp(3) })
         }
         val count = room.members.size
