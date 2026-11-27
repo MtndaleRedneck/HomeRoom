@@ -22,7 +22,7 @@ class Hr18FindingsTest {
         val c=Robolectric.buildActivity(MainActivity::class.java).setup()
         val a=c.get()
         field(a,"polling").setBoolean(a,false)
-        a.session.ownerId="ezzy";a.session.ownerName="Ezzy";a.session.serverUrl="https://ezzyhome.my.to";a.session.sessionId="phone"
+        a.session.ownerId="owner";a.session.ownerName="Owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
         a.session.cookie="test-cookie"
         return c
     }
