@@ -33,14 +33,14 @@ jobs:
     if: ${{ !inputs.only_interaction }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.9.2'
 
@@ -51,7 +51,7 @@ jobs:
       # verdicts are collectable evidence (console output carries none).
       - name: Upload unit-test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-results-${{ github.sha }}
           path: |
@@ -63,7 +63,7 @@ jobs:
       # only on failure (pixels decide the restored-layout review).
       - name: Upload preview renders
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: preview-renders-${{ github.sha }}
           path: app/build/previews/
@@ -73,14 +73,14 @@ jobs:
     if: ${{ !inputs.only_interaction }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.9.2'
 
@@ -104,14 +104,14 @@ jobs:
     # UNSIGNED and is never a deliverable.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.9.2'
 
@@ -126,7 +126,7 @@ jobs:
           sha256sum homeroom-1.5-reconstruction-UNSIGNED.apk | tee unsigned-sha256.txt
           git rev-parse HEAD | tee source-commit.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: unsigned-release-apk
           path: |
@@ -143,14 +143,14 @@ jobs:
     # never shipping proof.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.9.2'
 
@@ -251,7 +251,7 @@ jobs:
 
       - name: Upload smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-screenshot
           path: |
@@ -280,7 +280,7 @@ jobs:
     needs: unsigned-release-artifact
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: unsigned-release-apk
 
@@ -334,7 +334,7 @@ jobs:
 
       - name: Upload release smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-smoke-screenshot
           path: |
@@ -354,14 +354,14 @@ jobs:
     # usesCleartextTraffic="false" and carries no stub endpoint.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.9.2'
 
@@ -752,7 +752,7 @@ jobs:
 
       - name: Upload interaction evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: debug-interaction-evidence
           path: |
