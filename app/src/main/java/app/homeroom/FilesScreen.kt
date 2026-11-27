@@ -86,7 +86,7 @@ class FilesScreen(context:Context):Screen(context) {
                     val tile=FrameLayout(context).apply { background=rounded(C.surfaceAlt,dp(14).toFloat());clipToOutline=true;setOnClickListener { preview(file) };file.eventId?.let { setOnLongClickListener { showInChat(file);true } } }
                     val image=ImageView(context).apply { scaleType=ImageView.ScaleType.CENTER_CROP;contentDescription=file.name }
                     tile.addView(image,FrameLayout.LayoutParams(-1,-1))
-                    val dot=View(context).apply { background=rounded(personColor(file.uploader),dp(4).toFloat(),C.bg,dp(1.5f)) }
+                    val dot=View(context).apply { background=rounded(personColor(file.uploader,host.session.ownerId),dp(4).toFloat(),C.bg,dp(1.5f)) }
                     tile.addView(dot,FrameLayout.LayoutParams(dp(8),dp(8),Gravity.TOP or Gravity.RIGHT).apply {topMargin=dp(6);rightMargin=dp(6)})
                     grid.addView(tile,LinearLayout.LayoutParams(0,dp(104),1f).apply {rightMargin=dp(8)})
                     val current=generation
