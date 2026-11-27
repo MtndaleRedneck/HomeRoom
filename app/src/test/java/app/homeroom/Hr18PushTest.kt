@@ -31,7 +31,7 @@ class Hr18PushTest {
         pending(false);PushTokenDeletion.resync={};PushRegistration.tokenFetcher={done->done(null)} // deterministic: FCM unavailable unless a test says otherwise
         try {block(server,api,session)}finally {PushTokenDeletion.resetForTest();pending(false);PushRegistration.tokenFetcher=null;PushTokenDeletion.deleteTokenOp=null;PushTokenDeletion.onCompleted=null;server.shutdown();session.clear()}
     }
-    private fun enroll(s:Session) {s.ownerId="ezzy";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)}
+    private fun enroll(s:Session) {s.ownerId="owner";s.sessionId="phone";s.cookie="c";assertTrue(s.enrolled)}
     private fun scope()=CoroutineScope(Dispatchers.IO)
 
     // Token minted before enrollment, then enrollment completes: sync registers it (one POST, the stored token).
