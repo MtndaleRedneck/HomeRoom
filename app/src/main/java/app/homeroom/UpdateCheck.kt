@@ -46,8 +46,7 @@ object UpdateCheck {
     /** "v1.3" and "1.3" both read as "1.3". */
     fun displayVersion(tag:String)=tag.removePrefix("v").removePrefix("V")
 
-    // Agreed shared-rule timing (Ezzy Nov 23 "5-10 seconds. Guess 5",
-    // re-confirmed Nov 24; supersedes the Oct 21 ~20s note): after a check
+    // Agreed shared-rule timing (supersedes the Oct 21 ~20s note): after a check
     // finds nothing newer, "You're up to date." hides after 5 seconds and the
     // version display stays. Errors and new-version notices do NOT auto-hide.
     // The private12 binary itself has no timer; this is the agreed rule.
