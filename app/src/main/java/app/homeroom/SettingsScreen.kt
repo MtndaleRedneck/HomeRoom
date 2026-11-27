@@ -125,9 +125,9 @@ class SettingsScreen(context:Context):Screen(context) {
         // flow and are intentionally not offered (tracked gaps, not wired).
         // 1.7 (bring the Settings list in line with the other
         // apps): the shared bottom arrangement is Sign out, then a Feedback &
-        // bugs card, then the Updates card ALWAYS last. The
+        // bugs card, then the Updates card ALWAYS last (a locked rule; the
         // old order had Sign out below Updates, a known exception to
-        // fix on a later update.
+        // fix on a later update).
         val signout=text(context,"Sign out",14f,C.dangerText,true).apply {gravity=Gravity.CENTER;background=rounded(C.surface,dp(16).toFloat());pressIn();setOnClickListener {confirmSignOut()}}
         col.addView(signout,LinearLayout.LayoutParams(-1,dp(48)).apply {topMargin=dp(14)})
         val feedback=group("Feedback & bugs")
