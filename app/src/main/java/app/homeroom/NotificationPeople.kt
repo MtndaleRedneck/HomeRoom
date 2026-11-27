@@ -8,10 +8,10 @@ import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
 
 object NotificationPeople {
-    fun person(name:String,actor:String):Person {
+    fun person(name:String,actor:String,ownerId:String?):Person {
         val icon=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888)
         val canvas=Canvas(icon)
-        val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=personColor(actor)}
+        val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=personColor(actor,ownerId)}
         canvas.drawCircle(32f,32f,32f,paint)
         paint.color=C.bg;paint.textSize=30f;paint.textAlign=Paint.Align.CENTER
         canvas.drawText(name.take(1).uppercase(),32f,32f-(paint.ascent()+paint.descent())/2,paint)
