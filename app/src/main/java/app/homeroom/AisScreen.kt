@@ -71,7 +71,7 @@ class AisScreen(context:Context):Screen(context) {
         // 1.9 (owner-approved redesign): AI-color avatar with a status dot on
         // the corner (green linked, amber key waiting, muted otherwise).
         val picWrap=android.widget.FrameLayout(context)
-        val pic=Avatars.view(context,screenScope,host.api,a.displayName,personColor(a.actor),40,a.avatar).apply {
+        val pic=Avatars.view(context,screenScope,host.api,a.displayName,personColor(a.actor,host.session.ownerId),40,a.avatar).apply {
             contentDescription="Change picture for "+a.displayName;setOnClickListener {pictureDialog(a)}}
         picWrap.addView(pic,android.widget.FrameLayout.LayoutParams(dp(40),dp(40)))
         val dotColor=when(a.keyStatus) {"active" -> C.green;"pending" -> C.amber;else -> C.muted}
