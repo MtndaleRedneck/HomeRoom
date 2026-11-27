@@ -23,7 +23,7 @@ class NotificationRouteTest {
     private fun activity():MainActivity {
         val a=Robolectric.buildActivity(MainActivity::class.java).setup().get()
         field(a,"polling").setBoolean(a,false)
-        a.session.ownerId="ezzy";a.session.ownerName="Ezzy";a.session.serverUrl="https://ezzyhome.my.to";a.session.sessionId="phone"
+        a.session.ownerId="owner";a.session.ownerName="Owner";a.session.serverUrl="https://home-server.example";a.session.sessionId="phone"
         // enrolled requires serverUrl + cookie (Session.enrolled); without the
         // cookie the ROOM_ID gate drops the extra and no route is exercised.
         a.session.cookie="test-cookie"
