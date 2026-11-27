@@ -54,7 +54,7 @@ object C {
     val info get() = themed("#2aabee", "#09679d")
     val themedPink get() = themed("#e5577a", "#b02c59")
     // RECONSTRUCTED: the owner accent reuses the accent pair (release personColor
-    // maps owner/ezzy to the same accent color).
+    // maps both owner ids to the same accent color).
     val owner get() = accent
 }
 
@@ -254,7 +254,7 @@ fun accentFill(context: Context, radiusDp: Float): GradientDrawable =
         cornerRadius = context.dp(radiusDp.toInt()).toFloat()
     }
 
-// 1.7 (Ezzy, Nov 25: "Get haptic feedback. Button pressing in."): shared
+// 1.7: shared
 // press feedback, matching the BingeMote spec - taps buzz (gated by the saved
 // "Vibrate on press" setting), and pressed views sink to 0.94 and dim ~15%,
 // 90 ms down / 120 ms up.
@@ -400,14 +400,16 @@ fun errorCard(context: Context, message: String, onRetry: () -> Unit): LinearLay
 // RECONSTRUCTED Nov 23, 2026: person color, recovered exactly from the exact
 // private12 release build (ai_ actors hash into a six-color palette; named
 // special cases; everyone else muted).
-fun personColor(actor: String?): Int {
+fun personColor(actor: String?, ownerId: String?): Int {
     if (actor != null && actor.startsWith("ai_")) {
         val palette = intArrayOf(C.teal, C.violet, C.green, C.themedPink, C.info, C.amber)
         return palette[Math.floorMod(actor.hashCode(), 6)]
     }
+    // The signed-in owner's own actor id is the one the saved session holds, not a literal in source.
+    if (actor != null && !ownerId.isNullOrEmpty() && actor.equals(ownerId, ignoreCase = true)) return C.accent
     return when (actor?.lowercase()) {
         "instinct" -> C.violet
-        "owner", "ezzy" -> C.accent
+        "owner" -> C.accent
         "tab" -> C.teal
         else -> C.muted
     }
