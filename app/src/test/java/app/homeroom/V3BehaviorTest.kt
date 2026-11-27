@@ -57,7 +57,7 @@ class V3BehaviorTest {
         c.pause()
     }
     @Test fun settingsBottomOrderMatchesSharedLayout() {
-        // 1.7 locked shared layout (Ezzy, Nov 24/25): Sign out above the
+        // 1.7 locked shared layout: Sign out above the
         // Feedback & bugs card, the Updates card ALWAYS last, the version
         // inside the Updates card, and a Feel > Vibrate on press toggle.
         val c=Robolectric.buildActivity(MainActivity::class.java).setup();val a=c.get()
@@ -87,7 +87,7 @@ class V3BehaviorTest {
         c.pause()
     }
     @Test fun headerBoundsIdenticalAcrossRealTabSwitches() {
-        // Ezzy's exact-header requirement (Nov 25, applies to his apps): the
+        // Exact-header requirement: the
         // whole app shares ONE header container. Measure its ACTUAL laid-out
         // bounds after driving REAL tab switches (nav setter -> showTab), not
         // a dp constant. The header is never resized or animated by a switch,
@@ -238,7 +238,7 @@ class V3BehaviorTest {
         Haptics.set(ctx,true);assertTrue(Haptics.on(ctx))
     }
     @Test fun falseOwnIsNotInferredFromActorString() {
-        val event=ChatEvent.from(JSONObject("""{"actor":"ezzy","own":false}"""))
+        val event=ChatEvent.from(JSONObject("""{"actor":"owner","own":false}"""))
         assertFalse(event.own)
         assertTrue(ChatEvent.from(JSONObject("""{"actor":"other","own":true}""" )).own)
     }
