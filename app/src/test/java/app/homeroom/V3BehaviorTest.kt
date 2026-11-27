@@ -87,7 +87,7 @@ class V3BehaviorTest {
         c.pause()
     }
     @Test fun headerBoundsIdenticalAcrossRealTabSwitches() {
-        // The exact-header requirement: the
+        // Exact-header requirement: the
         // whole app shares ONE header container. Measure its ACTUAL laid-out
         // bounds after driving REAL tab switches (nav setter -> showTab), not
         // a dp constant. The header is never resized or animated by a switch,
