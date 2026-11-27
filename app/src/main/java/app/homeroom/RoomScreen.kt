@@ -743,7 +743,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
             val metaInk = if (row.own) C.onAccent else C.muted
 
             if (!row.own) {
-                bubble.addView(text(context, event.actorName, 12f, personColor(event.actorId), true))
+                bubble.addView(text(context, event.actorName, 12f, personColor(event.actorId, host.session.ownerId), true))
             }
             row.replyPreview?.let {
                 // fp66: inside an OWN bubble the quote keeps the dark C.bg well,
@@ -799,7 +799,7 @@ class RoomScreen(context: Context, private val room: Room) : Screen(context) {
         }
 
         private fun letterAvatar(event: ChatEvent): View {
-            val color = personColor(event.actorId)
+            val color = personColor(event.actorId, host.session.ownerId)
             return text(context, event.actorName.trim().firstOrNull()?.uppercase() ?: "?", 12f, android.graphics.Color.WHITE, true).apply {
                 gravity = Gravity.CENTER
                 background = rounded(color, dp(14).toFloat())
