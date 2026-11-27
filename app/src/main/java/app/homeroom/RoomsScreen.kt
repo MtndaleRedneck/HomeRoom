@@ -133,7 +133,7 @@ class RoomsScreen(context: Context) : Screen(context) {
             dots.contentDescription = "Members: " + room.members.take(6).joinToString(", ") { it.second.ifBlank { it.first } } + (if (room.members.size > 6) ", +" + (room.members.size - 6) + " more" else "")
             for (member in room.members.take(6)) {
                 dots.addView(View(context).apply {
-                    background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first)) }
+                    background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(personColor(member.first, host.session.ownerId)) }
                 }, LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(3) })
             }
             metaRow.addView(dots)
